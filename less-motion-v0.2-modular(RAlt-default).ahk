@@ -7,7 +7,10 @@ global Config := {
     ; "RAlt" - Right Alt key
     ; "CapsLock" - CapsLock key
     ; "LWin" - Left Windows key
-    ; You can add more keys as needed
+    ;
+    ; You can add more keys as needed if you have a custom keys,
+    ; for example, I have a custom vk19 RAlt cuz of a KR layout
+    ; you can check your key in a DoubleClickIcon in a tray > View > KeyHistory ----
     ModifierKey: "RAlt"
 }
 

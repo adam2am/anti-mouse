@@ -1,4 +1,6 @@
 ﻿; with korean keyboard switch (RAlt) its kinda broken now
+; I mean I dont want for this switch to work, right now its overlapping my functionality
+; and not letting the script work while me holding the RAlt
 #Requires AutoHotkey v2.0
 
 ; Global state tracking
@@ -16,8 +18,7 @@ RAlt::
 
 #HotIf GetKeyState("RAlt", "P")
 
-a::
-{
+a:: {
     static lastPressTime := 0
     currentTime := A_TickCount
 
@@ -42,8 +43,7 @@ a::
     }
 }
 
-s::
-{
+s:: {
     global g_ModifierState
     g_ModifierState.ctrl := true
     startTime := A_TickCount
@@ -66,11 +66,9 @@ l::
 {
     global g_ModifierState
     key := A_ThisHotkey
-
     ; Update modifiers based on current key states
     g_ModifierState.ctrl := GetKeyState("s", "P")
     g_ModifierState.shift := GetKeyState("a", "P")
-
     baseMap := Map(
         "i", "{Up}",
         "j", "{Left}",
@@ -79,7 +77,6 @@ l::
         "9", "{Home}",
         "0", "{End}"
     )
-
     ; Construct the output based on tracked modifiers
     output := ""
     if g_ModifierState.ctrl
@@ -87,21 +84,16 @@ l::
     if g_ModifierState.shift
         output .= "+"
     output .= baseMap[key]
-
     SendEvent output
 }
-
 ; Clipboard, Delete, and Other Shortcuts
 c:: SendEvent "^c"
 x:: SendEvent "^x"
 v:: SendEvent "^v"
 z:: SendEvent "^z"
-
 f:: SendEvent "!f"  ; For fuzzy finder- jumper
 m:: SendEvent "!m"  ; RAlt + M now sends Alt+M - for neovim escaping to normal mode
-
 `;:: SendEvent "{Backspace}"
 ':: SendEvent "{Delete}"
 /:: SendEvent "{Enter}"
-
 #HotIf ; Reset context

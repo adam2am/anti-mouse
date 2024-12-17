@@ -33,7 +33,6 @@ GetActiveMonitorNumber() {
         if (x >= Left && x < Right && y >= Top && y < Bottom)
             return A_Index
     }
-
     return 1  ; Default to first monitor if no match found
 }
 

@@ -1,5 +1,13 @@
-﻿;0.21 in a process, this check is about adding a capslock lock if the modifierKey gonna be the capslock
+﻿;0.21 in a process, this check is about adding a capslock lock if the powerButton gonna be the capslock
 #Requires AutoHotkey v2.0
+
+; Global state tracking with more robust mode management
+global g_ModifierState := {
+    shift: false,
+    ctrl: false,
+    powerButtonToggled: false,
+    powerButtonReleased: false  ; Add this line to initialize the property
+}
 
 ; Configuration Section
 global Config := {
@@ -7,28 +15,33 @@ global Config := {
     ; "RAlt" - Right Alt key
     ; "CapsLock" - CapsLock key
     ; "LWin" - Left Windows key
-    ;
-    ; You can add more keys as needed if you have a custom keys,
-    ; for example, I have a custom vk19 RAlt cuz of a KR layout
-    ; you can check your key in a DoubleClickIcon in a tray > View > KeyHistory ----
-    ModifierKey: "RAlt"
+    ; You can add more keys as needed
+    ; ---- I have a custom vk19 for a KR layout ----
+    powerButton: "vk19"
 }
 
-; Global state tracking
-global State := {
-    shift: false,
-    ctrl: false
+; Function to get the monitor number where the mouse is
+GetActiveMonitorNumber() {
+    MouseGetPos(&x, &y)
+    monitorCount := MonitorGetCount()
+
+    loop monitorCount {
+        MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+        if (x >= Left && x < Right && y >= Top && y < Bottom)
+            return A_Index
+    }
+    return 1  ; Default to first monitor if no match found
 }
 
 ; Dynamically handle the modifier key
-Hotkey(Config.ModifierKey, CallbackFunc)
+Hotkey(Config.powerButton, CallbackFunc)
 
 CallbackFunc(*) {
-    KeyWait(Config.ModifierKey)
+    KeyWait(Config.powerButton)
 }
 
 ; Context-sensitive hotkeys when modifier is pressed
-#HotIf GetKeyState(Config.ModifierKey, "P")
+#HotIf GetKeyState(Config.powerButton, "P")
 
 a::
 {
@@ -42,11 +55,13 @@ a::
         return
     }
 
-    State.shift := true
+    global g_ModifierState
+    g_ModifierState.shift := true
     startTime := A_TickCount
     lastPressTime := currentTime
+
     KeyWait("a")
-    State.shift := false
+    g_ModifierState.shift := false
 
     ; Quick tap action
     if (A_TickCount - startTime < 200) {
@@ -67,11 +82,12 @@ s::
         return
     }
 
-    State.ctrl := true
+    global g_ModifierState
+    g_ModifierState.ctrl := true
     startTime := A_TickCount
     lastPressTime := currentTime
     KeyWait("s")
-    State.ctrl := false
+    g_ModifierState.ctrl := false
 
     ; Quick tap action
     if (A_TickCount - startTime < 200) {
@@ -87,11 +103,12 @@ l::
 9::
 0::
 {
+    global g_ModifierState
     key := A_ThisHotkey
 
     ; Update modifiers
-    State.ctrl := GetKeyState("s", "P")
-    State.shift := GetKeyState("a", "P")
+    g_ModifierState.ctrl := GetKeyState("s", "P")
+    g_ModifierState.shift := GetKeyState("a", "P")
 
     baseMap := Map(
         "i", "{Up}",
@@ -102,14 +119,12 @@ l::
         "0", "{End}"
     )
 
-    ; Construct output with modifiers
+    ; Construct the output based on tracked modifiers
     output := ""
-    if (State.ctrl) {
+    if g_ModifierState.ctrl
         output .= "^"
-    }
-    if (State.shift) {
+    if g_ModifierState.shift
         output .= "+"
-    }
     output .= baseMap[key]
 
     SendInput(output)
