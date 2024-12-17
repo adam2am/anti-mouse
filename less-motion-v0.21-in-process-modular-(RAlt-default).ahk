@@ -1,4 +1,5 @@
-﻿#Requires AutoHotkey v2.0
+﻿;0.21 in a process, this check is about adding a capslock lock if the modifierKey gonna be the capslock
+#Requires AutoHotkey v2.0
 
 ; Configuration Section
 global Config := {

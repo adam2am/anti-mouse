@@ -1,4 +1,5 @@
-﻿#Requires AutoHotkey v2.0
+﻿; with korean keyboard switch (RAlt) its kinda broken now
+#Requires AutoHotkey v2.0
 
 ; Global state tracking
 global g_ModifierState := {

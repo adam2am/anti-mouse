@@ -1,4 +1,5 @@
-﻿#Requires AutoHotkey v2.0
+﻿; 0.2 stable in a process, more like a backup I guess
+#Requires AutoHotkey v2.0
 
 ; Configuration Section
 global Config := {
@@ -52,13 +53,23 @@ a::
 
 s::
 {
+    static lastPressTime := 0
+    currentTime := A_TickCount
+
+    ; Double-click detection
+    if (currentTime - lastPressTime < 300) {
+        SendInput("^s")
+        lastPressTime := 0
+        return
+    }
+
     State.ctrl := true
     startTime := A_TickCount
+    lastPressTime := currentTime
     KeyWait("s")
     State.ctrl := false
-    i
     ; Quick tap action
-    if (A_iTickCount - startTime < 200) {
+    if (A_TickCount - startTime < 200) {
         SendInput("^+{F12}")
     }
 }
