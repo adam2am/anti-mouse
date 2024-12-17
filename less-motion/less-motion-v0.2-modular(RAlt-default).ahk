@@ -1,4 +1,4 @@
-﻿;0.21 in a process, this check is about adding a capslock lock if the modifierKey gonna be the capslock
+﻿; just a draft of a modular 0.2 version, not stable
 #Requires AutoHotkey v2.0
 
 ; Configuration Section
@@ -56,13 +56,12 @@ a::
 
 s::
 {
-
     static lastPressTime := 0
     currentTime := A_TickCount
 
     ; Double-click detection
     if (currentTime - lastPressTime < 300) {
-        SendInput("^a")
+        SendInput("^s")
         lastPressTime := 0
         return
     }
@@ -72,7 +71,6 @@ s::
     lastPressTime := currentTime
     KeyWait("s")
     State.ctrl := false
-
     ; Quick tap action
     if (A_TickCount - startTime < 200) {
         SendInput("^+{F12}")

@@ -1,5 +1,13 @@
-﻿; 0.2 stable in a process, more like a backup I guess
+﻿; its just a draft, this versio has no consistent updates
+; 0.21 in a process, this check is about adding a capslock lock if the modifierKey gonna be the capslock
 #Requires AutoHotkey v2.0
+
+global g_ModifierState := {
+    shift: false,
+    ctrl: false,
+    powerButtonToggled: false,
+    powerButtonReleased: true
+}
 
 ; Configuration Section
 global Config := {
@@ -14,21 +22,37 @@ global Config := {
     ModifierKey: "RAlt"
 }
 
-; Global state tracking
-global State := {
-    shift: false,
-    ctrl: false
+; Function to get the monitor number where the mouse is
+GetActiveMonitorNumber() {
+    MouseGetPos(&x, &y)
+    monitorCount := MonitorGetCount()
+
+    loop monitorCount {
+        MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+        if (x >= Left && x < Right && y >= Top && y < Bottom)
+            return A_Index
+    }
+    return 1  ; Default to first monitor if no match found
 }
 
 ; Dynamically handle the modifier key
-Hotkey(Config.ModifierKey, CallbackFunc)
+Hotkey(Config.powerButton, CallbackFunc)
 
 CallbackFunc(*) {
-    KeyWait(Config.ModifierKey)
+    global g_ModifierState
+
+    if (g_ModifierState.powerButtonReleased) {
+        ; Toggle Caps Lock on first press
+        SetCapsLockState(!GetKeyState("CapsLock", "T"))
+        g_ModifierState.powerButtonReleased := false
+    }
+
+    KeyWait(Config.powerButton)
+    g_ModifierState.powerButtonReleased := true
 }
 
 ; Context-sensitive hotkeys when modifier is pressed
-#HotIf GetKeyState(Config.ModifierKey, "P")
+#HotIf GetKeyState(Config.powerButton, "P")
 
 a::
 {
@@ -42,11 +66,13 @@ a::
         return
     }
 
-    State.shift := true
+    global g_ModifierState
+    g_ModifierState.shift := true
     startTime := A_TickCount
     lastPressTime := currentTime
+
     KeyWait("a")
-    State.shift := false
+    g_ModifierState.shift := false
 
     ; Quick tap action
     if (A_TickCount - startTime < 200) {
@@ -56,21 +82,24 @@ a::
 
 s::
 {
+
     static lastPressTime := 0
     currentTime := A_TickCount
 
     ; Double-click detection
     if (currentTime - lastPressTime < 300) {
-        SendInput("^s")
+        SendInput("^a")
         lastPressTime := 0
         return
     }
 
-    State.ctrl := true
+    global g_ModifierState
+    g_ModifierState.ctrl := true
     startTime := A_TickCount
     lastPressTime := currentTime
     KeyWait("s")
-    State.ctrl := false
+    g_ModifierState.ctrl := false
+
     ; Quick tap action
     if (A_TickCount - startTime < 200) {
         SendInput("^+{F12}")
@@ -85,11 +114,12 @@ l::
 9::
 0::
 {
+    global g_ModifierState
     key := A_ThisHotkey
 
-    ; Update modifiers
-    State.ctrl := GetKeyState("s", "P")
-    State.shift := GetKeyState("a", "P")
+    ; Use the logical state of CapsLock for detecting shift or ctrl
+    ; instead of directly checking the physical state of a and s keys.
+    ; This works even if the physical a or s keys are not pressed.
 
     baseMap := Map(
         "i", "{Up}",
@@ -100,19 +130,20 @@ l::
         "0", "{End}"
     )
 
-    ; Construct output with modifiers
+    ; Construct the output based on tracked modifiers
     output := ""
-    if (State.ctrl) {
+    if g_ModifierState.ctrl
         output .= "^"
-    }
-    if (State.shift) {
+    if g_ModifierState.shift
         output .= "+"
-    }
     output .= baseMap[key]
 
-    SendInput(output)
+    ; Important: Send the output with the modifier key still considered pressed
+    SendEvent(output)
 }
+#HotIf ; Reset context
 
+#HotIf GetKeyState(g_ModifierState.powerButton, "P")
 ; Shortcuts
 c:: SendInput("^c")
 x:: SendInput("^x")
