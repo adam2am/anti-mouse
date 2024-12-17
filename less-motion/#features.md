@@ -1,6 +1,6 @@
 # Current
-- double caps > shift
 - tab as expected
+- + double caps > shift (working in isolation, partially)
 
 
 
