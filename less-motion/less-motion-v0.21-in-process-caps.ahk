@@ -1,6 +1,7 @@
 ﻿; ---- Main Version with viable updates, 0.21 in a proces  ----
 ; this version is opiniated, anti-modular approach
 ; only caps as power button, nothing else
+; -- this check is about adding a double capslock as a shift, then to make tab work as expected
 #Requires AutoHotkey v2.0
 
 ; Ensure CapsLock doesn't accidentally get turned on
@@ -11,7 +12,8 @@ global g_ModifierState := {
     shift: false,
     ctrl: false,
     capslockToggled: false,
-    capsLockJustReleased: false  ; Add this line to initialize the property
+    capsLockJustReleased: false,  ; Add this line to initialize the property
+    isDoubleCapsShift: false  ; Flag for double-tap Caps Lock Shift mode
 }
 
 ; --- ToolTip Configuration ---
@@ -67,20 +69,46 @@ ToggleCapsLock() {
     }
 }
 
+; --- Double-tap Caps Lock for Shift ---
+~CapsLock::
+{
+    static lastPressTime := 0
+    currentTime := A_TickCount
+
+    if (currentTime - lastPressTime < 300) {  ; Double-tap within 300ms
+        g_ModifierState.isDoubleCapsShift := true
+        lastPressTime := 0
+    } else {
+        lastPressTime := currentTime
+    }
+}
+
+~CapsLock up::
+{
+    if (g_ModifierState.isDoubleCapsShift) {
+        SetTimer(EndDoubleCapsShift, -1000)   ; Turn off Shift mode after 1 sec of inactivity
+    }
+    if (GetKeyState("Tab", "P") || (A_PriorHotkey = "Tab" && GetKeyState("CapsLock", "P"))) {
+        ; If CapsLock was pressed alone, then released, toggle the CapsLock state
+        if (A_ThisHotkey = "~CapsLock up" && !GetKeyState("Tab", "P")) {
+            ToggleCapsLock()
+        }
+        return
+    }
+}
+
+EndDoubleCapsShift() {
+    global g_ModifierState
+    g_ModifierState.isDoubleCapsShift := false
+    SendEvent "{Shift up}"
+}
+
 ; --- Main CapsLock + Tab Logic ---
 Tab::
 {
     if GetKeyState("CapsLock", "P") {
         ToggleCapsLock()
         return  ; Prevent default tab behavior
-    }
-}
-
-CapsLock::
-{
-    if GetKeyState("Tab", "P") {
-        ToggleCapsLock()
-        return  ; Prevent default CapsLock behavior
     }
 }
 
@@ -189,4 +217,63 @@ m:: SendEvent "!m"  ; CapsLock + M now sends Alt+M - for neovim escaping to norm
 ж:: SendEvent "{Backspace}"
 ':: SendEvent "{Delete}"
 /:: SendEvent "{Enter}"
+#HotIf
+
+; ------- Handle Shifted Keys When in Double-Caps Shift Mode -------
+#HotIf g_ModifierState.isDoubleCapsShift
+*a::
+*b::
+*c::
+*d::
+*e::
+*f::
+*g::
+*h::
+*i::
+*j::
+*k::
+*l::
+*m::
+*n::
+*o::
+*p::
+*q::
+*r::
+*s::
+*t::
+*u::
+*v::
+*w::
+*x::
+*y::
+*z::
+*0::
+*1::
+*2::
+*3::
+*4::
+*5::
+*6::
+*7::
+*8::
+*9::
+*`::
+*,::
+*.::
+*/::
+*[::
+*]::
+*`;::
+*'::
+*Enter::
+*Space::
+*Backspace::
+*Delete::
+*-::
+*=::
+*+::
+*|::
+{
+    SendEvent("{Shift down}" . SubStr(A_ThisHotkey, 2) . "{Shift up}")
+}
 #HotIf
