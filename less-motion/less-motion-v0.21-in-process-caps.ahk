@@ -158,7 +158,7 @@ s::
     startTime := A_TickCount
     lastPressTime := currentTime
     KeyWait "s"
-    g_ModifierState.ctrl := true
+    g_ModifierState.ctrl := false
 
     ; Quick tap action
     if (A_TickCount - startTime < 200) {
