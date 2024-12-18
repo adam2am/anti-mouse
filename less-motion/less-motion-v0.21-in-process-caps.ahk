@@ -222,7 +222,7 @@ m:: SendEvent "!m"  ; CapsLock + M now sends Alt+M - for neovim escaping to norm
 `;:: SendEvent "{Backspace}"
 ж:: SendEvent "{Backspace}"
 ':: SendEvent "{Delete}"
-/:: SendEvent "{{Enter}"
+/:: SendEvent "{Enter}"
 #HotIf
 
 ; Shifted-Hotkeys for every key has to be shifted when double caps (shift) is on
