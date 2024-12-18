@@ -211,10 +211,10 @@ l::
 }
 
 vk43:: SendEvent "^c" ; default Ctrl+c
-vk55:: SendEvent "^c" ; vim-like Ctrl+u
 vk58:: SendEvent "^x" ; x
 vk56:: SendEvent "^v" ; v
 vk5A:: SendEvent "^z" ; z
+vk55:: SendEvent "^z" ; vim-like Ctrl+u
 vk59:: SendEvent "^y" ; y
 
 vk46:: SendEvent "!f"  ; f - For fuzzy finder- jumper
