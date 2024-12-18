@@ -83,32 +83,23 @@ ToggleCapsLock() {
     }
 }
 
-~CapsLock up::
-{
-    if (g_ModifierState.isDoubleCapsShift) {
-        SetTimer(EndDoubleCapsShift, -1000)   ; Turn off Shift mode after 1 sec of inactivity
-    }
-    if (GetKeyState("Tab", "P") || (A_PriorHotkey = "Tab" && GetKeyState("CapsLock", "P"))) {
-        ; If CapsLock was pressed alone, then released, toggle the CapsLock state
-        if (A_ThisHotkey = "~CapsLock up" && !GetKeyState("Tab", "P")) {
-            ToggleCapsLock()
-        }
-        return
-    }
-}
-
 EndDoubleCapsShift() {
     global g_ModifierState
     g_ModifierState.isDoubleCapsShift := false
     SendEvent "{Shift up}"
 }
 
-; --- Main CapsLock + Tab Logic ---
-Tab::
+; --- Handle Tab Key ---
+*Tab::
 {
+    ; If CapsLock is also pressed, it's a modifier combination
     if GetKeyState("CapsLock", "P") {
         ToggleCapsLock()
-        return  ; Prevent default tab behavior
+        ; Handle CapsLock + Tab behavior here (e.g., custom action)
+        ; Currently, it does nothing, but you can add your desired action
+        return ; Prevent default Tab behavior when CapsLock is pressed
+    } else {
+        SendEvent "{Tab}"
     }
 }
 
