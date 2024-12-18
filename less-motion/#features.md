@@ -1,7 +1,7 @@
-# Current
-- tab as expected
-- + double caps > shift (working in isolation, partially)
 
+# Current
+- + double caps > shift (working integrated, but not every button, especially when layout switched / KR-EN-CN)
+- change delete to d, and backspace little bit further to ' so no missclick when moving
 
 
 
@@ -14,8 +14,13 @@
 - Caps+S+/ = Ctrl+Enter
 
 
-HHI
+
 
 
 # Completed already
-#12m #3w #2024
+#12m #4w #2024
++ tab as expected
+
+
+
+

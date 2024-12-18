@@ -1,4 +1,4 @@
-; ---- Main Version with viable updates, 0.21 in a proces  ----
+﻿; ---- Main Version with viable updates, 0.21 in a proces  ----
 ; this version is opiniated, anti-modular approach
 ; only caps as power button, nothing else
 ; -- this check is about adding a double capslock as a shift, then to make tab work as expected
@@ -222,7 +222,7 @@ m:: SendEvent "!m"  ; CapsLock + M now sends Alt+M - for neovim escaping to norm
 `;:: SendEvent "{Backspace}"
 ж:: SendEvent "{Backspace}"
 ':: SendEvent "{Delete}"
-/:: SendEvent "{Enter}"
+/:: SendEvent "{{Enter}"
 #HotIf
 
 ; Shifted-Hotkeys for every key has to be shifted when double caps (shift) is on
@@ -263,6 +263,46 @@ z::
 7::
 8::
 9::
+F1::
+F2::
+F3::
+F4::
+F5::
+F6::
+F7::
+F8::
+F9::
+F10::
+F11::
+F12::
+-::
+=::
+[::
+]::
+\::
+`;::
+'::
+,::
+.::
+/::
+Numpad0::
+Numpad1::
+Numpad2::
+Numpad3::
+Numpad4::
+Numpad5::
+Numpad6::
+Numpad7::
+Numpad8::
+Numpad9::
+NumpadDot::
+NumpadDiv::
+NumpadMult::
+NumpadAdd::
+NumpadSub::
+NumpadEnter::
+Space::
+Tab::
 {
     key := A_ThisHotkey
     SendEvent("+" key) ; Send shifted character
