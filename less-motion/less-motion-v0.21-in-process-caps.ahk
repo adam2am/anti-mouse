@@ -69,7 +69,7 @@ ToggleCapsLock() {
     }
 }
 
-; --- Double-tap Caps Lock for Shift ---
+; --- Double-tap Caps Lock for Shift, detecting with Upside Caps in between ---
 ~CapsLock::
 {
     static lastPressTime := 0
