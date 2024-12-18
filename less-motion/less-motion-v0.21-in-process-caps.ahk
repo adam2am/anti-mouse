@@ -80,8 +80,8 @@ CapsLock:: {
         ; Double-tap detected ONLY if CapsLock was released between taps
         if (g_ModifierState.capsLockUpDetected) {
             g_ModifierState.doubleCapsShift := true
-            ToolTip("Double-Caps Shift ON", A_ScreenWidth / 2, A_ScreenHeight / 2)
-            SetTimer(() => ToolTip(), -1000)
+            ; ToolTip("Double-Caps Shift ON", A_ScreenWidth / 2, A_ScreenHeight / 2)
+            ; SetTimer(() => ToolTip(), -1000)
             g_ModifierState.capsLockUpDetected := false ; Reset for next double-tap
         }
         lastPressTime := 0
@@ -102,8 +102,8 @@ CapsLock up:: {
 DisableDoubleCapsShift() {
     if g_ModifierState.doubleCapsShift {
         g_ModifierState.doubleCapsShift := false
-        ToolTip("Double-Caps Shift OFF", A_ScreenWidth / 2, A_ScreenHeight / 2)
-        SetTimer(() => ToolTip(), -1000)
+        ; ToolTip("Double-Caps Shift OFF", A_ScreenWidth / 2, A_ScreenHeight / 2)
+        ; SetTimer(() => ToolTip(), -1000)
     }
 }
 
@@ -210,117 +210,146 @@ l::
     SendEvent output
 }
 
-c:: SendEvent "^c"
-x:: SendEvent "^x"
-v:: SendEvent "^v"
-z:: SendEvent "^z"
-y:: SendEvent "^y"
+vk43:: SendEvent "^c" ; default Ctrl+c
+vk55:: SendEvent "^c" ; vim-like Ctrl+u
+vk58:: SendEvent "^x" ; x
+vk56:: SendEvent "^v" ; v
+vk5A:: SendEvent "^z" ; z
+vk59:: SendEvent "^y" ; y
 
-f:: SendEvent "!f"  ; For fuzzy finder- jumper
-m:: SendEvent "!m"  ; CapsLock + M now sends Alt+M - for neovim escaping to normal mode
+vk46:: SendEvent "!f"  ; f - For fuzzy finder- jumper
+vk4D:: SendEvent "!m"  ; m - CapsLock + M now sends Alt+M - for neovim escaping to normal mode
 
-э:: SendEvent "{Backspace}"
-':: SendEvent "{Backspace}"
-[:: SendEvent "{Delete}"
-d:: SendEvent "{Delete}"
-/:: SendEvent "{Enter}"
+vkBF:: SendEvent "{Enter}" ; /
+vkDE:: SendEvent "{Backspace}" ; '
+vkDB:: SendEvent "{Delete}" ; [
+vk44:: SendEvent "{Delete}" ; d
+
 #HotIf
 
-; Shifted-Hotkeys for every key has to be shifted when double caps (shift) is on
-#HotIf g_ModifierState.doubleCapsShift
-a::
-b::
-c::
-d::
-e::
-f::
-g::
-h::
-i::
-j::
-k::
-l::
-m::
-n::
-o::
-p::
-q::
-r::
-s::
-t::
-u::
-v::
-w::
-x::
-y::
-z::
-0::
-1::
-2::
-3::
-4::
-5::
-6::
-7::
-8::
-9::
-F1::
-F2::
-F3::
-F4::
-F5::
-F6::
-F7::
-F8::
-F9::
-F10::
-F11::
-F12::
--::
-=::
-[::
-]::
-\::
-`;::
-'::
-,::
-.::
-/::
-Numpad0::
-Numpad1::
-Numpad2::
-Numpad3::
-Numpad4::
-Numpad5::
-Numpad6::
-Numpad7::
-Numpad8::
-Numpad9::
-NumpadDot::
-NumpadDiv::
-NumpadMult::
-NumpadAdd::
-NumpadSub::
-NumpadEnter::
-Space::
-Tab::
-ж::
-э::
-ь::
-б::
-ю::
-ъ::
-х::
-{
+; Function to get current keyboard layout
+GetCurrentLayout() {
+    activeWnd := WinExist("A")
+    threadId := DllCall("GetWindowThreadProcessId", "Ptr", activeWnd, "Ptr", 0)
+    layout := DllCall("GetKeyboardLayout", "UInt", threadId, "Ptr")
+    return Format("{:08X}", layout & 0xFFFF)
+}
 
-    key := A_ThisHotkey
-    try {
+; Mapping for different layouts
+global layoutMappings := Map(
+    "00000409", Map(  ; English (US)
+        "б", ",",
+        "Б", "<",
+        "ю", ".",
+        "Ю", ">",
+        "х", "[",
+        "Х", "{",
+        "ъ", "]",
+        "Ъ", "}",
+        "ж", ";",
+        "Ж", ":",
+        "э", "'",
+        "Э", '"',
+        ".", "/",
+        ",", "?"
+    ),
+    "00000419", Map(  ; Russian
+        ",", "б",
+        "<", "Б",
+        ".", "ю",
+        ">", "Ю",
+        "[", "х",
+        "{", "Х",
+        "]", "ъ",
+        "}", "Ъ",
+        ";", "ж",
+        ":", "Ж",
+        "'", "э",
+        '"', "Э",
+        "/", ".",
+        "?", ","
+    )
+)
 
-        SendEvent("+" key) ; Send shifted character
+; Function to translate key based on current layout
+TranslateKey(key) {
+    currentLayout := GetCurrentLayout()
+
+    ; If layout has a mapping, try to translate
+    if (layoutMappings.Has(currentLayout)) {
+        layoutMap := layoutMappings[currentLayout]
+        if (layoutMap.Has(key)) {
+            return layoutMap[key]
+        }
     }
-    catch as err {
-        ; Optionally log or handle any unexpected errors
-        ; This prevents showing layout-specific notifications
+
+    ; If no translation, return original key
+    return key
+}
+
+; Double Caps Shift Modifier State (assume this is defined elsewhere)
+#HotIf g_ModifierState.doubleCapsShift
+
+; Alphabet (a-z)
+vk41:: SendShiftedKey("a")  ; a
+vk42:: SendShiftedKey("b")  ; b
+vk43:: SendShiftedKey("c")  ; c
+vk44:: SendShiftedKey("d")  ; d
+vk45:: SendShiftedKey("e")  ; e
+vk46:: SendShiftedKey("f")  ; f
+vk47:: SendShiftedKey("g")  ; g
+vk48:: SendShiftedKey("h")  ; h
+vk49:: SendShiftedKey("i")  ; i
+vk4A:: SendShiftedKey("j")  ; j
+vk4B:: SendShiftedKey("k")  ; k
+vk4C:: SendShiftedKey("l")  ; l
+vk4D:: SendShiftedKey("m")  ; m
+vk4E:: SendShiftedKey("n")  ; n
+vk4F:: SendShiftedKey("o")  ; o
+vk50:: SendShiftedKey("p")  ; p
+vk51:: SendShiftedKey("q")  ; q
+vk52:: SendShiftedKey("r")  ; r
+vk53:: SendShiftedKey("s")  ; s
+vk54:: SendShiftedKey("t")  ; t
+vk55:: SendShiftedKey("u")  ; u
+vk56:: SendShiftedKey("v")  ; v
+vk57:: SendShiftedKey("w")  ; w
+vk58:: SendShiftedKey("x")  ; x
+vk59:: SendShiftedKey("y")  ; y
+vk5A:: SendShiftedKey("z")  ; z
+
+; Numbers and Symbols
+vk30:: SendShiftedKey("0")  ; 0
+vk31:: SendShiftedKey("1")  ; 1
+vk32:: SendShiftedKey("2")  ; 2
+vk33:: SendShiftedKey("3")  ; 3
+vk34:: SendShiftedKey("4")  ; 4
+vk35:: SendShiftedKey("5")  ; 5
+vk36:: SendShiftedKey("6")  ; 6
+vk37:: SendShiftedKey("7")  ; 7
+vk38:: SendShiftedKey("8")  ; 8
+vk39:: SendShiftedKey("9")  ; 9
+
+vkBD:: SendShiftedKey("-")  ; -
+vkBB:: SendShiftedKey("=")  ; =
+vkDB:: SendShiftedKey("[")  ; [
+vkDD:: SendShiftedKey("]")  ; ]
+vkDC:: SendShiftedKey("\")  ; \
+vkC0:: SendShiftedKey("``")  ; `
+vkDE:: SendShiftedKey("'")  ; '
+vkBC:: SendShiftedKey(",")  ; ,
+vkBE:: SendShiftedKey(".")  ; .
+vkBF:: SendShiftedKey("/")  ; /
+
+; Function to send shifted key with layout translation
+SendShiftedKey(key) {
+    try {
+        ; Translate the key first
+        translatedKey := TranslateKey(key)
+
+        ; Send the shifted version of the translated key
+        SendEvent("+" translatedKey)
+    } catch as err {
+        ; Silently handle any sending errors
     }
 }
-#HotIf
