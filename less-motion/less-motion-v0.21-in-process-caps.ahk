@@ -13,7 +13,8 @@ global g_ModifierState := {
     ctrl: false,
     capslockToggled: false,
     capsLockJustReleased: false,  ; Add this line to initialize the property
-    isDoubleCapsShift: false  ; Flag for double-tap Caps Lock Shift mode
+    doubleCapsShift: false,
+    capsLockUpDetected: false
 }
 
 ; --- ToolTip Configuration ---
@@ -70,23 +71,40 @@ ToggleCapsLock() {
 }
 
 ; --- Double-tap Caps Lock for Shift, detecting with Upside Caps in between ---
-~CapsLock::
-{
+CapsLock:: {
     static lastPressTime := 0
     currentTime := A_TickCount
 
-    if (currentTime - lastPressTime < 300) {  ; Double-tap within 300ms
-        g_ModifierState.isDoubleCapsShift := true
+    ; Double-click detection
+    if (currentTime - lastPressTime < 300) {
+        ; Double-tap detected ONLY if CapsLock was released between taps
+        if (g_ModifierState.capsLockUpDetected) {
+            g_ModifierState.doubleCapsShift := true
+            ToolTip("Double-Caps Shift ON", A_ScreenWidth / 2, A_ScreenHeight / 2)
+            SetTimer(() => ToolTip(), -1000)
+            g_ModifierState.capsLockUpDetected := false ; Reset for next double-tap
+        }
         lastPressTime := 0
     } else {
+        ; Single tapD
+        g_ModifierState.capsLockUpDetected := false ; Reset if single tap
         lastPressTime := currentTime
     }
 }
 
-EndDoubleCapsShift() {
-    global g_ModifierState
-    g_ModifierState.isDoubleCapsShift := false
-    SendEvent "{Shift up}"
+CapsLock up:: {
+    g_ModifierState.capsLockUpDetected := true ; Mark that CapsLock was released
+
+    ; Introduce a delay before turning off the modifier state
+    SetTimer(DisableDoubleCapsShift, -50)
+}
+
+DisableDoubleCapsShift() {
+    if g_ModifierState.doubleCapsShift {
+        g_ModifierState.doubleCapsShift := false
+        ToolTip("Double-Caps Shift OFF", A_ScreenWidth / 2, A_ScreenHeight / 2)
+        SetTimer(() => ToolTip(), -1000)
+    }
 }
 
 ; --- Handle Tab Key ---
@@ -104,7 +122,7 @@ EndDoubleCapsShift() {
 }
 
 ; Context-sensitive hotkeys when modifier is pressed
-#HotIf GetKeyState("CapsLock", "P")
+#HotIf GetKeyState("CapsLock", "P") and not g_ModifierState.doubleCapsShift
 
 a::
 {
@@ -191,10 +209,7 @@ l::
 
     SendEvent output
 }
-#HotIf ; Reset context
 
-;------- Clipboard, Delete, and Other Shortcuts
-#HotIf GetKeyState("CapsLock", "P")
 c:: SendEvent "^c"
 x:: SendEvent "^x"
 v:: SendEvent "^v"
@@ -211,60 +226,47 @@ m:: SendEvent "!m"  ; CapsLock + M now sends Alt+M - for neovim escaping to norm
 #HotIf
 
 ; ------- Handle Shifted Keys When in Double-Caps Shift Mode -------
-#HotIf g_ModifierState.isDoubleCapsShift
-*a::
-*b::
-*c::
-*d::
-*e::
-*f::
-*g::
-*h::
-*i::
-*j::
-*k::
-*l::
-*m::
-*n::
-*o::
-*p::
-*q::
-*r::
-*s::
-*t::
-*u::
-*v::
-*w::
-*x::
-*y::
-*z::
-*0::
-*1::
-*2::
-*3::
-*4::
-*5::
-*6::
-*7::
-*8::
-*9::
-*`::
-*,::
-*.::
-*/::
-*[::
-*]::
-*`;::
-*'::
-*Enter::
-*Space::
-*Backspace::
-*Delete::
-*-::
-*=::
-*+::
-*|::
+
+; Hotkeys for letters and numbers
+#HotIf g_ModifierState.doubleCapsShift
+a::
+b::
+c::
+d::
+e::
+f::
+g::
+h::
+i::
+j::
+k::
+l::
+m::
+n::
+o::
+p::
+q::
+r::
+s::
+t::
+u::
+v::
+w::
+x::
+y::
+z::
+0::
+1::
+2::
+3::
+4::
+5::
+6::
+7::
+8::
+9::
 {
-    SendEvent("{Shift down}" . SubStr(A_ThisHotkey, 2) . "{Shift up}")
+    key := A_ThisHotkey
+    SendEvent("+" key) ; Send shifted character
 }
 #HotIf
