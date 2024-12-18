@@ -1,4 +1,4 @@
-﻿; ---- Main Version with viable updates, 0.21 in a proces  ----
+; ---- Main Version with viable updates, 0.21 in a proces  ----
 ; this version is opiniated, anti-modular approach
 ; only caps as power button, nothing else
 ; -- this check is about adding a double capslock as a shift, then to make tab work as expected
@@ -225,9 +225,7 @@ m:: SendEvent "!m"  ; CapsLock + M now sends Alt+M - for neovim escaping to norm
 /:: SendEvent "{Enter}"
 #HotIf
 
-; ------- Handle Shifted Keys When in Double-Caps Shift Mode -------
-
-; Hotkeys for letters and numbers
+; Shifted-Hotkeys for every key has to be shifted when double caps (shift) is on
 #HotIf g_ModifierState.doubleCapsShift
 a::
 b::
