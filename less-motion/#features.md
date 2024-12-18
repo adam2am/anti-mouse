@@ -1,7 +1,9 @@
 
 # Current
 - + double caps > shift (working integrated, but not every button, especially when layout switched / KR-EN-CN)
-- change delete to d, and backspace little bit further to ' so no missclick when moving
+        - potentially change it all to VK code
+- alt+tab lost it functionality
+
 
 
 
@@ -20,6 +22,7 @@
 # Completed already
 #12m #4w #2024
 + tab as expected
++ delete to d, and backspace little bit further to ' so no missclick when moving, potentially [ as a delete cuz its above the '
 
 
 

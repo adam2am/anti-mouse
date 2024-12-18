@@ -219,9 +219,10 @@ y:: SendEvent "^y"
 f:: SendEvent "!f"  ; For fuzzy finder- jumper
 m:: SendEvent "!m"  ; CapsLock + M now sends Alt+M - for neovim escaping to normal mode
 
-`;:: SendEvent "{Backspace}"
-ж:: SendEvent "{Backspace}"
-':: SendEvent "{Delete}"
+э:: SendEvent "{Backspace}"
+':: SendEvent "{Backspace}"
+[:: SendEvent "{Delete}"
+d:: SendEvent "{Delete}"
 /:: SendEvent "{Enter}"
 #HotIf
 
@@ -303,8 +304,23 @@ NumpadSub::
 NumpadEnter::
 Space::
 Tab::
+ж::
+э::
+ь::
+б::
+ю::
+ъ::
+х::
 {
+
     key := A_ThisHotkey
-    SendEvent("+" key) ; Send shifted character
+    try {
+
+        SendEvent("+" key) ; Send shifted character
+    }
+    catch as err {
+        ; Optionally log or handle any unexpected errors
+        ; This prevents showing layout-specific notifications
+    }
 }
 #HotIf
