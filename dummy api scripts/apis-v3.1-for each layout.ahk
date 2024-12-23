@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2.0.18+
-; fix the syntax #AI!
+; fix the syntax 
 
 ; idea is to make a hotkey for each api key
 ; based on a number and give element from the array back
