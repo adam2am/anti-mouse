@@ -13,8 +13,9 @@ global g_ModifierState := {
     ctrl: false,
     capslockToggled: false,
     capsLockJustReleased: false,  ; Add this line to initialize the property
-    doubleCapsShift: false,
-    capsLockUpDetected: false
+    capsLockUpDetected: false,
+    capsTabAsShift: false,
+    showcaseDebug: false,
 }
 
 ; --- ToolTip Configuration ---
@@ -42,7 +43,7 @@ GetActiveMonitorNumber() {
     return 1  ; Default to first monitor if no match found
 }
 
-; Function to toggle CapsLock and update tooltip to show w                      e have a Caps "ON"
+; Function to toggle CapsLock and update tooltip to show we have a Caps "ON"
 ToggleCapsLock() {
     global g_ModifierState, g_Tooltip
 
@@ -107,7 +108,8 @@ DisableDoubleCapsShift() {
     }
 }
 
-; --- Handle Tab Key ---
+; added a HotIf so it's not fucking up the regular Tab behavior
+#HotIf GetKeyState("CapsLock", "P") and not g_ModifierState.doubleCapsShift and not GetKeyState("Alt", "P")
 *Tab::
 {
     ; If CapsLock is also pressed, it's a modifier combination
@@ -120,10 +122,10 @@ DisableDoubleCapsShift() {
         SendEvent "{Tab}"
     }
 }
+#HotIf
 
 ; Context-sensitive hotkeys when modifier is pressed
 #HotIf GetKeyState("CapsLock", "P") and not g_ModifierState.doubleCapsShift
-
 a::
 {
     static lastPressTime := 0
@@ -210,12 +212,13 @@ l::
     SendEvent output
 }
 
-vk43:: SendEvent "^c" ; default Ctrl+c
+vk43:: SendEvent "^c" ; default Ctrl+c / vim-like yonk is regular windows undo = Ctrl+Y
 vk58:: SendEvent "^x" ; x
 vk56:: SendEvent "^v" ; v
 vk5A:: SendEvent "^z" ; z
 vk55:: SendEvent "^z" ; vim-like Ctrl+u
 vk59:: SendEvent "^y" ; y
+vkC0:: SendEvent "^``" ; ` - terminal like behavior
 
 vk46:: SendEvent "!f"  ; f - For fuzzy finder- jumper
 vk4D:: SendEvent "!m"  ; m - CapsLock + M now sends Alt+M - for neovim escaping to normal mode
@@ -346,7 +349,6 @@ SendShiftedKey(key) {
     try {
         ; Translate the key first
         translatedKey := TranslateKey(key)
-
         ; Send the shifted version of the translated key
         SendEvent("+" translatedKey)
     } catch as err {

@@ -19,7 +19,8 @@ mostly I enjoy a backspace as a ; cuz its instantly on your finger
 - VisualMode like in VIM? -- 3 cicks more, too much actions
 
 
-### IdeasSugg:
+
+## IdeasSugg:
         - Caps, but double Caps as a Shift
         - DoubleShift? - 17-12-2024 - that way builds Ctrl+A better then > Shift+Shift+A+A
         - DoubleChords? - jk
