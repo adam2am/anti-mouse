@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 ; #12m #5w #2024
 ; dynamic number in a hotstring detection, idea - when /ga+number typed = different api key
+; to be honest, seems slower then hard-coded each scenario (:*:/ga1::, :*:/ga2:: etc)
 SendMode("Input")
 global showcaseDebug := false
 global gAPIKeys := ["YOUR_ACTUAL_API_KEY_HERE1",
