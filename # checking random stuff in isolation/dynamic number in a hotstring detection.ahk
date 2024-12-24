@@ -3,8 +3,10 @@
 ; idea - when /ga(*number) typed = different message boxes. /ga1 or /ga2 or whatever
 ; I want to make detect insta /ga+number so its instantly replacing as soon as number detected,
 ; Works, but feels like manually adding diff scenarios (:/ga1: :/ga2: etc) is faster anyway, idk
+; Potential methods:
 
-; Potential methods
+;
+;
 ; 1 vers - Loop + A_Index and Function
 SendMode("Input")
 
