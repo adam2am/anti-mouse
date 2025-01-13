@@ -11,187 +11,205 @@ SetCapsLockState("AlwaysOff")
 global g_ModifierState := {
     shift: false,
     ctrl: false,
+    singleTapCaps: false,
+    doubleTapCaps: false,
+    holdCapsShiftModeActivate: false,
+    capsLastPressTime: 0,
     capslockToggled: false,
-    capsLockJustReleased: false,  ; Add this line to initialize the property
-    capsLockUpDetected: false,
-    capsTabAsShift: false,
+    capsLockJustReleased: false,
+    singleTapUsed: false,  ; New flag to track if single tap has been used
     showcaseDebug: false,
 }
 
-; --- ToolTip Configuration ---
+; --- ToolTip Configuration --- (rest of the tooltip code remains the same)
 global g_Tooltip := {
-    ; Default position (will be adjusted dynamically)
     x: 0,
     y: 0,
-    textOn: "CapsLock ON",
-    textOff: "",
-    colorOn: "Red",
-    colorOff: "White",
+    textSingleTap: "Next key shifted",
+    textDoubleTap: "Shift mode (Double-tap)",
+    textHoldMode: "Shift mode (Hold)",
+    colorNormal: "White",
+    colorActive: "Red",
     font: "s12 Arial"
 }
 
-; Function to get the monitor number where the mouse is
-GetActiveMonitorNumber() {
-    MouseGetPos(&x, &y)
+;
+; Helper function for tooltip positioning
+GetTooltipPosition() {
+    MouseGetPos(&mouseX, &mouseY)
     monitorCount := MonitorGetCount()
 
     loop monitorCount {
         MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
-        if (x >= Left && x < Right && y >= Top && y < Bottom)
-            return A_Index
+        if (mouseX >= Left && mouseX < Right && mouseY >= Top && mouseY < Bottom) {
+            return { x: Left + 50, y: Bottom - 100 }
+        }
     }
-    return 1  ; Default to first monitor if no match found
+    return { x: 50, y: A_ScreenHeight - 100 }
 }
 
-; Function to toggle CapsLock and update tooltip to show we have a Caps "ON"
-ToggleCapsLock() {
-    global g_ModifierState, g_Tooltip
-
-    g_ModifierState.capslockToggled := !g_ModifierState.capslockToggled
-    SetCapsLockState(g_ModifierState.capslockToggled ? "On" : "Off")
-
-    if (g_ModifierState.capslockToggled) {
-        ; Get the active monitor number
-        activeMonitor := GetActiveMonitorNumber()
-
-        ; Get monitor coordinates using MonitorGet
-        MonitorGet(activeMonitor, &Left, &Top, &Right, &Bottom)
-
-        ; Calculate tooltip position dynamically
-        ToolTipX := Left + 50  ; 50 pixels from the left edge
-        ToolTipY := Bottom - 100 ; 100 pixels from the bottom edge
-
-        ; Set the font
-        A_DefaultToolTipFont := g_Tooltip.font
-        ; Display the tooltip
-        ToolTip(g_Tooltip.textOn, ToolTipX, ToolTipY)
-    } else {
-        ; Hide the tooltip
+; Show tooltip with optional duration
+ShowTooltip(text := "", duration := 1000) {
+    if (text = "") {
         ToolTip()
+        return
+    }
+
+    pos := GetTooltipPosition()
+    ToolTip(text, pos.x, pos.y)
+
+    if (duration > 0) {
+        SetTimer () => ToolTip(), -duration
     }
 }
 
+;
 ; --- Double-tap Caps Lock for Shift, detecting with Upside Caps in between ---
 CapsLock:: {
-    static lastPressTime := 0
+    global g_ModifierState
     currentTime := A_TickCount
 
-    ; Double-click detection
-    if (currentTime - lastPressTime < 300) {
-        ; Double-tap detected ONLY if CapsLock was released between taps
-        if (g_ModifierState.capsLockUpDetected) {
-            g_ModifierState.doubleCapsShift := true
-            ; ToolTip("Double-Caps Shift ON", A_ScreenWidth / 2, A_ScreenHeight / 2)
-            ; SetTimer(() => ToolTip(), -1000)
-            g_ModifierState.capsLockUpDetected := false ; Reset for next double-tap
-        }
-        lastPressTime := 0
+    ; Double-tap detection (200ms window)
+    if (currentTime - g_ModifierState.capsLastPressTime < 200) {
+        ; Double-tap behavior
+        g_ModifierState.doubleTapCaps := !g_ModifierState.doubleTapCaps
+        g_ModifierState.singleTapCaps := false
+        g_ModifierState.singleTapUsed := false  ; Reset single tap usage
+
+        if (g_ModifierState.doubleTapCaps)
+            ShowTooltip(g_Tooltip.textDoubleTap, 0)
+        else
+            ShowTooltip()
     } else {
-        ; Single tapD
-        g_ModifierState.capsLockUpDetected := false ; Reset if single tap
-        lastPressTime := currentTime
+        g_ModifierState.singleTapCaps := true
+        g_ModifierState.doubleTapCaps := false  ; Ensure double tap is off
+        g_ModifierState.singleTapUsed := false  ; Reset single tap usage
+        ShowTooltip(g_Tooltip.textSingleTap)
+    }
+
+    g_ModifierState.capsLastPressTime := currentTime
+    g_ModifierState.capsLockJustReleased := false
+}
+
+;
+CapsLock Up:: {
+    global g_ModifierState
+    g_ModifierState.capsLockJustReleased := true
+
+    if (g_ModifierState.doubleTapCaps) {
+        ; Don't clear double tap mode on release
+        return
+    }
+
+    if (g_ModifierState.holdCapsShiftModeActivate) {
+        g_ModifierState.holdCapsShiftModeActivate := false
+        ShowTooltip()
     }
 }
 
-CapsLock up:: {
-    g_ModifierState.capsLockUpDetected := true ; Mark that CapsLock was released
+;
+; CapsLock release handler
+; CapsLock up:: {
+;     global g_ModifierState
+;     g_ModifierState.capsLockUpDetected := true
 
-    ; Introduce a delay before turning off the modifier state
-    SetTimer(DisableDoubleCapsShift, -50)
-}
+;     if (g_ModifierState.doubleTapActive) {
+;         g_ModifierState.doubleTapActive := false
+;         ShowTooltip()
+;     }
+; }
 
-DisableDoubleCapsShift() {
-    if g_ModifierState.doubleCapsShift {
-        g_ModifierState.doubleCapsShift := false
-        ; ToolTip("Double-Caps Shift OFF", A_ScreenWidth / 2, A_ScreenHeight / 2)
-        ; SetTimer(() => ToolTip(), -1000)
-    }
-}
+; ~*Space up:: {
+;     g_ModifierState.capsTabAsShift := false
+; }
 
+;
 ; added a HotIf so it's not fucking up the regular Tab behavior
-#HotIf GetKeyState("CapsLock", "P") and not g_ModifierState.doubleCapsShift and not GetKeyState("Alt", "P")
-*Tab::
-{
-    ; If CapsLock is also pressed, it's a modifier combination
-    if GetKeyState("CapsLock", "P") {
-        ToggleCapsLock()
-        ; Handle CapsLock + Tab behavior here (e.g., custom action)
-        ; Currently, it does nothing, but you can add your desired action
-        return ; Prevent default Tab behavior when CapsLock is pressed
-    } else {
-        SendEvent "{Tab}"
-    }
+#HotIf (GetKeyState("CapsLock", "P") and not GetKeyState("Shift", "P"))
+; Space:: {
+;     g_ModifierState.capsTabAsShift := true ; Set the flag when either CapsLock + Tab or Shift + Tab is pressed
+;     ; Important: Prevent default Tab behavior
+; }
+
+h:: {
+    global g_ModifierState
+
+    g_ModifierState.holdCapsShiftModeActivate := true
+    g_ModifierState.singleTapPending := false
+    ShowTooltip(g_Tooltip.textHoldMode, 0)
+
+    ; Wait for either key release
+    while (GetKeyState("CapsLock", "P") && GetKeyState("h", "P"))
+        Sleep(10)
+
+    g_ModifierState.holdCapsShiftModeActivate := false
+    ShowTooltip()
 }
 #HotIf
 
+;
 ; Context-sensitive hotkeys when modifier is pressed
-#HotIf GetKeyState("CapsLock", "P") and not g_ModifierState.doubleCapsShift
-a::
-{
+#HotIf GetKeyState("CapsLock", "P") and not (g_ModifierState.singleTapCaps or g_ModifierState.doubleTapCaps or
+    g_ModifierState.holdCapsShiftModeActivate)
+a:: {
     static lastPressTime := 0
     currentTime := A_TickCount
-
     ; Double-click detection => Ctrl-A a quick All-Selection
     if (currentTime - lastPressTime < 300) {
         SendInput("^a")
         lastPressTime := 0
         return
     }
-
+    ;
     global g_ModifierState
     g_ModifierState.shift := true
     startTime := A_TickCount
     lastPressTime := currentTime ; Update last press time for double-click detection
     KeyWait "a"
     g_ModifierState.shift := false
-
+    ;
     ; Quick tap sends Ctrl+Shift+F11
     if (A_TickCount - startTime < 200) {
         SendEvent "^+{F11}"
     }
 }
-
-s::
-{
-
+;
+s:: {
     static lastPressTime := 0
     currentTime := A_TickCount
-
     ; Double-click detection => Ctrl S as a Quick-Save
     if (currentTime - lastPressTime < 300) {
         SendInput("^s")
         lastPressTime := 0
         return
     }
-
+    ;
     global g_ModifierState
     g_ModifierState.ctrl := true
     startTime := A_TickCount
     lastPressTime := currentTime
+
     KeyWait "s"
     g_ModifierState.ctrl := false
-
+    ;
     ; Quick tap action
     if (A_TickCount - startTime < 200) {
         SendInput("^+{F12}")
     }
 }
-
 ; Navigation and Selection Logic
+
 i::
 j::
 k::
 l::
 9::
-0::
-{
+0:: {
     global g_ModifierState
     key := A_ThisHotkey
-
     ; Update modifiers based on current key states
     g_ModifierState.ctrl := GetKeyState("s", "P")
     g_ModifierState.shift := GetKeyState("a", "P")
-
     baseMap := Map(
         "i", "{Up}",
         "j", "{Left}",
@@ -200,7 +218,6 @@ l::
         "9", "{Home}",
         "0", "{End}"
     )
-
     ; Construct the output based on tracked modifiers
     output := ""
     if g_ModifierState.ctrl
@@ -208,28 +225,49 @@ l::
     if g_ModifierState.shift
         output .= "+"
     output .= baseMap[key]
-
     SendEvent output
 }
-
 vk43:: SendEvent "^c" ; default Ctrl+c / vim-like yonk is regular windows undo = Ctrl+Y
 vk58:: SendEvent "^x" ; x
 vk56:: SendEvent "^v" ; v
 vk5A:: SendEvent "^z" ; z
-vk55:: SendEvent "^z" ; vim-like Ctrl+u
+vk55:: SendEvent "^z" ; u > vim-like Ctrl+undo/
+
+vk31:: SendEvent "!1"  ; 1
+vk32:: SendEvent "!2"  ; 2
+vk33:: SendEvent "!3"  ; 3
+vk34:: SendEvent "!4"  ; 4
+vk35:: SendEvent "!5"  ; 5
+vk36:: SendEvent "!6"  ; 6
+vk37:: SendEvent "!7"  ; 7
+vk38:: SendEvent "!8"  ; 8
+vk39:: SendEvent "!9"  ; 9
+
 vk59:: SendEvent "^y" ; y
 vkC0:: SendEvent "^``" ; ` - terminal like behavior
-
 vk46:: SendEvent "!f"  ; f - For fuzzy finder- jumper
 vk4D:: SendEvent "!m"  ; m - CapsLock + M now sends Alt+M - for neovim escaping to normal mode
+vkBF:: {
+    if not GetKeyState("s", "P") and not GetKeyState("a", "P") {
+        SendEvent "{Enter}"
+    }
+    else if GetKeyState("s", "P") and not GetKeyState("a", "P") {
+        SendEvent "^{Enter}"
+    }
+    else if not GetKeyState("s", "P") and GetKeyState("a", "P") {
+        SendEvent "+{Enter}"
+    }
+    else if GetKeyState("s", "P") and GetKeyState("a", "P") {
+        SendEvent "+^{Enter}"
+    }
+}
 
-vkBF:: SendEvent "{Enter}" ; /
 vkDE:: SendEvent "{Backspace}" ; '
 vkDB:: SendEvent "{Delete}" ; [
 vk44:: SendEvent "{Delete}" ; d
-
 #HotIf
 
+;
 ; Function to get current keyboard layout
 GetCurrentLayout() {
     activeWnd := WinExist("A")
@@ -237,7 +275,6 @@ GetCurrentLayout() {
     layout := DllCall("GetKeyboardLayout", "UInt", threadId, "Ptr")
     return Format("{:08X}", layout & 0xFFFF)
 }
-
 ; Mapping for different layouts
 global layoutMappings := Map(
     "00000409", Map(  ; English (US)
@@ -271,9 +308,7 @@ global layoutMappings := Map(
         '"', "Э",
         "/", ".",
         "?", ","
-    )
-)
-
+    ))
 ; Function to translate key based on current layout
 TranslateKey(key) {
     currentLayout := GetCurrentLayout()
@@ -289,9 +324,8 @@ TranslateKey(key) {
     ; If no translation, return original key
     return key
 }
-
 ; Double Caps Shift Modifier State (assume this is defined elsewhere)
-#HotIf g_ModifierState.doubleCapsShift
+#HotIf g_ModifierState.singleTapCaps or g_ModifierState.doubleTapCaps or g_ModifierState.holdCapsShiftModeActivate
 
 ; Alphabet (a-z)
 vk41:: SendShiftedKey("a")  ; a
@@ -320,7 +354,6 @@ vk57:: SendShiftedKey("w")  ; w
 vk58:: SendShiftedKey("x")  ; x
 vk59:: SendShiftedKey("y")  ; y
 vk5A:: SendShiftedKey("z")  ; z
-
 ; Numbers and Symbols
 vk30:: SendShiftedKey("0")  ; 0
 vk31:: SendShiftedKey("1")  ; 1
@@ -332,7 +365,6 @@ vk36:: SendShiftedKey("6")  ; 6
 vk37:: SendShiftedKey("7")  ; 7
 vk38:: SendShiftedKey("8")  ; 8
 vk39:: SendShiftedKey("9")  ; 9
-
 vkBD:: SendShiftedKey("-")  ; -
 vkBB:: SendShiftedKey("=")  ; =
 vkDB:: SendShiftedKey("[")  ; [
@@ -344,14 +376,40 @@ vkBC:: SendShiftedKey(",")  ; ,
 vkBE:: SendShiftedKey(".")  ; .
 vkBF:: SendShiftedKey("/")  ; /
 
-; Function to send shifted key with layout translation
+;
+; Modified SendShiftedKey function to handle single tap behavior
 SendShiftedKey(key) {
+    global g_ModifierState
     try {
-        ; Translate the key first
         translatedKey := TranslateKey(key)
-        ; Send the shifted version of the translated key
-        SendEvent("+" translatedKey)
+
+        ; If in single tap mode and hasn't been used yet
+        if (g_ModifierState.singleTapCaps && !g_ModifierState.singleTapUsed) {
+            SendEvent("+" translatedKey)
+            g_ModifierState.singleTapCaps := false  ; Turn off single tap mode
+            g_ModifierState.singleTapUsed := true   ; Mark single tap as used
+            ShowTooltip()
+        }
+        ; If in double tap mode
+        else if (g_ModifierState.doubleTapCaps) {
+            SendEvent("+" translatedKey)
+        }
+        ; Normal key press (no modifiers)
+        else {
+            SendEvent(translatedKey)
+        }
     } catch as err {
         ; Silently handle any sending errors
     }
 }
+
+#HotIf
+
+; Clear single-tap mode after any key press
+#HotIf g_ModifierState.singleTapCaps
+*:: {
+    global g_ModifierState
+    g_ModifierState.singleTapCaps := false
+    ShowTooltip()
+}
+#HotIf

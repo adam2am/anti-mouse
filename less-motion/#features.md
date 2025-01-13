@@ -1,26 +1,68 @@
 
-# Current
-- potentially for shift instead of 2xCaps == Caps+Tab/Caps+Shift hold to be sure about pressing it and not mess up with just CapsLock
+# Currently
+- kinda great now, lil bit of progress
+        but instead of instantly detecting as a shifted key,
+        i want it to turn it on after 1st CapsLockUpReleased
+        because when I just hold Caps->wanna edit faster
+        same thing with a double caps => track if there was 1 release + 2nd press
+
+
+- after single tap it should send only 1 shifted key and they stop doing it, but it keeps doing it sending shifted keys only after 1 caps tap
+
+
+
+- 1 caps tap should've send 1 shifted key and return to normal mode
+- double caps should send shifted keys till I do release caps
+        do we add tracking of capsUP somehow?
+
+
+- sometimes Caps behaviour is getting turned on despite me not using it
+- Potentially for shift we do single caps tap   
+        for the next symbol to be shifted.
+        And what if for caps + T/H = holding caps would be like holding shift,
+        till the moment you don't release the Caps or press the H/T again
+
+
+"Tap for Shift" concept seems like the most promising from a UX perspective, as it maintains a degree of immediacy. However, the timing is absolutely critical for it to feel natural and not frustrating. Experiment with different timing windows (e.g., 100ms, 150ms, 200ms) to find what feels best.
+
+
+- potentially for shift instead of 2xCaps => Caps+Tab hold to be sure about pressing it and not mess up with just CapsLock
 - Caps + Shift still working, it shouldn't be like that, Caps+Shift+V is not working as well
 
 
 
 
-# Potential, further Ideas
-- in any mode - Ctrl+MM - map to jump in any mode
-- in any mode - caps + ff = find forward, caps + fb = find backwards? fj - as a jump
-- vim-like macros a-w-d = select word delete
 
-- Caps + ~ = Alt+~ terminal activation
-- Caps+S+/ = Ctrl+Enter
-- Caps+Shift+/ = Ctrl+Shift+Enter
-- is there a better idea for a shift? or just have to get used to it? Caps+ Tabto
+
+
+# Potential, further Ideas
+        - Caps + ~ = Alt+~ terminal activation
+        - Caps+S+/ = Ctrl+Enter
+        - Caps+Shift+/ = Ctrl+Shift+Enter
+        - is there a better idea for a shift? or just have to get used to it? Caps+ Tabto
+        - Caps + Click as a Ctrl + Click 
+
+
 
 
 ## Hotstrings entering the arena
 - ;dpp = delete previous paragraph, as a hotstring, not as a hotkey
-- do we do anything about the "-_/+=" as a hotkey?
+- ;dw = delete word
+- ;d{Space}= {Delete}
+
+- ;aw = accent a word
+- ;awd = accent a word delete
+- ;ap = accent a paragraph
+- ;aa = all accent 
+
+- do we do anything about the "-_/+=" as a hotkey?;dot
+- ;j;ke -> looking for the "ke" to jump to further  
+- ;pl = previous line
+- ;nl = next line
 - Caps + 1/2/3 = as Alt + 1/2/3 to switch editors
+
+
+
 
 
 
