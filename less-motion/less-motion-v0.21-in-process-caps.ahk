@@ -74,6 +74,14 @@ CapsLock:: {
     global g_ModifierState
     currentTime := A_TickCount
 
+    ; Cancellation: If single-tap is active AND the current press is NOT within the double-tap window
+    if (g_ModifierState.singleTapCaps && currentTime - g_ModifierState.capsLastPressTime >= 200) {
+        g_ModifierState.singleTapCaps := false
+        g_ModifierState.singleTapUsed := false
+        ShowTooltip()
+        return ; Exit to prevent further processing
+    }
+
     g_ModifierState.capsPressStartTime := currentTime
     g_ModifierState.capsLockPressCount += 1
 
@@ -81,8 +89,8 @@ CapsLock:: {
     if (currentTime - g_ModifierState.capsLastPressTime < 200
         && g_ModifierState.capsLockReleaseCount > 0) {
         g_ModifierState.doubleTapCaps := true
-        g_ModifierState.doubleTapHeld := true  ; Set the held state
-        g_ModifierState.singleTapCaps := false
+        g_ModifierState.doubleTapHeld := true
+        g_ModifierState.singleTapCaps := false ; Ensure single-tap is deactivated
         g_ModifierState.singleTapUsed := false
         ShowTooltip(g_Tooltip.textDoubleTap, 0)
     } else {

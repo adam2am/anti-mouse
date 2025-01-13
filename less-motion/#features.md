@@ -1,7 +1,6 @@
 
 # Currently
-- great, now what if I pressed 1 tap of caps, but then decided to enter a regular editing mode, is there a way to switch back to default editing capslock powerbuton mode?
-
+- what about caps+H, is it viable?
 
 
 - after single tap it should send only 1 shifted key and they stop doing it, but it keeps doing it sending shifted keys only after 1 caps tap
@@ -66,6 +65,9 @@
 
 # Completed already
         #1m #3w #пн #2025 / #2025_01_13 #winter
++ single/double tap CapsLock works nicely (- great, now what if I pressed 1 tap of caps, but then decided to enter a regular editing mode, is there a way to switch back to default editing capslock powerbuton mode?)
+
+
 + improved = after single tap if was sending not the 1 shifted key but 2 shifted keys sometimes
 
 
