@@ -1,6 +1,20 @@
-
 # Currently
+- Shift one tap doing double shifted keys sometimes
+
+- instead of caps 1 tap as a shift, wanna make Shift one tap for a next 1 shifted key instead of caps onetap
+- everywhere so caps mode doesnt work when shift is physically pressed .
+        or make that shift doesnt work but priority to a caps mode
+- deLete caps+H cuz whats the difference
+- antimouse gui
+
+
+
 - what about caps+H, is it viable?
+        nope, it's needed to hold, but i want toggle
+        but the way to turn it off - being releasing caps and not pressing H again
+
+
+- also when I press caps + ', for some reason its turning on shifted mode sometimes, do I need to make it unregister it every time I do caps + other power buttons?
 
 
 - after single tap it should send only 1 shifted key and they stop doing it, but it keeps doing it sending shifted keys only after 1 caps tap
@@ -37,7 +51,7 @@
         - Caps+Shift+/ = Ctrl+Shift+Enter
         - is there a better idea for a shift? or just have to get used to it? Caps+ Tabto
         - Caps + Click as a Ctrl + Click 
-
+        - Caps + tab = shift tab
 
 
 

@@ -11,33 +11,32 @@ SetCapsLockState("AlwaysOff")
 global g_ModifierState := {
     shift: false,
     ctrl: false,
-    singleTapCaps: false,
+    singleTapShift: false,    ; Changed from singleTapCaps
     doubleTapCaps: false,
     holdCapsShiftModeActivate: false,
-    capsLastPressTime: 0,
-    capsPressStartTime: 0,
+    shiftLastPressTime: 0,    ; Changed from capsLastPressTime
+    shiftPressStartTime: 0,   ; Changed from capsPressStartTime
     capslockToggled: false,
-    capsLockReleaseCount: 0,
-    capsLockPressCount: 0,
+    shiftReleaseCount: 0,     ; Changed from capsLockReleaseCount
+    shiftPressCount: 0,       ; Changed from capsLockPressCount
     awaitingRelease: false,
     singleTapUsed: false,
     showcaseDebug: false,
-    doubleTapHeld: false  ; New state to track if double tap is being held
+    doubleTapHeld: false
 }
 
-; --- ToolTip Configuration --- (rest of the tooltip code remains the same)
+; --- ToolTip Configuration ---
 global g_Tooltip := {
     x: 0,
     y: 0,
-    textSingleTap: "Next key shifted (Release activated)",
-    textDoubleTap: "Shift mode (Double-tap)",
+    textSingleTap: "Next key shifted (Shift single-tap)",
+    textDoubleTap: "Shift mode (Caps double-tap)",
     textHoldMode: "Shift mode (Hold)",
     colorNormal: "White",
     colorActive: "Red",
     font: "s12 Arial"
 }
 
-;
 ; Helper function for tooltip positioning
 GetTooltipPosition() {
     MouseGetPos(&mouseX, &mouseY)
@@ -66,71 +65,83 @@ ShowTooltip(text := "", duration := 1000) {
         SetTimer () => ToolTip(), -duration
     }
 }
-
 ;
 
-; Modified CapsLock handler with double tap hold detection
-CapsLock:: {
+; Modified Shift handler for single-tap functionality
+~LShift:: {
     global g_ModifierState
     currentTime := A_TickCount
 
     ; Cancellation: If single-tap is active AND the current press is NOT within the double-tap window
-    if (g_ModifierState.singleTapCaps && currentTime - g_ModifierState.capsLastPressTime >= 200) {
-        g_ModifierState.singleTapCaps := false
+    if (g_ModifierState.singleTapShift && currentTime - g_ModifierState.shiftLastPressTime >= 200) {
+        g_ModifierState.singleTapShift := false
         g_ModifierState.singleTapUsed := false
         ShowTooltip()
-        return ; Exit to prevent further processing
+        return
     }
 
-    g_ModifierState.capsPressStartTime := currentTime
-    g_ModifierState.capsLockPressCount += 1
+    g_ModifierState.shiftPressStartTime := currentTime
+    g_ModifierState.shiftPressCount += 1
 
-    ; Double-tap detection (200ms window)
-    if (currentTime - g_ModifierState.capsLastPressTime < 200
-        && g_ModifierState.capsLockReleaseCount > 0) {
-        g_ModifierState.doubleTapCaps := true
-        g_ModifierState.doubleTapHeld := true
-        g_ModifierState.singleTapCaps := false ; Ensure single-tap is deactivated
-        g_ModifierState.singleTapUsed := false
-        ShowTooltip(g_Tooltip.textDoubleTap, 0)
-    } else {
-        g_ModifierState.awaitingRelease := true
-    }
-
-    g_ModifierState.capsLastPressTime := currentTime
+    g_ModifierState.awaitingRelease := true
+    g_ModifierState.shiftLastPressTime := currentTime
 }
 
-; Modified CapsLock Up handler
-CapsLock Up:: {
+; Modified Shift Up handler
+~LShift Up:: {
     global g_ModifierState
     currentTime := A_TickCount
-    pressDuration := currentTime - g_ModifierState.capsPressStartTime
+    pressDuration := currentTime - g_ModifierState.shiftPressStartTime
 
-    g_ModifierState.capsLockReleaseCount += 1
+    g_ModifierState.shiftReleaseCount += 1
 
     ; Handle single tap
-    if (g_ModifierState.awaitingRelease && !g_ModifierState.doubleTapCaps && pressDuration < 200) {
-        g_ModifierState.singleTapCaps := true
+    if (g_ModifierState.awaitingRelease && pressDuration < 200) {
+        g_ModifierState.singleTapShift := true
         g_ModifierState.singleTapUsed := false
         ShowTooltip(g_Tooltip.textSingleTap)
     }
 
-    ; Handle double tap release
-    if (g_ModifierState.doubleTapHeld) {
-        g_ModifierState.doubleTapCaps := false
-        g_ModifierState.doubleTapHeld := false
-        ShowTooltip()
-    }
-
     g_ModifierState.awaitingRelease := false
-
-    if (g_ModifierState.holdCapsShiftModeActivate) {
-        g_ModifierState.holdCapsShiftModeActivate := false
-        ShowTooltip()
-    }
-
-    SetTimer(ResetCapsLockCounts, -500)
+    SetTimer(ResetShiftCounts, -500)
 }
+
+ResetShiftCounts() {
+    global g_ModifierState
+    g_ModifierState.shiftPressCount := 0
+    g_ModifierState.shiftReleaseCount := 0
+}
+
+; Modified CapsLock handler with double tap hold detection
+; CapsLock:: {
+;     global g_ModifierState
+;     currentTime := A_TickCount
+
+;     ; Cancellation: If single-tap is active AND the current press is NOT within the double-tap window
+
+;     g_ModifierState.capsPressStartTime := currentTime
+
+;     g_ModifierState.capsLastPressTime := currentTime
+; }
+
+; Modified CapsLock Up handler
+; Modified CapsLock Up handler for Toggle OFF
+; CapsLock Up:: {
+;     global g_ModifierState
+;     currentTime := A_TickCount
+
+;     ; Handle double tap release
+
+;     g_ModifierState.awaitingRelease := false
+
+;     ; Toggle OFF logic for Caps+H
+;     if (g_ModifierState.holdCapsShiftModeActivate && not GetKeyState("h", "P")) {
+;         g_ModifierState.holdCapsShiftModeActivate := false
+;         ShowTooltip()
+;     }
+
+;     SetTimer(ResetCapsLockCounts, -500)
+; }
 
 ResetCapsLockCounts() {
     global g_ModifierState
@@ -154,7 +165,7 @@ ResetCapsLockCounts() {
 
 ;
 ; added a HotIf so it's not fucking up the regular Tab behavior
-#HotIf (GetKeyState("CapsLock", "P") and not GetKeyState("Shift", "P"))
+#HotIf GetKeyState("CapsLock", "P") and not (g_ModifierState.singleTapCaps or g_ModifierState.doubleTapCaps) ; Removed holdCapsShiftModeActivate from this #HotIf
 ; Space:: {
 ;     g_ModifierState.capsTabAsShift := true ; Set the flag when either CapsLock + Tab or Shift + Tab is pressed
 ;     ; Important: Prevent default Tab behavior
@@ -163,23 +174,20 @@ ResetCapsLockCounts() {
 h:: {
     global g_ModifierState
 
-    g_ModifierState.holdCapsShiftModeActivate := true
-    g_ModifierState.singleTapPending := false
-    ShowTooltip(g_Tooltip.textHoldMode, 0)
+    ; Toggle the state
+    g_ModifierState.holdCapsShiftModeActivate := !g_ModifierState.holdCapsShiftModeActivate
 
-    ; Wait for either key release
-    while (GetKeyState("CapsLock", "P") && GetKeyState("h", "P"))
-        Sleep(10)
-
-    g_ModifierState.holdCapsShiftModeActivate := false
-    ShowTooltip()
+    if (g_ModifierState.holdCapsShiftModeActivate) {
+        ShowTooltip(g_Tooltip.textHoldMode, 0)
+    } else {
+        ShowTooltip()
+    }
 }
 #HotIf
 
 ;
 ; Context-sensitive hotkeys when modifier is pressed
-#HotIf GetKeyState("CapsLock", "P") and not (g_ModifierState.singleTapCaps or g_ModifierState.doubleTapCaps or
-    g_ModifierState.holdCapsShiftModeActivate)
+#HotIf GetKeyState("CapsLock", "P")
 a:: {
     static lastPressTime := 0
     currentTime := A_TickCount
@@ -226,8 +234,8 @@ s:: {
         SendInput("^+{F12}")
     }
 }
-; Navigation and Selection Logic
 
+; Navigation and Selection Logic
 i::
 j::
 k::
@@ -275,7 +283,7 @@ vk59:: SendEvent "^y" ; y
 vkC0:: SendEvent "^``" ; ` - terminal like behavior
 vk46:: SendEvent "!f"  ; f - For fuzzy finder- jumper
 vk4D:: SendEvent "!m"  ; m - CapsLock + M now sends Alt+M - for neovim escaping to normal mode
-vkBF:: {
+*vkBF:: {
     if not GetKeyState("s", "P") and not GetKeyState("a", "P") {
         SendEvent "{Enter}"
     }
@@ -353,7 +361,7 @@ TranslateKey(key) {
     return key
 }
 ; Double Caps Shift Modifier State (assume this is defined elsewhere)
-#HotIf g_ModifierState.singleTapCaps or g_ModifierState.doubleTapCaps or g_ModifierState.holdCapsShiftModeActivate
+#HotIf g_ModifierState.singleTapShift or g_ModifierState.doubleTapCaps or g_ModifierState.holdCapsShiftModeActivate
 
 ; Alphabet (a-z)
 vk41:: SendShiftedKey("a")  ; a
@@ -413,10 +421,10 @@ SendShiftedKey(key) {
         translatedKey := TranslateKey(key)
 
         ; If in single tap mode and hasn't been used yet
-        if (g_ModifierState.singleTapCaps && !g_ModifierState.singleTapUsed) {
+        if (g_ModifierState.singleTapShift && !g_ModifierState.singleTapUsed) {
             SendEvent("+" translatedKey)
-            g_ModifierState.singleTapUsed := true ; Set it IMMEDIATELY after sending
-            g_ModifierState.singleTapCaps := false ; Reset the flag here too for extra safety
+            g_ModifierState.singleTapUsed := true
+            g_ModifierState.singleTapShift := false
             ShowTooltip()
         }
         ; If in double tap mode and being held
@@ -431,13 +439,14 @@ SendShiftedKey(key) {
         ; Silently handle any sending errors
     }
 }
+
 #HotIf
 
 ; Clear single-tap mode after any key press
-#HotIf g_ModifierState.singleTapCaps
+#HotIf g_ModifierState.singleTapShift
 *:: {
     global g_ModifierState
-    g_ModifierState.singleTapCaps := false
+    g_ModifierState.singleTapShift := false
     ShowTooltip()
 }
 #HotIf
