@@ -1,10 +1,6 @@
 
 # Currently
-- singleCapsTab now is working nicely
-        but when I doubleCapsTab holding it, 
-        it's also sending only 1 shifted key,
-        - but it should send as many shifter key as I want as long as I hold shift in a doublecapsTab mode  
-
+- now after single tap if I tap fast its sending not the 1 shifted key but 2 shifted keys
 
 
 - after single tap it should send only 1 shifted key and they stop doing it, but it keeps doing it sending shifted keys only after 1 caps tap
@@ -69,13 +65,20 @@
 
 # Completed already
         #1m #3w #пн #2025 / #2025_01_13 #winter
-- great, but now when I quit the editing mode (after holding caps)
++ fixed = singleCapsTab now is working nicely
+        but when I doubleCapsTab holding it, 
+        it's also sending only 1 shifted key,
+        - but it should send as many shifter key as I want as long as I hold shift in a doublecapsTab mode  
+
+
+
++ great, but now when I quit the editing mode (after holding caps)
         it's registering the release (capslock up)
         and activating shifted keys for some reason
         but I want to track only fast taps
 
 
-- kinda great now, lil bit of progress
++ kinda great now, lil bit of progress
         but instead of instantly detecting as a shifted key,
         i want it to turn it on after 1st CapsLockUpReleased
         because when I just hold Caps->wanna edit faster

@@ -15,13 +15,14 @@ global g_ModifierState := {
     doubleTapCaps: false,
     holdCapsShiftModeActivate: false,
     capsLastPressTime: 0,
-    capsPressStartTime: 0,      ; Track when the press started
+    capsPressStartTime: 0,
     capslockToggled: false,
-    capsLockReleaseCount: 0,    ; Track number of releases
-    capsLockPressCount: 0,      ; Track number of presses
-    awaitingRelease: false,     ; Wait for release before activating
+    capsLockReleaseCount: 0,
+    capsLockPressCount: 0,
+    awaitingRelease: false,
     singleTapUsed: false,
     showcaseDebug: false,
+    doubleTapHeld: false  ; New state to track if double tap is being held
 }
 
 ; --- ToolTip Configuration --- (rest of the tooltip code remains the same)
@@ -67,7 +68,8 @@ ShowTooltip(text := "", duration := 1000) {
 }
 
 ;
-; Modified CapsLock handler
+
+; Modified CapsLock handler with double tap hold detection
 CapsLock:: {
     global g_ModifierState
     currentTime := A_TickCount
@@ -77,17 +79,13 @@ CapsLock:: {
 
     ; Double-tap detection (200ms window)
     if (currentTime - g_ModifierState.capsLastPressTime < 200
-        && g_ModifierState.capsLockReleaseCount > 0) {  ; Ensure we had a release
-        g_ModifierState.doubleTapCaps := !g_ModifierState.doubleTapCaps
+        && g_ModifierState.capsLockReleaseCount > 0) {
+        g_ModifierState.doubleTapCaps := true
+        g_ModifierState.doubleTapHeld := true  ; Set the held state
         g_ModifierState.singleTapCaps := false
         g_ModifierState.singleTapUsed := false
-
-        if (g_ModifierState.doubleTapCaps)
-            ShowTooltip(g_Tooltip.textDoubleTap, 0)
-        else
-            ShowTooltip()
+        ShowTooltip(g_Tooltip.textDoubleTap, 0)
     } else {
-        ; First press just prepares for potential actions
         g_ModifierState.awaitingRelease := true
     }
 
@@ -102,11 +100,18 @@ CapsLock Up:: {
 
     g_ModifierState.capsLockReleaseCount += 1
 
-    ; Only activate single tap mode if it was a quick press (less than 200ms)
+    ; Handle single tap
     if (g_ModifierState.awaitingRelease && !g_ModifierState.doubleTapCaps && pressDuration < 200) {
         g_ModifierState.singleTapCaps := true
         g_ModifierState.singleTapUsed := false
         ShowTooltip(g_Tooltip.textSingleTap)
+    }
+
+    ; Handle double tap release
+    if (g_ModifierState.doubleTapHeld) {
+        g_ModifierState.doubleTapCaps := false
+        g_ModifierState.doubleTapHeld := false
+        ShowTooltip()
     }
 
     g_ModifierState.awaitingRelease := false
@@ -116,7 +121,6 @@ CapsLock Up:: {
         ShowTooltip()
     }
 
-    ; Reset counts after a delay
     SetTimer(ResetCapsLockCounts, -500)
 }
 
@@ -393,7 +397,8 @@ vkBE:: SendShiftedKey(".")  ; .
 vkBF:: SendShiftedKey("/")  ; /
 
 ;
-; Modified SendShiftedKey function to handle single tap behavior
+
+; Modified SendShiftedKey function to handle held double tap
 SendShiftedKey(key) {
     global g_ModifierState
     try {
@@ -402,12 +407,12 @@ SendShiftedKey(key) {
         ; If in single tap mode and hasn't been used yet
         if (g_ModifierState.singleTapCaps && !g_ModifierState.singleTapUsed) {
             SendEvent("+" translatedKey)
-            g_ModifierState.singleTapCaps := false  ; Turn off single tap mode
-            g_ModifierState.singleTapUsed := true   ; Mark single tap as used
+            g_ModifierState.singleTapCaps := false
+            g_ModifierState.singleTapUsed := true
             ShowTooltip()
         }
-        ; If in double tap mode
-        else if (g_ModifierState.doubleTapCaps) {
+        ; If in double tap mode and being held
+        else if (g_ModifierState.doubleTapCaps && g_ModifierState.doubleTapHeld) {
             SendEvent("+" translatedKey)
         }
         ; Normal key press (no modifiers)
@@ -418,7 +423,6 @@ SendShiftedKey(key) {
         ; Silently handle any sending errors
     }
 }
-
 #HotIf
 
 ; Clear single-tap mode after any key press
