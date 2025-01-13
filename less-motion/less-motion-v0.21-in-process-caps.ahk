@@ -7,7 +7,7 @@
 ; Ensure CapsLock doesn't accidentally get turned on
 SetCapsLockState("AlwaysOff")
 
-; Global state tracking with more robust mode management
+; Global state tracking
 global g_ModifierState := {
     shift: false,
     ctrl: false,
@@ -16,8 +16,10 @@ global g_ModifierState := {
     holdCapsShiftModeActivate: false,
     capsLastPressTime: 0,
     capslockToggled: false,
-    capsLockJustReleased: false,
-    singleTapUsed: false,  ; New flag to track if single tap has been used
+    capsLockReleaseCount: 0,    ; Track number of releases
+    capsLockPressCount: 0,      ; Track number of presses
+    awaitingRelease: false,     ; Wait for release before activating
+    singleTapUsed: false,
     showcaseDebug: false,
 }
 
@@ -25,7 +27,7 @@ global g_ModifierState := {
 global g_Tooltip := {
     x: 0,
     y: 0,
-    textSingleTap: "Next key shifted",
+    textSingleTap: "Next key shifted (Release activated)",
     textDoubleTap: "Shift mode (Double-tap)",
     textHoldMode: "Shift mode (Hold)",
     colorNormal: "White",
@@ -64,49 +66,60 @@ ShowTooltip(text := "", duration := 1000) {
 }
 
 ;
-; --- Double-tap Caps Lock for Shift, detecting with Upside Caps in between ---
+; Modified CapsLock handler
 CapsLock:: {
     global g_ModifierState
     currentTime := A_TickCount
 
+    g_ModifierState.capsLockPressCount += 1
+
     ; Double-tap detection (200ms window)
-    if (currentTime - g_ModifierState.capsLastPressTime < 200) {
-        ; Double-tap behavior
+    if (currentTime - g_ModifierState.capsLastPressTime < 200
+        && g_ModifierState.capsLockReleaseCount > 0) {  ; Ensure we had a release
         g_ModifierState.doubleTapCaps := !g_ModifierState.doubleTapCaps
         g_ModifierState.singleTapCaps := false
-        g_ModifierState.singleTapUsed := false  ; Reset single tap usage
+        g_ModifierState.singleTapUsed := false
 
         if (g_ModifierState.doubleTapCaps)
             ShowTooltip(g_Tooltip.textDoubleTap, 0)
         else
             ShowTooltip()
     } else {
-        g_ModifierState.singleTapCaps := true
-        g_ModifierState.doubleTapCaps := false  ; Ensure double tap is off
-        g_ModifierState.singleTapUsed := false  ; Reset single tap usage
-        ShowTooltip(g_Tooltip.textSingleTap)
+        ; First press just prepares for potential actions
+        g_ModifierState.awaitingRelease := true
     }
 
     g_ModifierState.capsLastPressTime := currentTime
-    g_ModifierState.capsLockJustReleased := false
 }
 
-;
+; Modified CapsLock Up handler
 CapsLock Up:: {
     global g_ModifierState
-    g_ModifierState.capsLockJustReleased := true
+    g_ModifierState.capsLockReleaseCount += 1
 
-    if (g_ModifierState.doubleTapCaps) {
-        ; Don't clear double tap mode on release
-        return
+    ; Only activate single tap mode after release if we're awaiting it
+    if (g_ModifierState.awaitingRelease && !g_ModifierState.doubleTapCaps) {
+        g_ModifierState.singleTapCaps := true
+        g_ModifierState.singleTapUsed := false
+        ShowTooltip(g_Tooltip.textSingleTap)
     }
+
+    g_ModifierState.awaitingRelease := false
 
     if (g_ModifierState.holdCapsShiftModeActivate) {
         g_ModifierState.holdCapsShiftModeActivate := false
         ShowTooltip()
     }
+
+    ; Reset counts after a delay
+    SetTimer(ResetCapsLockCounts, -500)
 }
 
+ResetCapsLockCounts() {
+    global g_ModifierState
+    g_ModifierState.capsLockPressCount := 0
+    g_ModifierState.capsLockReleaseCount := 0
+}
 ;
 ; CapsLock release handler
 ; CapsLock up:: {

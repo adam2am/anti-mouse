@@ -1,5 +1,11 @@
 
 # Currently
+- great, but now when I quit the editing mode (after holding caps)
+        it's registering the release (capslock up)
+        and activating shifted keys for some reason
+        but I want to track only fast taps
+
+
 - kinda great now, lil bit of progress
         but instead of instantly detecting as a shifted key,
         i want it to turn it on after 1st CapsLockUpReleased
