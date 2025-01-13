@@ -407,8 +407,8 @@ SendShiftedKey(key) {
         ; If in single tap mode and hasn't been used yet
         if (g_ModifierState.singleTapCaps && !g_ModifierState.singleTapUsed) {
             SendEvent("+" translatedKey)
-            g_ModifierState.singleTapCaps := false
-            g_ModifierState.singleTapUsed := true
+            g_ModifierState.singleTapUsed := true ; Set it IMMEDIATELY after sending
+            g_ModifierState.singleTapCaps := false ; Reset the flag here too for extra safety
             ShowTooltip()
         }
         ; If in double tap mode and being held

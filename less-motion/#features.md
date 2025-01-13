@@ -1,6 +1,7 @@
 
 # Currently
-- now after single tap if I tap fast its sending not the 1 shifted key but 2 shifted keys
+- great, now what if I pressed 1 tap of caps, but then decided to enter a regular editing mode, is there a way to switch back to default editing capslock powerbuton mode?
+
 
 
 - after single tap it should send only 1 shifted key and they stop doing it, but it keeps doing it sending shifted keys only after 1 caps tap
@@ -65,11 +66,13 @@
 
 # Completed already
         #1m #3w #пн #2025 / #2025_01_13 #winter
++ improved = after single tap if was sending not the 1 shifted key but 2 shifted keys sometimes
+
+
 + fixed = singleCapsTab now is working nicely
         but when I doubleCapsTab holding it, 
         it's also sending only 1 shifted key,
         - but it should send as many shifter key as I want as long as I hold shift in a doublecapsTab mode  
-
 
 
 + great, but now when I quit the editing mode (after holding caps)
