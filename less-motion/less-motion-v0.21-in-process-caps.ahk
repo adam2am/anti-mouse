@@ -15,6 +15,7 @@ global g_ModifierState := {
     doubleTapCaps: false,
     holdCapsShiftModeActivate: false,
     capsLastPressTime: 0,
+    capsPressStartTime: 0,      ; Track when the press started
     capslockToggled: false,
     capsLockReleaseCount: 0,    ; Track number of releases
     capsLockPressCount: 0,      ; Track number of presses
@@ -71,6 +72,7 @@ CapsLock:: {
     global g_ModifierState
     currentTime := A_TickCount
 
+    g_ModifierState.capsPressStartTime := currentTime
     g_ModifierState.capsLockPressCount += 1
 
     ; Double-tap detection (200ms window)
@@ -95,10 +97,13 @@ CapsLock:: {
 ; Modified CapsLock Up handler
 CapsLock Up:: {
     global g_ModifierState
+    currentTime := A_TickCount
+    pressDuration := currentTime - g_ModifierState.capsPressStartTime
+
     g_ModifierState.capsLockReleaseCount += 1
 
-    ; Only activate single tap mode after release if we're awaiting it
-    if (g_ModifierState.awaitingRelease && !g_ModifierState.doubleTapCaps) {
+    ; Only activate single tap mode if it was a quick press (less than 200ms)
+    if (g_ModifierState.awaitingRelease && !g_ModifierState.doubleTapCaps && pressDuration < 200) {
         g_ModifierState.singleTapCaps := true
         g_ModifierState.singleTapUsed := false
         ShowTooltip(g_Tooltip.textSingleTap)
@@ -120,7 +125,6 @@ ResetCapsLockCounts() {
     g_ModifierState.capsLockPressCount := 0
     g_ModifierState.capsLockReleaseCount := 0
 }
-;
 ; CapsLock release handler
 ; CapsLock up:: {
 ;     global g_ModifierState
@@ -254,7 +258,6 @@ vk35:: SendEvent "!5"  ; 5
 vk36:: SendEvent "!6"  ; 6
 vk37:: SendEvent "!7"  ; 7
 vk38:: SendEvent "!8"  ; 8
-vk39:: SendEvent "!9"  ; 9
 
 vk59:: SendEvent "^y" ; y
 vkC0:: SendEvent "^``" ; ` - terminal like behavior
