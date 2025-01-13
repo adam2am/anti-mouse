@@ -11,18 +11,21 @@ SetCapsLockState("AlwaysOff")
 global g_ModifierState := {
     shift: false,
     ctrl: false,
-    singleTapShift: false,    ; Changed from singleTapCaps
+    singleTapShift: false,
     doubleTapCaps: false,
     holdCapsShiftModeActivate: false,
-    shiftLastPressTime: 0,    ; Changed from capsLastPressTime
-    shiftPressStartTime: 0,   ; Changed from capsPressStartTime
+    shiftLastPressTime: 0,
+    shiftPressStartTime: 0,
     capslockToggled: false,
-    shiftReleaseCount: 0,     ; Changed from capsLockReleaseCount
-    shiftPressCount: 0,       ; Changed from capsLockPressCount
+    shiftReleaseCount: 0,
+    shiftPressCount: 0,
     awaitingRelease: false,
     singleTapUsed: false,
     showcaseDebug: false,
-    doubleTapHeld: false
+    doubleTapHeld: false,
+    shiftKeyProcessed: false,
+    shiftedKeyPressed: false,  ; New flag to track if a key was shifted during hold
+    normalShiftUsed: false    ; New flag to track if normal shift was used
 }
 
 ; --- ToolTip Configuration ---
@@ -68,12 +71,19 @@ ShowTooltip(text := "", duration := 1000) {
 ;
 
 ; Modified Shift handler for single-tap functionality
+
+; Modified Shift handler with ~ prefix and improved tracking
 ~LShift:: {
     global g_ModifierState
     currentTime := A_TickCount
 
-    ; Cancellation: If single-tap is active AND the current press is NOT within the double-tap window
-    if (g_ModifierState.singleTapShift && currentTime - g_ModifierState.shiftLastPressTime >= 200) {
+    ; Reset tracking flags on new press
+    g_ModifierState.shiftKeyProcessed := false
+    g_ModifierState.shiftedKeyPressed := false
+    g_ModifierState.normalShiftUsed := false
+
+    ; If shift is already in single-tap mode, cancel it
+    if (g_ModifierState.singleTapShift) {
         g_ModifierState.singleTapShift := false
         g_ModifierState.singleTapUsed := false
         ShowTooltip()
@@ -82,24 +92,28 @@ ShowTooltip(text := "", duration := 1000) {
 
     g_ModifierState.shiftPressStartTime := currentTime
     g_ModifierState.shiftPressCount += 1
-
     g_ModifierState.awaitingRelease := true
     g_ModifierState.shiftLastPressTime := currentTime
+
 }
 
-; Modified Shift Up handler
+; Modified Shift Up handler with shifted key check
 ~LShift Up:: {
     global g_ModifierState
     currentTime := A_TickCount
     pressDuration := currentTime - g_ModifierState.shiftPressStartTime
 
-    g_ModifierState.shiftReleaseCount += 1
+    ; Only process if not already processed and no shifted keys were pressed
+    if (!g_ModifierState.shiftKeyProcessed && !g_ModifierState.shiftedKeyPressed && !g_ModifierState.normalShiftUsed) {
+        g_ModifierState.shiftReleaseCount += 1
 
-    ; Handle single tap
-    if (g_ModifierState.awaitingRelease && pressDuration < 200) {
-        g_ModifierState.singleTapShift := true
-        g_ModifierState.singleTapUsed := false
-        ShowTooltip(g_Tooltip.textSingleTap)
+        ; Handle single tap
+        if (g_ModifierState.awaitingRelease && pressDuration < 200) {
+            g_ModifierState.singleTapShift := true
+            g_ModifierState.singleTapUsed := false
+            g_ModifierState.shiftKeyProcessed := true
+            ShowTooltip(g_Tooltip.textSingleTap)
+        }
     }
 
     g_ModifierState.awaitingRelease := false
@@ -414,17 +428,19 @@ vkBF:: SendShiftedKey("/")  ; /
 
 ;
 
-; Modified SendShiftedKey function to handle held double tap
+; Modified SendShiftedKey function with strict state checking
 SendShiftedKey(key) {
     global g_ModifierState
     try {
         translatedKey := TranslateKey(key)
 
-        ; If in single tap mode and hasn't been used yet
-        if (g_ModifierState.singleTapShift && !g_ModifierState.singleTapUsed) {
+        ; Only send shifted key if we're in single tap mode and haven't used normal shift
+        if (g_ModifierState.singleTapShift && !g_ModifierState.singleTapUsed && !g_ModifierState.normalShiftUsed) {
             SendEvent("+" translatedKey)
-            g_ModifierState.singleTapUsed := true
+            ; Immediately reset all relevant states
             g_ModifierState.singleTapShift := false
+            g_ModifierState.singleTapUsed := true
+            g_ModifierState.shiftKeyProcessed := true
             ShowTooltip()
         }
         ; If in double tap mode and being held
@@ -443,10 +459,13 @@ SendShiftedKey(key) {
 #HotIf
 
 ; Clear single-tap mode after any key press
+; Explicit cleanup on any key press in single-tap mode
 #HotIf g_ModifierState.singleTapShift
 *:: {
     global g_ModifierState
     g_ModifierState.singleTapShift := false
+    g_ModifierState.singleTapUsed := true
+    g_ModifierState.shiftKeyProcessed := true
     ShowTooltip()
 }
 #HotIf

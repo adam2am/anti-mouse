@@ -1,5 +1,9 @@
 # Currently
+- When typing, suddenly was kinda thinking about returning a 1 tap caps mode, instead of only shift 1 tap mode, 
 - Shift one tap doing double shifted keys sometimes
+- do we do right shift as a enter? cuz it's like enter, but closer
+
+
 
 - instead of caps 1 tap as a shift, wanna make Shift one tap for a next 1 shifted key instead of caps onetap
 - everywhere so caps mode doesnt work when shift is physically pressed .
