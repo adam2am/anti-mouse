@@ -1,11 +1,12 @@
 # Currently
-- When typing, suddenly was kinda thinking about returning a 1 tap caps mode, instead of only shift 1 tap mode, 
-- Shift one tap doing double shifted keys sometimes
+- Shift/Caps one tap doing double shifted keys sometimes
+
 - do we do right shift as a enter? cuz it's like enter, but closer
         RShift as enter, Caps+Rshift as Shift+Enter 
         switching language layout with something else as well 
         like J and F has physically something on them to physially feel and navigate
         is it possible to do something about ' to feel the backspace
+
 
 
 
@@ -54,6 +55,8 @@
 
 
 # Potential, further Ideas
+        - caps + \ as backspace as well, so don't need to do exactly ', can do \ as well (2 buttons on a right of a finger)
+
         - Caps + ~ = Alt+~ terminal activation
         - Caps+S+/ = Ctrl+Enter
         - Caps+Shift+/ = Ctrl+Shift+Enter
@@ -86,6 +89,10 @@
 
 
 # Completed already
+        #1m #3w #вт #2025 / #2025_01_14 #winter
++ When typing, suddenly was kinda thinking about returning a 1 tap caps mode, instead of only shift 1 tap mode.
+
+
         #1m #3w #пн #2025 / #2025_01_13 #winter
 + single/double tap CapsLock works nicely (- great, now what if I pressed 1 tap of caps, but then decided to enter a regular editing mode, is there a way to switch back to default editing capslock powerbuton mode?)
 
