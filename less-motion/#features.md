@@ -1,5 +1,9 @@
 # Currently
 - Shift/Caps one tap doing double shifted keys sometimes
+IF I rapidly insta clicking 3 buttons like CapsUp > NMB it would send the 3 shifted keys, but it should send onlt 1 shifted key, so it has to be tracked somehow .........
+- also, when i want to go back to my powered mode (naVigation) and doing caps+JKL, it would for some reason take me extra click to get the movement, instead of instantelly creating a movement based on my commabnd
+
+
 
 - do we do right shift as a enter? cuz it's like enter, but closer
         RShift as enter, Caps+Rshift as Shift+Enter 
@@ -57,12 +61,12 @@
 # Potential, further Ideas
         - caps + \ as backspace as well, so don't need to do exactly ', can do \ as well (2 buttons on a right of a finger)
 
-        - Caps + ~ = Alt+~ terminal activation
         - Caps+S+/ = Ctrl+Enter
         - Caps+Shift+/ = Ctrl+Shift+Enter
         - is there a better idea for a shift? or just have to get used to it? Caps+ Tabto
         - Caps + Click as a Ctrl + Click 
         - Caps + tab = shift tab
+        - is there a excalidraw for vscode studio    
 
 
 
@@ -91,6 +95,7 @@
 # Completed already
         #1m #3w #вт #2025 / #2025_01_14 #winter
 + When typing, suddenly was kinda thinking about returning a 1 tap caps mode, instead of only shift 1 tap mode.
++ Caps + ~ = Alt+~ terminal activation
 
 
         #1m #3w #пн #2025 / #2025_01_13 #winter

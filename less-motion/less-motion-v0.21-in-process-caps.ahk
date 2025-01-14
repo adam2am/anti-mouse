@@ -26,7 +26,7 @@ global g_ModifierState := {
     capsLockReleaseCount: 0,
     capsLockPressCount: 0,
     capsLastPressTime: 0,
-    capsPressStartTime: 0
+    capsPressStartTime: 0,
 }
 
 ; --- ToolTip Configuration ---
@@ -370,16 +370,26 @@ vkBC:: SendShiftedKey(",")  ; ,
 vkBE:: SendShiftedKey(".")  ; .
 vkBF:: SendShiftedKey("/")  ; /
 
-; Modified SendShiftedKey with strict single-key enforcement
-; Modified SendShiftedKey with CapsLock hold priority
+; Modified SendShiftedKey with improved timing control
+
+; Modified SendShiftedKey with improved timing control
 SendShiftedKey(key) {
     global g_ModifierState
+    static lastShiftedTime := 0  ; Track when we last sent a shifted key
+    static MIN_TIME_BETWEEN_SHIFTS := 50  ; Minimum milliseconds between shifted keys
     try {
         translatedKey := TranslateKey(key)
+        currentTime := A_TickCount
+
+        ; Check if single-tap mode is locked
+        if (g_ModifierState.shiftSingleTapLock || g_ModifierState.capsSingleTapLock) {
+            SendInput(key)
+            ShowTooltip()
+            return
+        }
 
         ; First check if CapsLock is physically being held
         if (GetKeyState("CapsLock", "P")) {
-            ; If CapsLock is held, cancel single-tap modes and let the normal CapsLock hotkeys work
             g_ModifierState.singleTapCaps := false
             g_ModifierState.singleTapShift := false
             g_ModifierState.capsKeyProcessed := true
@@ -387,8 +397,16 @@ SendShiftedKey(key) {
             ShowTooltip()
             return
         }
-
-        ; Handle shift single-tap if CapsLock is not held
+        ; Check timing between shifted keys
+        if (currentTime - lastShiftedTime < MIN_TIME_BETWEEN_SHIFTS) {
+            ; If keys are pressed too quickly, force normal key behavior
+            SendInput(key)
+            g_ModifierState.singleTapShift := false
+            g_ModifierState.singleTapCaps := false
+            ShowTooltip()
+            return
+        }
+        ; Handle shift single-tap
         if (g_ModifierState.singleTapShift
             && !g_ModifierState.shiftSingleTapUsed
             && !g_ModifierState.shiftKeyProcessed) {
@@ -402,15 +420,17 @@ SendShiftedKey(key) {
             }
 
             SendInput("+" . key)
+            lastShiftedTime := currentTime  ; Update last shifted time
             g_ModifierState.singleTapShift := false
             g_ModifierState.shiftSingleTapUsed := true
             g_ModifierState.shiftKeyProcessed := true
+            g_ModifierState.shiftSingleTapLock := true  ; Lock the single-tap mode
+            SetTimer(UnlockShiftSingleTap, -100)  ; Unlock after 100ms
             ShowTooltip()
-            SetTimer(ResetShiftState, -250)
+            ; SetTimer(ResetShiftState, -250) ; Removed
             return
         }
-
-        ; Handle caps single-tap if CapsLock is not held
+        ; Handle caps single-tap
         if (g_ModifierState.singleTapCaps
             && !g_ModifierState.capsSingleTapUsed
             && !g_ModifierState.capsKeyProcessed) {
@@ -424,19 +444,37 @@ SendShiftedKey(key) {
             }
 
             SendInput("+" . key)
+            lastShiftedTime := currentTime  ; Update last shifted time
             g_ModifierState.singleTapCaps := false
             g_ModifierState.capsSingleTapUsed := true
             g_ModifierState.capsKeyProcessed := true
+            g_ModifierState.capsSingleTapLock := true  ; Lock the single-tap mode
+            SetTimer(UnlockCapsSingleTap, -100)  ; Unlock after 100ms
             ShowTooltip()
-            SetTimer(ResetCapsState, -250)
+            ; SetTimer(ResetCapsState, -250) ; Removed
             return
         }
-
         ; Default behavior
         SendInput(key)
     } catch as err {
         ; Handle any errors
     }
+}
+
+; Function to unlock shift single-tap mode
+UnlockShiftSingleTap() {
+    global g_ModifierState
+    g_ModifierState.shiftSingleTapLock := false
+    g_ModifierState.shiftKeyProcessed := false
+    g_ModifierState.shiftSingleTapUsed := false
+}
+
+; Function to unlock caps single-tap mode
+UnlockCapsSingleTap() {
+    global g_ModifierState
+    g_ModifierState.capsSingleTapLock := false
+    g_ModifierState.capsKeyProcessed := false
+    g_ModifierState.capsSingleTapUsed := false
 }
 
 ; Function to reset shift state
