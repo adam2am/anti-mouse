@@ -1,6 +1,13 @@
 # Currently
 - Shift/Caps one tap doing double shifted keys sometimes
-IF I rapidly insta clicking 3 buttons like CapsUp > NMB it would send the 3 shifted keys, but it should send onlt 1 shifted key, so it has to be tracked somehow .........
+it works nicely with a single tap,
+but if I want to do triple tap BNM it would do all shifted keys
+
+IF I rapidly insta clicking 3 buttons like CapsUp > NMB it would send the 3 shifted keys, but it should send onlt 1 shifted key, can we do something about it??
+
+
+
+
 - also, when i want to go back to my powered mode (naVigation) and doing caps+JKL, it would for some reason take me extra click to get the movement, instead of instantelly creating a movement based on my commabnd
 
 
