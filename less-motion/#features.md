@@ -2,6 +2,10 @@
 - When typing, suddenly was kinda thinking about returning a 1 tap caps mode, instead of only shift 1 tap mode, 
 - Shift one tap doing double shifted keys sometimes
 - do we do right shift as a enter? cuz it's like enter, but closer
+        RShift as enter, Caps+Rshift as Shift+Enter 
+        switching language layout with something else as well 
+        like J and F has physically something on them to physially feel and navigate
+        is it possible to do something about ' to feel the backspace
 
 
 
