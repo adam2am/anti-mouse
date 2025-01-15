@@ -7,6 +7,9 @@ IF I rapidly insta clicking 3 buttons like CapsUp > NMB it would send the 3 shif
 
 
 
+- second tap to turn of the nextshiftedkey mode
+
+
 
 - also, when i want to go back to my powered mode (naVigation) and doing caps+JKL, it would for some reason take me extra click to get the movement, instead of instantelly creating a movement based on my commabnd
 
