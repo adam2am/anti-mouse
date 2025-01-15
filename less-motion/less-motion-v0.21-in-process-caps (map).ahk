@@ -87,17 +87,27 @@ ShowTooltip(text := "", duration := 1000) {
 ;
 ;
 ;
-RShift:: {
-    if not GetKeyState("s", "P") and not GetKeyState("a", "P")
-        SendEvent "{Enter}"
-    else if GetKeyState("s", "P") and not GetKeyState("a", "P")
-        SendEvent "^{Enter}"
-    else if not GetKeyState("s", "P") and GetKeyState("a", "P")
-        SendEvent "+{Enter}"
-    else if GetKeyState("s", "P") and GetKeyState("a", "P")
-        SendEvent "+^{Enter}"
-}
+; RShift:: {
+;     if not GetKeyState("s", "P") and not GetKeyState("a", "P")
+;         SendEvent "{Enter}"
+;     else if GetKeyState("s", "P") and not GetKeyState("a", "P")
+;         SendEvent "^{Enter}"
+;     else if not GetKeyState("s", "P") and GetKeyState("a", "P")
+;         SendEvent "+{Enter}"
+;     else if GetKeyState("s", "P") and GetKeyState("a", "P")
+;         SendEvent "+^{Enter}"
+; }
 ;
+
+#HotIf GetKeyState("LShift", "P")
+*:: {
+    global g_ModifierState
+    ; Handle Shift cleanup
+    g_ModifierState.singleTapShift := false
+}
+
+#HotIf
+
 ; --- Shift Handling ---
 ~LShift:: {
     global g_ModifierState
@@ -456,44 +466,44 @@ SendShiftedKey(key, shiftedKeyPressedCount) {
     currentTime := A_TickCount
 
     if ((shiftedKeyPressedCount == 1) and not g_ModifierState.shiftedProcessBegin) {
+        ;MsgBox("shiftedKeyPressedCount == 1, got through if") == all good, getting through if
+
         g_ModifierState.shiftedProcessBegin := true
-        ; Check if a shifted key has already been processed in this sequence
+
+        ;
+        ; Check if a shifted key has already been processed in this sequence 2nd time (first time via shiftedkeyPressedCount == 1)
+        ; this way it's adding smoothness to typing
         if (g_ModifierState.shiftSingleTapUsed or g_ModifierState.capsSingleTapUsed) {
             SendInput(key)
             g_ModifierState.shiftedProcessBegin := false
             g_ModifierState.singleTapShift := false
-            g_ModifierState.singleTapCaps := false
-            g_ModifierState.doubleTapCaps := false
+            g_ModifierState.capsSingleTapUsed := false
+            g_ModifierState.shiftSingleTapUsed := false
             g_ModifierState.shiftedKeyPressedCount := 0
             return
         }
 
         ; Process single shift tap
-        if (g_ModifierState.singleTapShift && (currentTime - g_ModifierState.shiftLastShiftedKeyTime > lockoutDuration)) {
+        if (g_ModifierState.singleTapShift) {
             SendInput("+" . key)
             g_ModifierState.shiftLastShiftedKeyTime := currentTime
             g_ModifierState.singleTapShift := false
             g_ModifierState.shiftSingleTapUsed := true
             g_ModifierState.shiftedProcessBegin := false
             ShowTooltip()
-            g_ModifierState.singleTapShift := false
-            g_ModifierState.singleTapCaps := false
-            g_ModifierState.doubleTapCaps := false
             g_ModifierState.shiftedKeyPressedCount := 0
             return
         }
 
         ; Process single caps tap
-        if (g_ModifierState.singleTapCaps && (currentTime - g_ModifierState.capsLastShiftedKeyTime > lockoutDuration)) {
+        if (g_ModifierState.singleTapCaps) {
             SendInput("+" . key)
             g_ModifierState.capsLastShiftedKeyTime := currentTime
             g_ModifierState.singleTapCaps := false
             g_ModifierState.capsSingleTapUsed := true
             g_ModifierState.shiftedProcessBegin := false
             ShowTooltip()
-            g_ModifierState.singleTapShift := false
             g_ModifierState.singleTapCaps := false
-            g_ModifierState.doubleTapCaps := false
             g_ModifierState.shiftedKeyPressedCount := 0
             return
         }
