@@ -3,6 +3,9 @@
 ; Ensure CapsLock doesn't accidentally get turned on
 SetCapsLockState("AlwaysOff")
 
+; Ensure CapsLock doesn't accidentally get turned on
+SetCapsLockState("AlwaysOff")
+
 ; Global state tracking
 global g_ModifierState := {
     shift: false,
@@ -39,6 +42,9 @@ global g_ModifierState := {
     capsLastShiftedKeyTime: 0,
     shiftOrCapsAndButtonPressed: 0,
     nextshiftedKeyMode: 0,
+    prioritizeNavigation: false,
+    ;
+    navigationModeActive: false,  ; Add this new property
 }
 
 ; --- ToolTip Configuration ---
@@ -298,10 +304,15 @@ CapsLock:: {
 
 CapsLock Up:: {
     global g_ModifierState
-    g_ModifierState.navigationModeVisited := false
-
     currentTime := A_TickCount
     pressDuration := currentTime - g_ModifierState.capsPressStartTime
+
+    ; Only reset navigation flags if we weren't in a navigation sequence
+    if (!g_ModifierState.navigationModeActive) {
+        g_ModifierState.navigationModeVisited := false
+        g_ModifierState.prioritizeNavigation := false
+    }
+
     if (pressDuration < 350
         && !g_ModifierState.capsSingleTapUsed
         && !g_ModifierState.capsKeyProcessed
@@ -310,9 +321,12 @@ CapsLock Up:: {
         if g_ModifierState.singleTapCaps {
             g_ModifierState.singleTapCaps := false
             ShowTooltipMode()
-            return
+
         }
         if g_ModifierState.shiftOrCapsAndButtonPressed == 0 {
+            ; Allow single tap mode even after navigation
+
+            g_ModifierState.navigationModeActive := false
             g_ModifierState.singleTapCaps := true
             g_ModifierState.capsTapTime := A_TickCount
             ShowTooltipMode(g_Tooltip.textSinglecapsTap)
@@ -381,40 +395,6 @@ s:: {
     }
 }
 
-; Navigation and Selection Logic
-i::
-j::
-k::
-l::
-9::
-0:: {
-    global g_ModifierState
-    g_ModifierState.shiftOrCapsAndButtonPressed += 1
-    ShowTooltipMode()
-
-    key := A_ThisHotkey
-    g_ModifierState.navigationModeVisited := true
-    g_ModifierState.ctrl := GetKeyState("s", "P")
-    g_ModifierState.shift := GetKeyState("a", "P")
-
-    baseMap := Map(
-        "i", "{Up}",
-        "j", "{Left}",
-        "k", "{Down}",
-        "l", "{Right}",
-        "9", "{Home}",
-        "0", "{End}"
-    )
-
-    output := ""
-    if g_ModifierState.ctrl
-        output .= "^"
-    if g_ModifierState.shift
-        output .= "+"
-    output .= baseMap[key]
-    SendEvent output
-}
-
 ; Standard shortcuts
 vk43::
 vk58::
@@ -438,6 +418,12 @@ vkDE::
 vkDB::
 vk44::
 vkBF::
+VK49::
+VK4A::
+VK4B::
+VK4C::
+VK39::
+VK30::
 {
     standardShortcuts := Map(
         "vk43", "^c",  ; c
@@ -461,7 +447,13 @@ vkBF::
         "vkDE", "{Backspace}", ; '
         "vkDB", "{Delete}",    ; [
         "vk44", "{Delete}",     ; d
-        "vkBF", "{Enter}" ; enter
+        "vkBF", "{Enter}", ; enter
+        "VK49", "{Up}", ; i up
+        "VK4A", "{Left}", ; j left
+        "VK4B", "{Down}", ; k down
+        "VK4C", "{Right}",  ; l right
+        "VK39", "{Home}", ; 9 start line
+        "VK30", "{End}",     ; 0 end line
     )
     global g_ModifierState
     g_ModifierState.ctrl := GetKeyState("s", "P")
@@ -476,16 +468,18 @@ vkBF::
         enterOutput .= "^"
     if g_ModifierState.shift
         enterOutput .= "+"
-    enterOutput .= "{Enter}"
+    enterOutput .= standardShortcuts[A_ThisHotkey]
 
-    if (A_ThisHotkey = "vkBF")
+    if (A_ThisHotkey = "vkBF" or A_ThisHotkey = "VK49" or A_ThisHotkey = "VK4A" or A_ThisHotkey = "VK4B" or
+        A_ThisHotkey = "VK4C" or A_ThisHotkey = "VK39" or A_ThisHotkey = "VK30")
         SendEvent(enterOutput)
     else
         SendEvent(standardShortcuts[A_ThisHotkey])
 }
-
 #HotIf
 
+;
+;
 ; Shifted key handling for both single-tap modes
 #HotIf (g_ModifierState.shiftedKeyPressedCount <= 1) and (g_ModifierState.singleTapShift or g_ModifierState.singleTapCaps or
     g_ModifierState.doubleTapCaps) and (
@@ -656,6 +650,15 @@ SendShiftedKey(key, shiftedKeyPressedCount) {
     static lockoutDuration := 300
     currentTime := A_TickCount
     translatedKey := TranslateKey(key)
+
+    ; Bypass shifted key logic if prioritizeNavigation is true
+    ; Add immediate check for navigation mode
+    if (GetKeyState("CapsLock", "P") && (key == "j" || key == "k" || key == "l" || key == "i")) {
+        g_ModifierState.singleTapShift := false
+        g_ModifierState.singleTapCaps := false
+        g_ModifierState.prioritizeNavigation := true
+        return  ; Exit without sending the shifted key
+    }
 
     if ((shiftedKeyPressedCount == 1) and not g_ModifierState.shiftedProcessBegin) {
         ;MsgBox("shiftedKeyPressedCount == 1, got through if") == all good, getting through if

@@ -1,5 +1,5 @@
 # Currently
-- also, when i want to go back to my powered mode (naVigation) and doing caps+JKL, it would for some reason take me extra click to get the movement, instead of instantelly creating a movement based on my commabnd
+
 
 
 
@@ -12,43 +12,21 @@
 
 
 
-- instead of caps 1 tap as a shift, wanna make Shift one tap for a next 1 shifted key instead of caps onetap
-- everywhere so caps mode doesnt work when shift is physically pressed .
-        or make that shift doesnt work but priority to a caps mode
-- deLete caps+H cuz whats the difference
 - antimouse gui
 
 
 
-- what about caps+H, is it viable?
-        nope, it's needed to hold, but i want toggle
-        but the way to turn it off - being releasing caps and not pressing H again
-
-
-- also when I press caps + ', for some reason its turning on shifted mode sometimes, do I need to make it unregister it every time I do caps + other power buttons?
-
-
-- after single tap it should send only 1 shifted key and they stop doing it, but it keeps doing it sending shifted keys only after 1 caps tap
 
 
 
-- 1 caps tap should've send 1 shifted key and return to normal mode
-- double caps should send shifted keys till I do release caps
-        do we add tracking of capsUP somehow?
 
 
-- sometimes Caps behaviour is getting turned on despite me not using it
-- Potentially for shift we do single caps tap   
-        for the next symbol to be shifted.
-        And what if for caps + T/H = holding caps would be like holding shift,
+- ? track if sometimes Caps behaviour is getting turned on despite me not using it
+- Potentially for shift we do single caps tap for the next symbol to be shifted.
+        - And what if for caps + H = holding caps would be like holding shift,
         till the moment you don't release the Caps or press the H/T again
 
-
-"Tap for Shift" concept seems like the most promising from a UX perspective, as it maintains a degree of immediacy. However, the timing is absolutely critical for it to feel natural and not frustrating. Experiment with different timing windows (e.g., 100ms, 150ms, 200ms) to find what feels best.
-
-
-- potentially for shift instead of 2xCaps => Caps+Tab hold to be sure about pressing it and not mess up with just CapsLock
-- Caps + Shift still working, it shouldn't be like that, Caps+Shift+V is not working as well
+"Tap for Shift" concept seems like the most promising from a UX perspective, as it maintains a degree of immediacy. However, the timing is absolutely hcritical for it to feel natural and not frustrating. Experiment with different timing windows (e.g., 100ms, 150ms, 200ms) to find what feels best.h
 
 
 
@@ -92,6 +70,17 @@
 
 # Completed already
         #1m #3w #чт #2025 / #2025_01_16 #winter
++ now when I do caps > caps+JKL > caps again, it would not turn on shifted mode in a 3rd step, I have to again press caps for that
+        - (1st step, dummy shifted mode without pressing else) Caps + CapsUp 
+        > (2nd step, navigation) Caps + JKL + CapsUp 
+        > (3rd step) Caps + CapsUp
+        and on a third step its not sending a shifted key  
+
+        
++ also, when i want to go back to my powered mode (naVigation) and doing caps+JKL, 
+        it would for some reason take me extra click to get the movement, 
+        >> now instantelly creating a movement based on a shortcut
+
 + after tooltip dissapears (1sec) -> nextShiftedKey mode now also dissapear
 
 + ; is now turning into : in shifted mode (forgot to include previously)
