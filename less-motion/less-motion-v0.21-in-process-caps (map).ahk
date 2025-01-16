@@ -68,7 +68,7 @@ GetTooltipPosition() {
 }
 
 ; Show tooltip with optional duration
-ShowTooltip(text := "", duration := 1000) {
+ShowTooltipMode(text := "", duration := 1000) {
     if (text = "") {
         ToolTip()
         return
@@ -80,6 +80,7 @@ ShowTooltip(text := "", duration := 1000) {
     if (duration > 0) {
         SetTimer () => ToolTip(), -duration
     }
+
 }
 
 ;------------------------ keybindings area ----------------------------
@@ -101,6 +102,66 @@ ShowTooltip(text := "", duration := 1000) {
 ; }
 ;
 
+~*vk41::
+~*vk42::
+~*vk43::
+~*vk44::
+~*vk45::
+~*vk46::
+~*vk47::
+~*vk48::
+~*vk49::
+~*vk4A::
+~*vk4B::
+~*vk4C::
+~*vk4D::
+~*vk4E::
+~*vk4F::
+~*vk50::
+~*vk51::
+~*vk52::
+~*vk53::
+~*vk54::
+~*vk55::
+~*vk56::
+~*vk57::
+~*vk58::
+~*vk59::
+~*vk5A::
+; numbers
+~*vk30::
+~*vk31::
+~*vk32::
+~*vk33::
+~*vk34::
+~*vk35::
+~*vk36::
+~*vk37::
+~*vk38::
+~*vk39::
+; symbols
+~*vkBD::
+~*vkBB::
+~*vkDB::
+~*vkDD::
+~*vkDC::
+~*vkC0::
+~*vkDE::
+~*vkBC::
+~*vkBE::
+~*vkBF::
+{
+    global g_ModifierState
+    if g_ModifierState.singleTapCaps or g_ModifierState.singleTapShift {
+        g_ModifierState.singleTapCaps := false
+        g_ModifierState.singleTapShift := false
+        ShowTooltipMode()
+    }
+}
+
+;
+;
+;
 #HotIf GetKeyState('CapsLock', 'P') or GetKeyState('LShift', 'P')
 ; Alphabet (a-z)
 ~*vk41::
@@ -154,6 +215,7 @@ ShowTooltip(text := "", duration := 1000) {
 {
     global g_ModifierState
     g_ModifierState.shiftOrCapsAndButtonPressed += 1
+    ShowTooltipMode()
 }
 #HotIf
 
@@ -173,7 +235,7 @@ ShowTooltip(text := "", duration := 1000) {
     global g_ModifierState
     pressTime := A_TickCount - g_ModifierState.shiftPressTime
 
-    if (pressTime < 200
+    if (pressTime < 350
         && g_ModifierState.shiftBeingHeld
         && !g_ModifierState.shiftSingleTapUsed
         && !g_ModifierState.shiftKeyProcessed) {  ; Only activate if no key was processed
@@ -181,12 +243,13 @@ ShowTooltip(text := "", duration := 1000) {
 
         if g_ModifierState.singleTapShift {
             g_ModifierState.singleTapShift := false
+            ShowTooltipMode()
             return
         }
         if g_ModifierState.shiftOrCapsAndButtonPressed == 0 and (g_ModifierState.singleTapShift == false) {
             g_ModifierState.singleTapShift := true
             g_ModifierState.shiftTapTime := A_TickCount
-            ShowTooltip(g_Tooltip.textSingleShiftTap)
+            ShowTooltipMode(g_Tooltip.textSingleShiftTap)
             g_ModifierState.nextshiftedKeyMode += 1
         }
 
@@ -208,7 +271,7 @@ CapsLock:: {
         g_ModifierState.doubleTapCaps := true
         g_ModifierState.doubleTapHeld := true
         g_ModifierState.singleTapCaps := false
-        ShowTooltip(g_Tooltip.textDoubleTap, 0)
+        ShowTooltipMode(g_Tooltip.textDoubleTap, 0)
     } else {
         g_ModifierState.awaitingRelease := true
     }
@@ -222,19 +285,20 @@ CapsLock Up:: {
 
     currentTime := A_TickCount
     pressDuration := currentTime - g_ModifierState.capsPressStartTime
-    if (pressDuration < 200
+    if (pressDuration < 350
         && !g_ModifierState.capsSingleTapUsed
         && !g_ModifierState.capsKeyProcessed
         && !g_ModifierState.doubleTapCaps) {
 
         if g_ModifierState.singleTapCaps {
             g_ModifierState.singleTapCaps := false
+            ShowTooltipMode()
             return
         }
         if g_ModifierState.shiftOrCapsAndButtonPressed == 0 {
             g_ModifierState.singleTapCaps := true
             g_ModifierState.capsTapTime := A_TickCount
-            ShowTooltip(g_Tooltip.textSinglecapsTap)
+            ShowTooltipMode(g_Tooltip.textSinglecapsTap)
         }
     }
     g_ModifierState.awaitingRelease := false
@@ -251,6 +315,7 @@ ResetCapsLockCounts() {
 a:: {
     global g_ModifierState
     g_ModifierState.shiftOrCapsAndButtonPressed += 1
+    ShowTooltipMode()
 
     static lastPressTime := 0
     currentTime := A_TickCount
@@ -276,6 +341,7 @@ a:: {
 s:: {
     global g_ModifierState
     g_ModifierState.shiftOrCapsAndButtonPressed += 1
+    ShowTooltipMode()
 
     static lastPressTime := 0
     currentTime := A_TickCount
@@ -307,6 +373,7 @@ l::
 0:: {
     global g_ModifierState
     g_ModifierState.shiftOrCapsAndButtonPressed += 1
+    ShowTooltipMode()
 
     key := A_ThisHotkey
     g_ModifierState.navigationModeVisited := true
@@ -353,6 +420,7 @@ vkDC::
 vkDE::
 vkDB::
 vk44::
+vkBF::
 {
     standardShortcuts := Map(
         "vk43", "^c",  ; c
@@ -375,88 +443,31 @@ vk44::
         "vkDC", "{Backspace}", ; \
         "vkDE", "{Backspace}", ; '
         "vkDB", "{Delete}",    ; [
-        "vk44", "{Delete}"     ; d
+        "vk44", "{Delete}",     ; d
+        "vkBF", "{Enter}" ; enter
     )
     global g_ModifierState
+    g_ModifierState.ctrl := GetKeyState("s", "P")
+    g_ModifierState.shift := GetKeyState("a", "P")
+
+    enterOutput := ""
     g_ModifierState.shiftOrCapsAndButtonPressed += 1
-    SendEvent(standardShortcuts[A_ThisHotkey])
+    ShowTooltipMode()
+
+    ; if athishotkey is vkBF
+    if g_ModifierState.ctrl
+        enterOutput .= "^"
+    if g_ModifierState.shift
+        enterOutput .= "+"
+    enterOutput .= "{Enter}"
+
+    if (A_ThisHotkey = "vkBF")
+        SendEvent(enterOutput)
+    else
+        SendEvent(standardShortcuts[A_ThisHotkey])
 }
 
-; Special handling for forward slash
-*vkBF:: {
-    global g_ModifierState
-
-    if not GetKeyState("s", "P") and not GetKeyState("a", "P") {
-        g_ModifierState.shiftOrCapsAndButtonPressed += 1
-        SendEvent "{Enter}"
-    }
-    else if GetKeyState("s", "P") and not GetKeyState("a", "P") {
-        g_ModifierState.shiftOrCapsAndButtonPressed += 1
-        SendEvent "^{Enter}"
-    }
-    else if not GetKeyState("s", "P") and GetKeyState("a", "P") {
-        g_ModifierState.shiftOrCapsAndButtonPressed += 1
-        SendEvent "+{Enter}"
-    }
-    else if GetKeyState("s", "P") and GetKeyState("a", "P") {
-        g_ModifierState.shiftOrCapsAndButtonPressed += 1
-        SendEvent "+^{Enter}"
-    }
-}
 #HotIf
-
-; Layout handling functions
-GetCurrentLayout() {
-    activeWnd := WinExist("A")
-    threadId := DllCall("GetWindowThreadProcessId", "Ptr", activeWnd, "Ptr", 0)
-    layout := DllCall("GetKeyboardLayout", "UInt", threadId, "Ptr")
-    return Format("{:08X}", layout & 0xFFFF)
-}
-
-global layoutMappings := Map(
-    "00000409", Map(  ; English (US)
-        "б", ",",
-        "Б", "<",
-        "ю", ".",
-        "Ю", ">",
-        "х", "[",
-        "Х", "{",
-        "ъ", "]",
-        "Ъ", "}",
-        "ж", ";",
-        "Ж", ":",
-        "э", "'",
-        "Э", '"',
-        ".", "/",
-        ",", "?"
-    ),
-    "00000419", Map(  ; Russian
-        ",", "б",
-        "<", "Б",
-        ".", "ю",
-        ">", "Ю",
-        "[", "х",
-        "{", "Х",
-        "]", "ъ",
-        "}", "Ъ",
-        ";", "ж",
-        ":", "Ж",
-        "'", "э",
-        '"', "Э",
-        "/", ".",
-        "?", ","
-    ))
-
-TranslateKey(key) {
-    currentLayout := GetCurrentLayout()
-    if (layoutMappings.Has(currentLayout)) {
-        layoutMap := layoutMappings[currentLayout]
-        if (layoutMap.Has(key)) {
-            return layoutMap[key]
-        }
-    }
-    return key
-}
 
 ; Shifted key handling for both single-tap modes
 #HotIf (g_ModifierState.shiftedKeyPressedCount <= 1) and (g_ModifierState.singleTapShift or g_ModifierState.singleTapCaps or
@@ -511,6 +522,7 @@ vkDE::
 vkBC::
 vkBE::
 vkBF::
+vkBA::
 {
     keyMap := Map(
         "vk41", "a",
@@ -560,7 +572,8 @@ vkBF::
         "vkDE", "'",
         "vkBC", ",",
         "vkBE", ".",
-        "vkBF", "/"
+        "vkBF", "/",
+        "vkBA", ";"
     )
     global g_ModifierState
 
@@ -568,11 +581,64 @@ vkBF::
     SendShiftedKey(keyMap[A_ThisHotkey], g_ModifierState.shiftedKeyPressedCount)
 }
 
+TranslateKey(key) {
+    currentLayout := GetCurrentLayout()
+    if (layoutMappings.Has(currentLayout)) {
+        layoutMap := layoutMappings[currentLayout]
+        if (layoutMap.Has(key)) {
+            return layoutMap[key]
+        }
+    }
+    return key
+}
+
+; Layout handling functions
+GetCurrentLayout() {
+    activeWnd := WinExist("A")
+    threadId := DllCall("GetWindowThreadProcessId", "Ptr", activeWnd, "Ptr", 0)
+    layout := DllCall("GetKeyboardLayout", "UInt", threadId, "Ptr")
+    return Format("{:08X}", layout & 0xFFFF)
+}
+
+global layoutMappings := Map(
+    "00000409", Map(  ; English (US)
+        "б", ",",
+        "Б", "<",
+        "ю", ".",
+        "Ю", ">",
+        "х", "[",
+        "Х", "{",
+        "ъ", "]",
+        "Ъ", "}",
+        "ж", ";",
+        "Ж", ":",
+        "э", "'",
+        "Э", '"',
+        ".", "/",
+        ",", "?"
+    ),
+    "00000419", Map(  ; Russian
+        ",", "б",
+        "<", "Б",
+        ".", "ю",
+        ">", "Ю",
+        "[", "х",
+        "{", "Х",
+        "]", "ъ",
+        "}", "Ъ",
+        ";", "ж",
+        ":", "Ж",
+        "'", "э",
+        '"', "Э",
+        "/", ".",
+        "?", ","
+    ))
 ;
 SendShiftedKey(key, shiftedKeyPressedCount) {
     global g_ModifierState
     static lockoutDuration := 300
     currentTime := A_TickCount
+    translatedKey := TranslateKey(key)
 
     if ((shiftedKeyPressedCount == 1) and not g_ModifierState.shiftedProcessBegin) {
         ;MsgBox("shiftedKeyPressedCount == 1, got through if") == all good, getting through if
@@ -583,7 +649,7 @@ SendShiftedKey(key, shiftedKeyPressedCount) {
         ; Check if a shifted key has already been processed in this sequence 2nd time (first time via shiftedkeyPressedCount == 1)
         ; this way it's adding smoothness to typing
         if (g_ModifierState.shiftSingleTapUsed or g_ModifierState.capsSingleTapUsed) {
-            SendInput(key)
+            SendInput(translatedKey)
             g_ModifierState.shiftedProcessBegin := false
             g_ModifierState.singleTapShift := false
             g_ModifierState.capsSingleTapUsed := false
@@ -594,24 +660,24 @@ SendShiftedKey(key, shiftedKeyPressedCount) {
 
         ; Process single shift tap
         if (g_ModifierState.singleTapShift) {
-            SendInput("+" . key)
+            SendInput("+" . translatedKey)
             g_ModifierState.shiftLastShiftedKeyTime := currentTime
             g_ModifierState.singleTapShift := false
             g_ModifierState.shiftSingleTapUsed := true
             g_ModifierState.shiftedProcessBegin := false
-            ShowTooltip()
+            ShowTooltipMode()
             g_ModifierState.shiftedKeyPressedCount := 0
             return
         }
 
         ; Process single caps tap
         if (g_ModifierState.singleTapCaps) {
-            SendInput("+" . key)
+            SendInput("+" . translatedKey)
             g_ModifierState.capsLastShiftedKeyTime := currentTime
             g_ModifierState.singleTapCaps := false
             g_ModifierState.capsSingleTapUsed := true
             g_ModifierState.shiftedProcessBegin := false
-            ShowTooltip()
+            ShowTooltipMode()
             g_ModifierState.singleTapCaps := false
             g_ModifierState.shiftedKeyPressedCount := 0
             return
@@ -620,7 +686,7 @@ SendShiftedKey(key, shiftedKeyPressedCount) {
 
     } else {
         ; Default behavior
-        SendInput(key)
+        SendInput(translatedKey)
         g_ModifierState.singleTapShift := false
         g_ModifierState.singleTapCaps := false
         g_ModifierState.doubleTapCaps := false

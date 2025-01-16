@@ -1,9 +1,7 @@
 # Currently
-- second tap to turn of the nextshiftedkey mode
-        - also a tooltip is not dissapearing despite mode being not active already
 
-- ; is not turning into : in shifted mode
-
+- after tooltip dissapears (1sec) -> nextShiftedKey mode should also dissapear
+        for now it stays for couple of secs or more
 
 
 
@@ -106,15 +104,26 @@
 
 # Completed already
         #1m #3w #чт #2025 / #2025_01_16 #winter
++ ; is not turning into : in shifted mode
++ layout translation now works
+
++ enter stopped working in caps mode
+        >> refactored with map and GetKeyState mode
+
++ second tap to turn of the nextshiftedkey mode,
+        also a tooltip is not dissapearing despite mode being not active already
+        >> calling tooltip () to make it dissapear everytime
+
 + second tap to turn of the nextshiftedkey mode
 
-+ shift is keep being shift even after I already sent a key with shift (Shift(pressed)+Some key), then i would type something and it would Do shifted key Again(Cuz activated after shift up and not tracking it) 
++ shift is keep being shift even after I already sent a key with shift (Shift(pressed)+Some key), 
+        then i would type something and it would Do shifted key Again(Cuz activated after shift up and not tracking it) 
         // I Guess have to track all keys again?
         // or getkeystate any inside of the shift?
                 >> shift not checking all of the buttons clicked with shift
 
 + caps when deleted fast sometimes keep Next shifted key UP mode
-                >> tracking combo of caps+button as well with a counter
+        >> tracking combo of caps+button as well with a counter
 
 
         #1m #3w #ср #2025 / #2025_01_15 #winter
