@@ -1,13 +1,15 @@
 # Currently
-- Shift/Caps one tap doing double shifted keys sometimes
-it works nicely with a single tap,
-but if I want to do triple tap BNM it would do all shifted keys
-
-IF I rapidly insta clicking 3 buttons like CapsUp > NMB it would send the 3 shifted keys, but it should send onlt 1 shifted key, can we do something about it??
-
-
-
 - second tap to turn of the nextshiftedkey mode
+        - also a tooltip is not dissapearing despite mode being not active already
+
+- ; is not turning into : in shifted mode
+
+
+
+
+
+
+
 
 
 
@@ -103,6 +105,30 @@ IF I rapidly insta clicking 3 buttons like CapsUp > NMB it would send the 3 shif
 
 
 # Completed already
+        #1m #3w #чт #2025 / #2025_01_16 #winter
++ second tap to turn of the nextshiftedkey mode
+
++ shift is keep being shift even after I already sent a key with shift (Shift(pressed)+Some key), then i would type something and it would Do shifted key Again(Cuz activated after shift up and not tracking it) 
+        // I Guess have to track all keys again?
+        // or getkeystate any inside of the shift?
+                >> shift not checking all of the buttons clicked with shift
+
++ caps when deleted fast sometimes keep Next shifted key UP mode
+                >> tracking combo of caps+button as well with a counter
+
+
+        #1m #3w #ср #2025 / #2025_01_15 #winter
++ when caps pressed first, now shift is not sending shifted keys/when shift pressed first, caps is not sending keys
+        > with tracking statements all good
+
++ Shift/Caps one tap doing double shifted keys sometimes
+it works nicely with a single tap,
+but if I want to do triple tap BNM it would do all shifted keys
+        IF I rapidly insta clicking 3 buttons like CapsUp > NMB         
+        (it would send the 3 shifted keys, but it should send only 1st shifted key)??
+        > did it with a number counting
+
+
         #1m #3w #вт #2025 / #2025_01_14 #winter
 + When typing, suddenly was kinda thinking about returning a 1 tap caps mode, instead of only shift 1 tap mode.
 + Caps + ~ = Alt+~ terminal activation

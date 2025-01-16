@@ -36,7 +36,9 @@ global g_ModifierState := {
     navigationModeVisited: false,
     shiftedKeyPressedCount: 0,
     shiftLastShiftedKeyTime: 0,
-    capsLastShiftedKeyTime: 0
+    capsLastShiftedKeyTime: 0,
+    shiftOrCapsAndButtonPressed: 0,
+    nextshiftedKeyMode: 0,
 }
 
 ; --- ToolTip Configuration ---
@@ -99,18 +101,66 @@ ShowTooltip(text := "", duration := 1000) {
 ; }
 ;
 
-#HotIf GetKeyState("LShift", "P")
-*:: {
+#HotIf GetKeyState('CapsLock', 'P') or GetKeyState('LShift', 'P')
+; Alphabet (a-z)
+~*vk41::
+~*vk42::
+~*vk43::
+~*vk44::
+~*vk45::
+~*vk46::
+~*vk47::
+~*vk48::
+~*vk49::
+~*vk4A::
+~*vk4B::
+~*vk4C::
+~*vk4D::
+~*vk4E::
+~*vk4F::
+~*vk50::
+~*vk51::
+~*vk52::
+~*vk53::
+~*vk54::
+~*vk55::
+~*vk56::
+~*vk57::
+~*vk58::
+~*vk59::
+~*vk5A::
+; numbers
+~*vk30::
+~*vk31::
+~*vk32::
+~*vk33::
+~*vk34::
+~*vk35::
+~*vk36::
+~*vk37::
+~*vk38::
+~*vk39::
+; symbols
+~*vkBD::
+~*vkBB::
+~*vkDB::
+~*vkDD::
+~*vkDC::
+~*vkC0::
+~*vkDE::
+~*vkBC::
+~*vkBE::
+~*vkBF::
+{
     global g_ModifierState
-    ; Handle Shift cleanup
-    g_ModifierState.singleTapShift := false
+    g_ModifierState.shiftOrCapsAndButtonPressed += 1
 }
-
 #HotIf
 
 ; --- Shift Handling ---
 ~LShift:: {
     global g_ModifierState
+    g_ModifierState.shiftOrCapsAndButtonPressed := 0
     g_ModifierState.shiftPressTime := A_TickCount
     g_ModifierState.shiftBeingHeld := true
     g_ModifierState.shiftSingleTapUsed := false
@@ -127,11 +177,20 @@ ShowTooltip(text := "", duration := 1000) {
         && g_ModifierState.shiftBeingHeld
         && !g_ModifierState.shiftSingleTapUsed
         && !g_ModifierState.shiftKeyProcessed) {  ; Only activate if no key was processed
-        g_ModifierState.singleTapShift := true
-        g_ModifierState.shiftTapTime := A_TickCount
-        ShowTooltip(g_Tooltip.textSingleShiftTap)
+        g_ModifierState.shiftBeingHeld := false
+
+        if g_ModifierState.singleTapShift {
+            g_ModifierState.singleTapShift := false
+            return
+        }
+        if g_ModifierState.shiftOrCapsAndButtonPressed == 0 and (g_ModifierState.singleTapShift == false) {
+            g_ModifierState.singleTapShift := true
+            g_ModifierState.shiftTapTime := A_TickCount
+            ShowTooltip(g_Tooltip.textSingleShiftTap)
+            g_ModifierState.nextshiftedKeyMode += 1
+        }
+
     }
-    g_ModifierState.shiftBeingHeld := false
 }
 
 ;
@@ -139,6 +198,7 @@ ShowTooltip(text := "", duration := 1000) {
 CapsLock:: {
     global g_ModifierState
     currentTime := A_TickCount
+    g_ModifierState.shiftOrCapsAndButtonPressed := 0
     g_ModifierState.capsPressStartTime := currentTime
     g_ModifierState.capsSingleTapUsed := false
     g_ModifierState.capsKeyProcessed := false  ; New flag to track if a key has been processed
@@ -158,19 +218,25 @@ CapsLock:: {
 
 CapsLock Up:: {
     global g_ModifierState
-    currentTime := A_TickCount
-    pressDuration := currentTime - g_ModifierState.capsPressStartTime
     g_ModifierState.navigationModeVisited := false
 
+    currentTime := A_TickCount
+    pressDuration := currentTime - g_ModifierState.capsPressStartTime
     if (pressDuration < 200
         && !g_ModifierState.capsSingleTapUsed
         && !g_ModifierState.capsKeyProcessed
         && !g_ModifierState.doubleTapCaps) {
-        g_ModifierState.singleTapCaps := true
-        g_ModifierState.capsTapTime := A_TickCount
-        ShowTooltip(g_Tooltip.textSinglecapsTap)
-    }
 
+        if g_ModifierState.singleTapCaps {
+            g_ModifierState.singleTapCaps := false
+            return
+        }
+        if g_ModifierState.shiftOrCapsAndButtonPressed == 0 {
+            g_ModifierState.singleTapCaps := true
+            g_ModifierState.capsTapTime := A_TickCount
+            ShowTooltip(g_Tooltip.textSinglecapsTap)
+        }
+    }
     g_ModifierState.awaitingRelease := false
 }
 
@@ -183,16 +249,17 @@ ResetCapsLockCounts() {
 ; Context-sensitive hotkeys when modifier is pressed
 #HotIf GetKeyState("CapsLock", "P")
 a:: {
+    global g_ModifierState
+    g_ModifierState.shiftOrCapsAndButtonPressed += 1
+
     static lastPressTime := 0
     currentTime := A_TickCount
-
     if (currentTime - lastPressTime < 300) {
         SendInput("^a")
         lastPressTime := 0
         return
     }
 
-    global g_ModifierState
     g_ModifierState.shift := true
     g_ModifierState.navigationModeVisited := true
 
@@ -207,16 +274,17 @@ a:: {
 }
 
 s:: {
+    global g_ModifierState
+    g_ModifierState.shiftOrCapsAndButtonPressed += 1
+
     static lastPressTime := 0
     currentTime := A_TickCount
-
     if (currentTime - lastPressTime < 300) {
         SendInput("^s")
         lastPressTime := 0
         return
     }
 
-    global g_ModifierState
     g_ModifierState.navigationModeVisited := true
     g_ModifierState.ctrl := true
     startTime := A_TickCount
@@ -238,6 +306,8 @@ l::
 9::
 0:: {
     global g_ModifierState
+    g_ModifierState.shiftOrCapsAndButtonPressed += 1
+
     key := A_ThisHotkey
     g_ModifierState.navigationModeVisited := true
     g_ModifierState.ctrl := GetKeyState("s", "P")
@@ -262,40 +332,77 @@ l::
 }
 
 ; Standard shortcuts
-vk43:: SendEvent "^c" ; c
-vk58:: SendEvent "^x" ; x
-vk56:: SendEvent "^v" ; v
-vk5A:: SendEvent "^z" ; z
-vk55:: SendEvent "^z" ; u
-vk31:: SendEvent "!1" ; 1
-vk32:: SendEvent "!2" ; 2
-vk33:: SendEvent "!3" ; 3
-vk34:: SendEvent "!4" ; 4
-vk35:: SendEvent "!5" ; 5
-vk36:: SendEvent "!6" ; 6
-vk37:: SendEvent "!7" ; 7
-vk38:: SendEvent "!8" ; 8
-vk59:: SendEvent "^y" ; y
-vkC0:: SendEvent "^``" ; `
-vk46:: SendEvent "!f" ; f
-vk4D:: SendEvent "!m" ; m
+vk43::
+vk58::
+vk56::
+vk5A::
+vk55::
+vk31::
+vk32::
+vk33::
+vk34::
+vk35::
+vk36::
+vk37::
+vk38::
+vk59::
+vkC0::
+vk46::
+vk4D::
+vkDC::
+vkDE::
+vkDB::
+vk44::
+{
+    standardShortcuts := Map(
+        "vk43", "^c",  ; c
+        "vk58", "^x",  ; x
+        "vk56", "^v",  ; v
+        "vk5A", "^z",  ; z
+        "vk55", "^z",  ; u
+        "vk31", "!1",  ; 1
+        "vk32", "!2",  ; 2
+        "vk33", "!3",  ; 3
+        "vk34", "!4",  ; 4
+        "vk35", "!5",  ; 5
+        "vk36", "!6",  ; 6
+        "vk37", "!7",  ; 7
+        "vk38", "!8",  ; 8
+        "vk59", "^y",  ; y
+        "vkC0", "^``", ; `
+        "vk46", "!f",  ; f
+        "vk4D", "!m",  ; m
+        "vkDC", "{Backspace}", ; \
+        "vkDE", "{Backspace}", ; '
+        "vkDB", "{Delete}",    ; [
+        "vk44", "{Delete}"     ; d
+    )
+    global g_ModifierState
+    g_ModifierState.shiftOrCapsAndButtonPressed += 1
+    SendEvent(standardShortcuts[A_ThisHotkey])
+}
 
 ; Special handling for forward slash
 *vkBF:: {
-    if not GetKeyState("s", "P") and not GetKeyState("a", "P")
-        SendEvent "{Enter}"
-    else if GetKeyState("s", "P") and not GetKeyState("a", "P")
-        SendEvent "^{Enter}"
-    else if not GetKeyState("s", "P") and GetKeyState("a", "P")
-        SendEvent "+{Enter}"
-    else if GetKeyState("s", "P") and GetKeyState("a", "P")
-        SendEvent "+^{Enter}"
-}
+    global g_ModifierState
 
-vkDC:: SendEvent "{Backspace}" ; \
-vkDE:: SendEvent "{Backspace}" ; '
-vkDB:: SendEvent "{Delete}"    ; [
-vk44:: SendEvent "{Delete}"    ; d
+    if not GetKeyState("s", "P") and not GetKeyState("a", "P") {
+        g_ModifierState.shiftOrCapsAndButtonPressed += 1
+        SendEvent "{Enter}"
+    }
+    else if GetKeyState("s", "P") and not GetKeyState("a", "P") {
+        g_ModifierState.shiftOrCapsAndButtonPressed += 1
+        SendEvent "^{Enter}"
+    }
+    else if not GetKeyState("s", "P") and GetKeyState("a", "P") {
+        g_ModifierState.shiftOrCapsAndButtonPressed += 1
+        SendEvent "+{Enter}"
+    }
+    else if GetKeyState("s", "P") and GetKeyState("a", "P") {
+        g_ModifierState.shiftOrCapsAndButtonPressed += 1
+        SendEvent "+^{Enter}"
+    }
+}
 #HotIf
 
 ; Layout handling functions
@@ -352,7 +459,9 @@ TranslateKey(key) {
 }
 
 ; Shifted key handling for both single-tap modes
-#HotIf g_ModifierState.singleTapShift or g_ModifierState.singleTapCaps or g_ModifierState.doubleTapCaps
+#HotIf (g_ModifierState.shiftedKeyPressedCount <= 1) and (g_ModifierState.singleTapShift or g_ModifierState.singleTapCaps or
+    g_ModifierState.doubleTapCaps) and (
+        g_ModifierState.shiftOrCapsAndButtonPressed == 0)
 ; Alphabet (a-z)
 vk41::
 vk42::
@@ -546,24 +655,3 @@ ResetCapsState() {
     g_ModifierState.capsKeyProcessed := false
     g_ModifierState.capsSingleTapUsed := false
 }
-; Cleanup hotkey for both shift and caps single-tap modes
-; Modified cleanup hotkey with immediate state locking
-; Modified cleanup hotkey for both Shift and Caps
-#HotIf g_ModifierState.singleTapShift || g_ModifierState.singleTapCaps
-*:: {
-    global g_ModifierState
-    ; Handle Shift cleanup
-    if (g_ModifierState.singleTapShift && !g_ModifierState.shiftKeyProcessed) {
-        g_ModifierState.shiftKeyProcessed := true
-        g_ModifierState.singleTapShift := false
-        g_ModifierState.shiftSingleTapUsed := true
-    }
-    ; Handle Caps cleanup
-    if (g_ModifierState.singleTapCaps && !g_ModifierState.capsKeyProcessed) {
-        g_ModifierState.capsKeyProcessed := true
-        g_ModifierState.singleTapCaps := false
-        g_ModifierState.capsSingleTapUsed := true
-    }
-    ShowTooltip()
-}
-#HotIf
