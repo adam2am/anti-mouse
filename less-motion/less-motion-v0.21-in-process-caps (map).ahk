@@ -79,10 +79,27 @@ ShowTooltipMode(text := "", duration := 1000) {
 
     if (duration > 0) {
         SetTimer () => ToolTip(), -duration
-    }
 
+        ; Start a timer to reset single-tap modes
+        SetTimer(() => ResetSingleTapModes(), -duration)
+    }
 }
 
+ResetSingleTapModes() {
+    global g_ModifierState
+    if (g_ModifierState.singleTapShift) {
+        g_ModifierState.singleTapShift := false
+        g_ModifierState.shiftSingleTapUsed := false ; Reset this flag as well
+        g_ModifierState.shiftedKeyPressedCount := 0
+    }
+    if (g_ModifierState.singleTapCaps) {
+        g_ModifierState.singleTapCaps := false
+        g_ModifierState.capsSingleTapUsed := false ; Reset this flag as well
+        g_ModifierState.shiftedKeyPressedCount := 0
+    }
+    ; Hide the tooltip when the mode is reset (optional)
+    ShowTooltipMode()
+}
 ;------------------------ keybindings area ----------------------------
 ;
 ;

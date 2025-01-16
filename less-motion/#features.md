@@ -1,16 +1,4 @@
 # Currently
-
-- after tooltip dissapears (1sec) -> nextShiftedKey mode should also dissapear
-        for now it stays for couple of secs or more
-
-
-
-
-
-
-
-
-
 - also, when i want to go back to my powered mode (naVigation) and doing caps+JKL, it would for some reason take me extra click to get the movement, instead of instantelly creating a movement based on my commabnd
 
 
@@ -104,7 +92,10 @@
 
 # Completed already
         #1m #3w #чт #2025 / #2025_01_16 #winter
-+ ; is not turning into : in shifted mode
++ after tooltip dissapears (1sec) -> nextShiftedKey mode now also dissapear
+
++ ; is now turning into : in shifted mode (forgot to include previously)
+
 + layout translation now works
 
 + enter stopped working in caps mode
