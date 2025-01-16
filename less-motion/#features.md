@@ -63,24 +63,25 @@
 - Caps + 1/2/3 = as Alt + 1/2/3 to switch editors
 
 
-
-
+4d3e47e694d299874602a7191789cce0be1e7adb
 
 
 
 # Completed already
         #1m #3w #чт #2025 / #2025_01_16 #winter
+--- 4d3e47e694d299874602a7191789cce0be1e7adb ---
 + now when I do caps > caps+JKL > caps again, it would not turn on shifted mode in a 3rd step, I have to again press caps for that
         - (1st step, dummy shifted mode without pressing else) Caps + CapsUp 
         > (2nd step, navigation) Caps + JKL + CapsUp 
         > (3rd step) Caps + CapsUp
-        and on a third step its not sending a shifted key  
+        and on a third step its not sending a shifted key
 
-        
+
 + also, when i want to go back to my powered mode (naVigation) and doing caps+JKL, 
         it would for some reason take me extra click to get the movement, 
         >> now instantelly creating a movement based on a shortcut
 
+---
 + after tooltip dissapears (1sec) -> nextShiftedKey mode now also dissapear
 
 + ; is now turning into : in shifted mode (forgot to include previously)
