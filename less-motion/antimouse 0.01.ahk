@@ -1,113 +1,143 @@
 #Requires AutoHotkey v2.0
+; Ensure CapsLock doesn't accidentally get turned on
+SetCapsLockState("AlwaysOff")
 
-; Create overlay GUI
+; Global state
+class State {
+    static isGridActive := false
+    static firstKey := ""
+}
+
 class GridOverlay {
     static gui := false
-    static cellSize := 100
-    static rows := 10
-    static cols := 16
-
-    static LetterToNumber(letter) {
-        return Ord(letter) - Ord("A")
-    }
+    static cells := Map()
 
     static Show() {
         if !this.gui {
-            this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
-            this.gui.BackColor := "FFFFFF"
-            this.gui.SetFont("s20", "Arial")
-
-            ; Calculate screen dimensions
+            ; Calculate grid dimensions based on screen
             monitorWidth := A_ScreenWidth
             monitorHeight := A_ScreenHeight
+
+            cols := 16  ; Number of columns (A-P)
+            rows := 10  ; Number of rows (A-J)
+
+            cellWidth := monitorWidth // cols
+            cellHeight := monitorHeight // rows
+
+            this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
+            this.gui.BackColor := "000000"
+            this.gui.SetFont("s" Min(cellWidth, cellHeight) // 4, "Arial")
 
             ; Create semi-transparent overlay
             this.gui.Add("Picture", "w" monitorWidth " h" monitorHeight)
 
-            ; Add grid labels
-            letters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
-            colLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
+            ; First letters (vertical columns A-J)
+            colLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+            ; Second letters (horizontal rows A-P)
+            rowLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
 
-            for row in letters {
-                for col in colLetters {
-                    x := this.LetterToNumber(col) * this.cellSize
-                    y := this.LetterToNumber(row) * this.cellSize
-                    this.gui.Add("Text", "x" x " y" y " w" this.cellSize " h" this.cellSize " Center", row col)
+            ; Loop through horizontal positions first
+            for horizIndex, horizLetter in rowLetters {
+                ; Then through vertical positions
+                for vertIndex, vertLetter in colLetters {
+                    x := (horizIndex - 1) * cellWidth
+                    y := (vertIndex - 1) * cellHeight
+
+                    ; Create cell key with vertical letter first
+                    cellKey := vertLetter horizLetter
+                    this.cells[cellKey] := {
+                        x: x + cellWidth / 2,
+                        y: y + cellHeight / 2
+                    }
+
+                    ; Display vertical letter first (AA, BA, CA, etc.)
+                    this.gui.Add("Text",
+                        "x" x " y" y
+                        " w" cellWidth " h" cellHeight
+                        " Center BackgroundTrans c0099FF",
+                        vertLetter horizLetter)
                 }
             }
 
-            this.gui.Opt("+E0x20") ; Click-through
-            WinSetTransColor("FFFFFF 150", this.gui)
+            this.gui.Opt("+E0x20")  ; Click-through
+            WinSetTransColor("000000 200", this.gui)
         }
+
         this.gui.Show("NoActivate")
+        State.isGridActive := true
+        State.firstKey := ""
     }
 
     static Hide() {
-        if this.gui
+        if this.gui {
             this.gui.Hide()
-    }
-
-    static GetCellPosition(cell) {
-        if (StrLen(cell) != 2)
-            return false
-
-        row := SubStr(cell, 1, 1)
-        col := SubStr(cell, 2, 1)
-
-        x := this.LetterToNumber(col) * this.cellSize + this.cellSize / 2
-        y := this.LetterToNumber(row) * this.cellSize + this.cellSize / 2
-
-        return [x, y]
-    }
-}
-
-#HotIf GetKeyState('CapsLock', 'P')
-; Hotkey to activate grid
-~Alt:: {
-    static isActive := false
-    static firstKey := ""
-
-    if !isActive {
-        GridOverlay.Show()
-        isActive := true
-        firstKey := ""
-
-        ; Create input hook for capturing keystrokes
-        ih := InputHook("L1")
-        ih.Start()
-
-        while isActive {
-            if ih.Wait() {
-                key := ih.Input
-
-                if !firstKey {
-                    firstKey := key
-                    ih.Start()
-                } else {
-                    targetCell := firstKey key
-                    pos := GridOverlay.GetCellPosition(targetCell)
-                    if pos {
-                        MouseMove(pos[1], pos[2])
-                        isActive := false
-                        GridOverlay.Hide()
-                        break
-                    }
-                }
-            }
+            State.isGridActive := false
+            State.firstKey := ""
         }
     }
-}
-#HotIf
-; Space to click when grid is active
-~Space:: {
-    if WinExist("ahk_class AutoHotkeyGUI")
-        Click
+
+    static MoveTo(cell) {
+        if this.cells.Has(cell) {
+            pos := this.cells[cell]
+            MouseMove(pos.x, pos.y)
+            return true
+        }
+        return false
+    }
 }
 
-; Escape to cancel
-~Escape:: {
-    if WinExist("ahk_class AutoHotkeyGUI") {
-        GridOverlay.Hide()
+; Main hotkey to activate grid
+CapsLock & Alt:: {
+    if !State.isGridActive {
+        GridOverlay.Show()
+    }
+}
+
+; Define hotkeys that only work when grid is active
+#HotIf State.isGridActive
+
+; Handle letter keys
+A:: HandleKey("A")
+B:: HandleKey("B")
+C:: HandleKey("C")
+D:: HandleKey("D")
+E:: HandleKey("E")
+F:: HandleKey("F")
+G:: HandleKey("G")
+H:: HandleKey("H")
+I:: HandleKey("I")
+J:: HandleKey("J")
+K:: HandleKey("K")
+L:: HandleKey("L")
+M:: HandleKey("M")
+N:: HandleKey("N")
+O:: HandleKey("O")
+P:: HandleKey("P")
+
+; Click handlers
+Space:: {
+    Click
+    GridOverlay.Hide()
+}
+
+RButton:: {
+    Click "Right"
+    GridOverlay.Hide()
+}
+
+; Cancel grid
+Escape:: GridOverlay.Hide()
+
+#HotIf
+
+HandleKey(key) {
+    if State.firstKey = "" {
+        State.firstKey := key
         return
+    }
+
+    targetCell := State.firstKey key
+    if GridOverlay.MoveTo(targetCell) {
+        State.firstKey := ""
     }
 }
