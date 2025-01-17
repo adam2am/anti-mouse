@@ -11,6 +11,7 @@ class State {
 class GridOverlay {
     static gui := false
     static cells := Map()
+    static columnCenters := Map()
 
     static Show() {
         if !this.gui {
@@ -18,8 +19,8 @@ class GridOverlay {
             monitorWidth := A_ScreenWidth
             monitorHeight := A_ScreenHeight
 
-            cols := 16  ; Number of columns (A-P)
-            rows := 10  ; Number of rows (A-J)
+            cols := 13  ; Number of columns (AA, BA, CA, etc.)
+            rows := 13  ; Number of rows (AA, AB, AC, etc.)
 
             cellWidth := monitorWidth // cols
             cellHeight := monitorHeight // rows
@@ -31,31 +32,34 @@ class GridOverlay {
             ; Create semi-transparent overlay
             this.gui.Add("Picture", "w" monitorWidth " h" monitorHeight)
 
-            ; First letters (vertical columns A-J)
-            colLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
-            ; Second letters (horizontal rows A-P)
-            rowLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
+            ; First letters (horizontal columns AA, BA, CA, etc.)
+            colLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
+            ; Second letters (vertical rows AA, AB, AC, etc.)
+            rowLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
 
-            ; Loop through horizontal positions first
-            for horizIndex, horizLetter in rowLetters {
-                ; Then through vertical positions
-                for vertIndex, vertLetter in colLetters {
-                    x := (horizIndex - 1) * cellWidth
+            ; Loop through horizontal positions first (columns)
+            for horizIndex, firstLetter in colLetters {
+                x := (horizIndex - 1) * cellWidth
+                ; Store column center positions for instant movement
+                this.columnCenters[firstLetter] := x + cellWidth / 2
+
+                ; Then through vertical positions (rows)
+                for vertIndex, secondLetter in rowLetters {
                     y := (vertIndex - 1) * cellHeight
 
-                    ; Create cell key with vertical letter first
-                    cellKey := vertLetter horizLetter
+                    ; Create cell key with first letter from column, second letter from row
+                    cellKey := firstLetter secondLetter
                     this.cells[cellKey] := {
                         x: x + cellWidth / 2,
                         y: y + cellHeight / 2
                     }
 
-                    ; Display vertical letter first (AA, BA, CA, etc.)
+                    ; Display coordinates with first letter from column, second letter from row
                     this.gui.Add("Text",
                         "x" x " y" y
                         " w" cellWidth " h" cellHeight
                         " Center BackgroundTrans c0099FF",
-                        vertLetter horizLetter)
+                        firstLetter secondLetter)
                 }
             }
 
@@ -74,6 +78,15 @@ class GridOverlay {
             State.isGridActive := false
             State.firstKey := ""
         }
+    }
+
+    static MoveToColumn(letter) {
+        if this.columnCenters.Has(letter) {
+            MouseGetPos(&currentX, &currentY)  ; Get current mouse position
+            MouseMove(this.columnCenters[letter], currentY)  ; Move horizontally, keep Y position
+            return true
+        }
+        return false
     }
 
     static MoveTo(cell) {
@@ -135,7 +148,10 @@ Escape:: GridOverlay.Hide()
 
 HandleKey(key) {
     if State.firstKey = "" {
-        State.firstKey := key
+        ; Move to column immediately on first key press
+        if GridOverlay.MoveToColumn(key) {
+            State.firstKey := key
+        }
         return
     }
 
