@@ -6,6 +6,8 @@ SetCapsLockState("AlwaysOff")
 class State {
     static isGridActive := false
     static firstKey := ""
+    static currentColumn := ""
+    static cellReached := false
 }
 
 class GridOverlay {
@@ -68,22 +70,28 @@ class GridOverlay {
         }
 
         this.gui.Show("NoActivate")
-        State.isGridActive := true
-        State.firstKey := ""
+        this.ResetState()
     }
 
     static Hide() {
         if this.gui {
             this.gui.Hide()
-            State.isGridActive := false
-            State.firstKey := ""
+            this.ResetState()
         }
+    }
+
+    static ResetState() {
+        State.isGridActive := true
+        State.firstKey := ""
+        State.currentColumn := ""
+        State.cellReached := false
     }
 
     static MoveToColumn(letter) {
         if this.columnCenters.Has(letter) {
-            MouseGetPos(&currentX, &currentY)  ; Get current mouse position
-            MouseMove(this.columnCenters[letter], currentY)  ; Move horizontally, keep Y position
+            MouseGetPos(&currentX, &currentY)
+            MouseMove(this.columnCenters[letter], currentY)
+            State.currentColumn := letter
             return true
         }
         return false
@@ -93,6 +101,8 @@ class GridOverlay {
         if this.cells.Has(cell) {
             pos := this.cells[cell]
             MouseMove(pos.x, pos.y)
+            ; Reset state after successful movement to allow new movements
+            this.ResetState()
             return true
         }
         return false
@@ -155,8 +165,7 @@ HandleKey(key) {
         return
     }
 
-    targetCell := State.firstKey key
-    if GridOverlay.MoveTo(targetCell) {
-        State.firstKey := ""
-    }
+    ; Create and move to target cell
+    targetCell := State.currentColumn key
+    GridOverlay.MoveTo(targetCell)
 }

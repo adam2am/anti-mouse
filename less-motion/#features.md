@@ -1,14 +1,22 @@
 # Currently
 - antimouse gui
         >> some progress
+        - sometimes it's going to 2nd letter (AB) it would go B as a collumn
         - sometimes it would confuse my taps
-                i would do GM it would go M collumn first, then to G collumn
-
-
+                i would do GM it would go G collumn first, then back to M collumn
+                instead of GM cell
+                ex: now whats happeniing 
+                        I>I>D>F == and it should do 
+                        -- II >> DF cell
+                        But its doing 
+                        -- II >> Dcollumn >> Fcollumn
 
         - now it's turning off functionality when pressed button outside of the current layout (k) == improvement angle
         - 2nd monitor support
         - CAPSLOCK STILL getting turned (kekw)
+        - as well as space randomly
+
+        - 1пн/2вт instead of пн/вт
 
 
 
@@ -62,13 +70,13 @@
 - Caps + 1/2/3 = as Alt + 1/2/3 to switch editors
 
 
-4d3e47e694d299874602a7191789cce0be1e7adb
 
 
 
 # Completed already
-        #1m #3w #пт #2025 / #2025_01_17 #winter
 
+        #1m #3w #пт #2025 / #2025_01_17 #winter
+<!-- --- cb16c0709ebbb3f4aad112837a64fbf13c2c6ec6 --- -->
 + rows switch with collumns
 WANNA switch rows and collumns,
 i mean right now first row is AA AB AC AD etc
@@ -77,12 +85,12 @@ and so each collumn would go further down
 AA AB AC AD not to the right like its right now, but down
 
 + Instead of waiting for a second tap
-        moving mouse instantly with a first tap based on a collumn
+        >> moving mouse instantly with a first tap based on a collumn
 
 
 
         #1m #3w #чт #2025 / #2025_01_16 #winter
---- 4d3e47e694d299874602a7191789cce0be1e7adb ---
+<!-- 4d3e47e694d299874602a7191789cce0be1e7adb -->
 + now when I do caps > caps+JKL > caps again, it would not turn on shifted mode in a 3rd step, I have to again press caps for that
         - (1st step, dummy shifted mode without pressing else) Caps + CapsUp 
         > (2nd step, navigation) Caps + JKL + CapsUp 
