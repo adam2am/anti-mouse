@@ -1,7 +1,9 @@
 # Currently
 - antimouse gui
-
-
+        >> some progress
+        - now it's turning off functionality when pressed button outside of the current layout (k) == improvement angle
+        - 2nd monitor support
+        - CAPSLOCK STILL getting turned (kekw)
 
 
 

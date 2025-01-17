@@ -86,12 +86,15 @@ class GridOverlay {
     }
 }
 
-; Main hotkey to activate grid
-CapsLock & Alt:: {
+#HotIf GetKeyState('CapsLock', 'P')
+SetCapsLockState("AlwaysOff")
+
+Alt:: {
     if !State.isGridActive {
         GridOverlay.Show()
     }
 }
+#HotIf
 
 ; Define hotkeys that only work when grid is active
 #HotIf State.isGridActive
