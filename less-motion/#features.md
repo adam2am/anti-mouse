@@ -1,17 +1,4 @@
 # Currently
-
-
-
-
-- do we do right shift as a enter? cuz it's like enter, but closer
-        RShift as enter, Caps+Rshift as Shift+Enter 
-        switching language layout with something else as well 
-        like J and F has physically something on them to physially feel and navigate
-        is it possible to do something about ' to feel the backspace
-
-
-
-
 - antimouse gui
 
 
@@ -25,8 +12,8 @@
 - Potentially for shift we do single caps tap for the next symbol to be shifted.
         - And what if for caps + H = holding caps would be like holding shift,
         till the moment you don't release the Caps or press the H/T again
-
-"Tap for Shift" concept seems like the most promising from a UX perspective, as it maintains a degree of immediacy. However, the timing is absolutely hcritical for it to feel natural and not frustrating. Experiment with different timing windows (e.g., 100ms, 150ms, 200ms) to find what feels best.h
+        '
+        "Tap for Shift" concept seems like the most promising from a UX perspective, as it maintains a degree of immediacy. However, the timing is absolutely hcritical for it to feel natural and not frustrating. Experiment with different timing windows (e.g., 100ms, 150ms, 200ms) to find what feels best.h
 
 
 
@@ -44,6 +31,11 @@
         - Caps + tab = shift tab
         - is there a excalidraw for vscode studio    
 
+
+        - switching language layout with something else as well 
+                like J and F has physically something on them to physially feel and navigate
+                is it possible to do something about ' to feel the backspace
+        - Caps + E as Ctrl+W = exit?
 
 
 ## Hotstrings entering the arena
