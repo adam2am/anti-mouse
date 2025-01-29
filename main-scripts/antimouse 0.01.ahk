@@ -76,6 +76,7 @@ class GridOverlay {
             "x0 y0 w" cellWidth " h" cellHeight " Hidden Background0099FF")
 
         ; First letters (horizontal columns)
+        ; todo: potential layout here is Tab, q,w,e,r,t,y,u,i,o,p,[,]
         colLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
         ; Second letters (vertical rows)
         rowLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
