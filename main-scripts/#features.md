@@ -28,7 +28,11 @@
         - /remindme
         - automatic date calculation (last time visited? --> auto calculate + mentioning with a n`n`)
         
+
+        
         - when key is shifted = like in mac under the cursor
+        - double-tap of caps not turning it off unlike double-shift > wanna make double caps have the same behaviour 
+
         - its also turning off functionality when pressed button outside of the current layout (k)
         - 2nd monitor support
         - CAPSLOCK STILL getting turned (kekw)

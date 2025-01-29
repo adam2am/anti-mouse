@@ -1,9 +1,6 @@
-﻿; less-motions v0.23-in-process
+﻿; less-motions-hotkey v0.23-in-process
 
 #Requires AutoHotkey v2.0
-
-; Ensure CapsLock doesn't accidentally get turned on
-SetCapsLockState("AlwaysOff")
 
 ; Ensure CapsLock doesn't accidentally get turned on
 SetCapsLockState("AlwaysOff")
@@ -62,17 +59,25 @@ global g_Tooltip := {
 }
 
 ; Helper function for tooltip positioning
+
 GetTooltipPosition() {
+    ; Try to get caret position first
+    if CaretGetPos(&caretX, &caretY) {
+        ; Add small offset to not cover the text
+        return { x: caretX + 15, y: caretY + 15 }
+    }
+
+    ; Fallback to mouse position if caret position is not available
     MouseGetPos(&mouseX, &mouseY)
     monitorCount := MonitorGetCount()
 
     loop monitorCount {
         MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
         if (mouseX >= Left && mouseX < Right && mouseY >= Top && mouseY < Bottom) {
-            return { x: Left + 50, y: Bottom - 100 }
+            return { x: mouseX + 15, y: mouseY + 15 }
         }
     }
-    return { x: 50, y: A_ScreenHeight - 100 }
+    return { x: mouseX + 15, y: mouseY + 15 }
 }
 
 ; Show tooltip with optional duration
