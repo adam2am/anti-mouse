@@ -59,12 +59,11 @@ global g_Tooltip := {
 }
 
 ; Helper function for tooltip positioning
-
 GetTooltipPosition() {
     ; Try to get caret position first
     if CaretGetPos(&caretX, &caretY) {
-        ; Add small offset to not cover the text
-        return { x: caretX + 15, y: caretY + 15 }
+        ; Add small offset below the caret
+        return { x: caretX, y: caretY + 20 }
     }
 
     ; Fallback to mouse position if caret position is not available
