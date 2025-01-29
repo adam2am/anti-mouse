@@ -490,6 +490,8 @@ VK30::
 #HotIf (g_ModifierState.shiftedKeyPressedCount <= 1) and (g_ModifierState.singleTapShift or g_ModifierState.singleTapCaps or
     g_ModifierState.doubleTapCaps) and (
         g_ModifierState.shiftOrCapsAndButtonPressed == 0)
+
+;
 ; Alphabet (a-z)
 vk41::
 vk42::
@@ -542,6 +544,8 @@ vkBF::
 vkBA::
 {
     keyMap := Map(
+        "vk4C", "l",
+        "VK4C", "l",
         "vk41", "a",
         "vk42", "b",
         "vk43", "c",
@@ -553,7 +557,6 @@ vkBA::
         "vk49", "i",
         "vk4A", "j",
         "vk4B", "k",
-        "vk4C", "l",
         "vk4D", "m",
         "vk4E", "n",
         "vk4F", "o",
@@ -590,7 +593,55 @@ vkBA::
         "vkBC", ",",
         "vkBE", ".",
         "vkBF", "/",
-        "vkBA", ";"
+        "vkBA", ";",
+        "VK41", "a",
+        "VK42", "b",
+        "VK43", "c",
+        "VK44", "d",
+        "VK45", "e",
+        "VK46", "f",
+        "VK47", "g",
+        "VK48", "h",
+        "VK49", "i",
+        "VK4A", "j",
+        "VK4B", "k",
+        "VK4D", "m",
+        "VK4E", "n",
+        "VK4F", "o",
+        "VK50", "p",
+        "VK51", "q",
+        "VK52", "r",
+        "VK53", "s",
+        "VK54", "t",
+        "VK55", "u",
+        "VK56", "v",
+        "VK57", "w",
+        "VK58", "x",
+        "VK59", "y",
+        "VK5A", "z",
+        ; numbers
+        "VK30", "0",
+        "VK31", "1",
+        "VK32", "2",
+        "VK33", "3",
+        "VK34", "4",
+        "VK35", "5",
+        "VK36", "6",
+        "VK37", "7",
+        "VK38", "8",
+        "VK39", "9",
+        ;symbols
+        "VKBD", "-",
+        "VKBB", "=",
+        "VKDB", "[",
+        "VKDD", "]",
+        "VKDC", "\",
+        "VKC0", "``",
+        "VKDE", "'",
+        "VKBC", ",",
+        "VKBE", ".",
+        "VKBF", "/",
+        "VKBA", ";",
     )
     global g_ModifierState
 
