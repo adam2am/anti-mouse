@@ -50,12 +50,48 @@ global g_ModifierState := {
 global g_Tooltip := {
     x: 0,
     y: 0,
-    textSingleShiftTap: "Next key shifted (Shift single-tap)",
-    textSinglecapsTap: "Next key shifted (caps single-tap)",
-    textDoubleTap: "Double-tap mode active",
-    colorNormal: "White",
-    colorActive: "Red",
-    font: "s12 Arial"
+    size: 16,  ; Size of the indicator
+    color: "0x2196F3",  ; Material Blue color
+    indicatorGui: 0
+}
+
+; Helper function for indicator positioning
+GetIndicatorPosition() {
+    if CaretGetPos(&caretX, &caretY) {
+        return { x: caretX - 8, y: caretY - 8 }  ; Offset by half the indicator size
+    }
+    
+    MouseGetPos(&mouseX, &mouseY)
+    return { x: mouseX + 15, y: mouseY + 15 }
+}
+
+; Show indicator with optional duration
+ShowTooltipMode(text := "", duration := 1000) {
+    if (text = "") {
+        if g_Tooltip.indicatorGui {
+            g_Tooltip.indicatorGui.Destroy()
+            g_Tooltip.indicatorGui := 0
+        }
+        return
+    }
+
+    pos := GetIndicatorPosition()
+    
+    ; Create or update the indicator GUI
+    if !g_Tooltip.indicatorGui {
+        g_Tooltip.indicatorGui := Gui("-Caption +AlwaysOnTop +ToolWindow +Owner")
+        g_Tooltip.indicatorGui.BackColor := g_Tooltip.color
+        WinSetTransColor("0x000001", g_Tooltip.indicatorGui)
+    }
+    
+    ; Set the region to create a circle
+    g_Tooltip.indicatorGui.Show(Format("w{1} h{1} x{2} y{3}", 
+        g_Tooltip.size, pos.x, pos.y))
+    
+    if (duration > 0) {
+        SetTimer () => ShowTooltipMode(), -duration
+        SetTimer(() => ResetSingleTapModes(), -duration)
+    }
 }
 
 ; Helper function for tooltip positioning
@@ -79,23 +115,6 @@ GetTooltipPosition() {
     return { x: mouseX + 15, y: mouseY + 15 }
 }
 
-; Show tooltip with optional duration
-ShowTooltipMode(text := "", duration := 1000) {
-    if (text = "") {
-        ToolTip()
-        return
-    }
-
-    pos := GetTooltipPosition()
-    ToolTip(text, pos.x, pos.y)
-
-    if (duration > 0) {
-        SetTimer () => ToolTip(), -duration
-
-        ; Start a timer to reset single-tap modes
-        SetTimer(() => ResetSingleTapModes(), -duration)
-    }
-}
 
 ResetSingleTapModes() {
     global g_ModifierState
