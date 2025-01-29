@@ -32,7 +32,11 @@ global g_ModifierState := {
     capsLockoutActive: false,
     navigationMode: false,
     shiftLastShiftedKeyTime: 0,
-    capsLastShiftedKeyTime: 0
+    capsLastShiftedKeyTime: 0,
+    ;
+    shiftedKeyHerePressed: false,
+    navigationModeVisited: false,
+    shiftedKeyPressedCount: 0,
 }
 
 ; --- ToolTip Configuration ---
@@ -45,6 +49,58 @@ global g_Tooltip := {
     colorNormal: "White",
     colorActive: "Red",
     font: "s12 Arial"
+}
+
+global g_ShiftIndicator := {
+    gui: Gui(),
+    visible: false,
+    width: 20,
+    height: 20,
+    offsetX: 2,
+    offsetY: 20
+}
+
+; Initialize the shift indicator GUI
+InitShiftIndicator() {
+    g_ShiftIndicator.gui.Opt("+AlwaysOnTop -Caption +ToolWindow")
+    g_ShiftIndicator.gui.BackColor := "2C2C2C"
+    g_ShiftIndicator.gui.SetFont("s12", "Segoe UI")
+    g_ShiftIndicator.gui.Add("Text", "c7BB65C w20 h20 Center", "⇧")
+}
+
+;
+; Show shift indicator near the caret
+ShowShiftIndicator() {
+    caretPos := GetCaretPos()
+    if (caretPos) {
+        g_ShiftIndicator.gui.Show(Format("x{} y{} NoActivate",
+            caretPos.x + g_ShiftIndicator.offsetX,
+            caretPos.y + g_ShiftIndicator.offsetY))
+        g_ShiftIndicator.visible := true
+        SetTimer(HideShiftIndicator, -1000)
+    }
+}
+
+;
+HideShiftIndicator() {
+    g_ShiftIndicator.gui.Hide()
+    g_ShiftIndicator.visible := false
+}
+
+; Function to get caret position
+GetCaretPos() {
+    static GUITHREADINFO_SIZE := A_PtrSize = 8 ? 72 : 48
+    static GUITHREADINFO := Buffer(GUITHREADINFO_SIZE, 0)
+    NumPut("UInt", GUITHREADINFO_SIZE, GUITHREADINFO)
+
+    if !DllCall("GetGUIThreadInfo", "UInt", 0, "Ptr", GUITHREADINFO) {
+        return false
+    }
+
+    x := NumGet(GUITHREADINFO, A_PtrSize = 8 ? 56 : 36, "Int")
+    y := NumGet(GUITHREADINFO, A_PtrSize = 8 ? 60 : 40, "Int")
+
+    return { x: x, y: y }
 }
 
 ; Helper function for tooltip positioning
@@ -60,6 +116,8 @@ GetTooltipPosition() {
     }
     return { x: 50, y: A_ScreenHeight - 100 }
 }
+
+InitShiftIndicator()
 
 ; Show tooltip with optional duration
 ShowTooltip(text := "", duration := 1000) {
@@ -105,6 +163,8 @@ RShift:: {
 
 ;
 ;
+
+; Replace ShowTooltip calls with ShowShiftIndicator
 ~LShift Up:: {
     global g_ModifierState
     pressTime := A_TickCount - g_ModifierState.shiftPressTime
@@ -112,10 +172,10 @@ RShift:: {
     if (pressTime < 200
         && g_ModifierState.shiftBeingHeld
         && !g_ModifierState.shiftSingleTapUsed
-        && !g_ModifierState.shiftKeyProcessed) {  ; Only activate if no key was processed
+        && !g_ModifierState.shiftKeyProcessed) {
         g_ModifierState.singleTapShift := true
         g_ModifierState.shiftTapTime := A_TickCount
-        ShowTooltip(g_Tooltip.textSingleShiftTap)
+        ShowShiftIndicator()
     }
     g_ModifierState.shiftBeingHeld := false
 }
@@ -154,18 +214,20 @@ CapsLock Up:: {
         && !g_ModifierState.doubleTapCaps) {
         g_ModifierState.singleTapCaps := true
         g_ModifierState.capsTapTime := A_TickCount
-        ShowTooltip(g_Tooltip.textSinglecapsTap)
+        ShowShiftIndicator()
     }
 
     g_ModifierState.awaitingRelease := false
 }
 
+;
 ResetCapsLockCounts() {
     global g_ModifierState
     g_ModifierState.capsLockPressCount := 0
     g_ModifierState.capsLockReleaseCount := 0
 }
 
+;
 ; Context-sensitive hotkeys when modifier is pressed
 #HotIf GetKeyState("CapsLock", "P")
 a:: {
@@ -385,40 +447,45 @@ vkBC:: SendShiftedKey(",")  ; ,
 vkBE:: SendShiftedKey(".")  ; .
 vkBF:: SendShiftedKey("/")  ; /
 
-; Modified SendShiftedKey with improved timing control
-
-; Modified SendShiftedKey with improved timing control
-
 ; Modified SendShiftedKey function with strict state tracking
 SendShiftedKey(key) {
     global g_ModifierState
     static lockoutDuration := 300
     currentTime := A_TickCount
+    g_ModifierState.shiftedKeyPressedCount := +1
 
-    ; Process single shift tap
-    if (g_ModifierState.singleTapShift && !g_ModifierState.shiftSingleTapUsed && (currentTime - g_ModifierState.shiftLastShiftedKeyTime >
-        lockoutDuration)) {
-        SendInput("+" . key)
-        g_ModifierState.shiftLastShiftedKeyTime := currentTime
+    if g_ModifierState.shiftedKeyPressedCount == 1 {
+        ; Process single shift tap
+        if (g_ModifierState.singleTapShift && !g_ModifierState.shiftSingleTapUsed && (currentTime - g_ModifierState.shiftLastShiftedKeyTime >
+            lockoutDuration)) {
+            SendInput("+" . key)
+            g_ModifierState.shiftLastShiftedKeyTime := currentTime
+            g_ModifierState.singleTapShift := false
+            g_ModifierState.shiftSingleTapUsed := true
+            HideShiftIndicator()
+            return
+        }
+
+        ; Process single caps tap
+        if (g_ModifierState.singleTapCaps && !g_ModifierState.capsSingleTapUsed && (currentTime - g_ModifierState.capsLastShiftedKeyTime >
+            lockoutDuration)) {
+            SendInput("+" . key)
+            g_ModifierState.capsLastShiftedKeyTime := currentTime
+            g_ModifierState.singleTapCaps := false
+            g_ModifierState.capsSingleTapUsed := true
+            ShowTooltip()
+            return
+        }
+
+        ; Default behavior
+        SendInput(key)
+
+    } else {
+        g_ModifierState.shiftedKeyPressedCount := 0
         g_ModifierState.singleTapShift := false
-        g_ModifierState.shiftSingleTapUsed := true
-        ShowTooltip()
-        return
-    }
-
-    ; Process single caps tap
-    if (g_ModifierState.singleTapCaps && !g_ModifierState.capsSingleTapUsed && (currentTime - g_ModifierState.capsLastShiftedKeyTime >
-        lockoutDuration)) {
-        SendInput("+" . key)
-        g_ModifierState.capsLastShiftedKeyTime := currentTime
         g_ModifierState.singleTapCaps := false
-        g_ModifierState.capsSingleTapUsed := true
-        ShowTooltip()
-        return
+        g_ModifierState.doubleTapCaps := false
     }
-
-    ; Default behavior
-    SendInput(key)
 }
 
 ; Function to unlock shift single-tap mode
