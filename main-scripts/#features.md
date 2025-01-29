@@ -1,25 +1,38 @@
 # Currently
-- antimouse gui
-        >> some progress
+- antimouse gui:
+>> some progress
+
+/antimouse with claude
+        - for now its ending everything in 1 cell (antimouse with claude)
+                and not moving to a next cell
+        - showing everything on 1 monitor instead of 2,
+                but movement works nicely between both monitors
+        >> sugg: to make different letters for different layout
+                qwert yuiop // q is debatable, cuz left finger on a capsedr
+                asdf ghjk
+
+/antimouse 0.01
         - sometimes it's going to 2nd letter (AB) it would go B as a collumn
         - sometimes it would confuse my taps
                 i would do GM it would go G collumn first, then back to M collumn
                 instead of GM cell
-                ex: now whats happeniing 
-                        I>I>D>F == and it should do 
-                        -- II >> DF cell
-                        But its doing 
-                        -- II >> Dcollumn >> Fcollumn
+                ex: for now whats happeniing: 
+                        - pressing I>I>D>F == and it should do 
+                                II press > II cell >> DF press > DF cell
+                        - but its doing 
+                                II press > II cell >> DF press > Dcollumn > Fcollumn
+                sugg: -- higlighting a collumn after a first tap 
+                        > then when second tap goes to the cell + highlighting a cell itself
 
-        - now it's turning off functionality when pressed button outside of the current layout (k) == improvement angle
+
+        - /remindme
+        - automatic date calculation (last time visited? --> auto calculate + mentioning with a n`n`)
+        
+        - when key is shifted = like in mac under the cursor
+        - its also turning off functionality when pressed button outside of the current layout (k)
         - 2nd monitor support
         - CAPSLOCK STILL getting turned (kekw)
         - as well as space randomly
-
-        - 1пн/2вт instead of пн/вт
-
-
-
 
 
 
@@ -51,6 +64,15 @@
                 like J and F has physically something on them to physially feel and navigate
                 is it possible to do something about ' to feel the backspace
         - Caps + E as Ctrl+W = exit?
+        - Caps + N = navigate (Alt behaviour) for Alt+LeftRightArrow behaviours
+                is it even cool to do the N? Cuz its on a right hand where JKLI
+                could be cool to do q/e/r/t as a navigation?
+                and single tap caps+t = gonna be like a fuzzy finder or smth
+                but holding with JKLI 
+                        with R is kinda easier.
+                        hmmm, need more thinking here 
+        - actual Windows navigation via some shortcut / w+smth/ 
+                nah, its for words = word delete etc
 
 
 ## Hotstrings entering the arena

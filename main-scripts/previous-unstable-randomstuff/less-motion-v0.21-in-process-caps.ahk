@@ -141,16 +141,16 @@ ShowTooltip(text := "", duration := 1000) {
 ;
 ;
 ;
-RShift:: {
-    if not GetKeyState("s", "P") and not GetKeyState("a", "P")
-        SendEvent "{Enter}"
-    else if GetKeyState("s", "P") and not GetKeyState("a", "P")
-        SendEvent "^{Enter}"
-    else if not GetKeyState("s", "P") and GetKeyState("a", "P")
-        SendEvent "+{Enter}"
-    else if GetKeyState("s", "P") and GetKeyState("a", "P")
-        SendEvent "+^{Enter}"
-}
+; RShift:: {
+;     if not GetKeyState("s", "P") and not GetKeyState("a", "P")
+;         SendEvent "{Enter}"
+;     else if GetKeyState("s", "P") and not GetKeyState("a", "P")
+;         SendEvent "^{Enter}"
+;     else if not GetKeyState("s", "P") and GetKeyState("a", "P")
+;         SendEvent "+{Enter}"
+;     else if GetKeyState("s", "P") and GetKeyState("a", "P")
+;         SendEvent "+^{Enter}"
+; }
 ;
 ; --- Shift Handling ---
 ~LShift:: {

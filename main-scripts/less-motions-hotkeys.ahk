@@ -1,4 +1,6 @@
-﻿#Requires AutoHotkey v2.0
+﻿; less-motions v0.23-in-process
+
+#Requires AutoHotkey v2.0
 
 ; Ensure CapsLock doesn't accidentally get turned on
 SetCapsLockState("AlwaysOff")
