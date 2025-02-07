@@ -1,3 +1,8 @@
+<!-- .md with my random thoughts and current progress -->
+
+
+
+
 # Currently
 - antimouse gui:
 >> some progress
@@ -25,18 +30,25 @@
                         > then when second tap goes to the cell + highlighting a cell itself
 
 
-        - /remindme
-        - automatic date calculation (last time visited? --> auto calculate + mentioning with a n`n`)
+        - when key is shifted = like in mac under the cursor
+        - double-tap of caps not turning it off unlike double-shift > wanna make double caps have the same behaviour
+        - instead of random unrelated shortcut for other extention
+                make my own implementation of the highlighting stuff inside of the brackets
         
 
-        
-        - when key is shifted = like in mac under the cursor
-        - double-tap of caps not turning it off unlike double-shift > wanna make double caps have the same behaviour 
 
         - its also turning off functionality when pressed button outside of the current layout (k)
         - 2nd monitor support
         - CAPSLOCK STILL getting turned (kekw)
         - as well as space randomly
+
+        - do I rename it to 
+                second-layout (shortcuts), 
+                anti-mouse(grid-jump + motions),        
+                command-activator (hotstrings)
+                ?
+                and what do I do with a version control?
+                extra branch as a dev/pre-release for a playtest
 
 
 
@@ -62,6 +74,14 @@
         - Caps + Click as a Ctrl + Click 
         - Caps + tab = shift tab
         - is there a excalidraw for vscode studio    
+
+        - settings page with ability to turn on/off
+                + to add extra functionality or the way its gonna behave
+                like ;dw (hotstrings) with a space at the end or insta execution 
+                cuz ;aw(accent word) isn't possible insta == gonna not let the ;awd (accent word delete)
+                make sense to add a space or some timeout before the insta execution
+                and for full phrases like ;awd when we have nothing after it
+                        or just remove the ;awd completely >> make a delition via ;d first
 
 
         - switching language layout with something else as well 
@@ -95,13 +115,25 @@
 - ;nl = next line
 - Caps + 1/2/3 = as Alt + 1/2/3 to switch editors
 
+- scenario descriptions / sorted by 1 - newest version 2 - importance+frequency
+        + ability to propose scenario to handle
+                - what do you think could make you keep yourself in a flow 
+
+        in realm of great typing experience, moving hands less
+        propose your scenario, aspect or moment, describe what you see can be improved
+        or just voice it all out, all the frusturations or inspirations, preferences, moments in your experience
+        --- as soon I review it, it would give you a notification ---
+        --- if its frequent/cool/important usecase, Imma place it on a roadmap
+        --- or you can contribute yourself if you can, its completely opensource --> 
+
+
 
 
 
 
 # Completed already
 
-        #1m #3w #пт #2025 / #2025_01_17 #winter
+        #1m #3w #2025 / #2025_01_17 #winter
 <!-- --- cb16c0709ebbb3f4aad112837a64fbf13c2c6ec6 --- -->
 + rows switch with collumns
 WANNA switch rows and collumns,
@@ -115,7 +147,7 @@ AA AB AC AD not to the right like its right now, but down
 
 
 
-        #1m #3w #чт #2025 / #2025_01_16 #winter
+        #1m #3w #2025 / #2025_01_16 #winter
 <!-- 4d3e47e694d299874602a7191789cce0be1e7adb -->
 + now when I do caps > caps+JKL > caps again, it would not turn on shifted mode in a 3rd step, I have to again press caps for that
         - (1st step, dummy shifted mode without pressing else) Caps + CapsUp 
@@ -154,7 +186,7 @@ AA AB AC AD not to the right like its right now, but down
         >> tracking combo of caps+button as well with a counter
 
 
-        #1m #3w #ср #2025 / #2025_01_15 #winter
+        #1m #3w  #2025 / #2025_01_15 #winter
 + when caps pressed first, now shift is not sending shifted keys/when shift pressed first, caps is not sending keys
         > with tracking statements all good
 
@@ -166,12 +198,12 @@ but if I want to do triple tap BNM it would do all shifted keys
         > did it with a number counting
 
 
-        #1m #3w #вт #2025 / #2025_01_14 #winter
+        #1m #3w #2025 / #2025_01_14 #winter
 + When typing, suddenly was kinda thinking about returning a 1 tap caps mode, instead of only shift 1 tap mode.
 + Caps + ~ = Alt+~ terminal activation
 
 
-        #1m #3w #пн #2025 / #2025_01_13 #winter
+        #1m #3w #2025 / #2025_01_13 #winter
 + single/double tap CapsLock works nicely (- great, now what if I pressed 1 tap of caps, but then decided to enter a regular editing mode, is there a way to switch back to default editing capslock powerbuton mode?)
 
 
