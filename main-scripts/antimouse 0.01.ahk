@@ -1,224 +1,140 @@
 #Requires AutoHotkey v2.0
-; Ensure CapsLock doesn't accidentally get turned on
 SetCapsLockState("AlwaysOff")
 
-; Global state
-class State {
-    static isGridActive := false
-    static firstKey := ""
-    static currentColumn := ""
-    static cellReached := false
-    static currentMonitor := 1
-}
+class OverlayGUI {
+    __New(monitorIndex, Left, Top, Right, Bottom) {
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
+        this.gui.BackColor := "000000"
+        this.gui.Opt("+E0x20")
 
-class GridOverlay {
-    static guis := Map()
-    static cells := Map()
-    static columnCenters := Map()
-    static monitorInfo := Map()
+        this.width := Right - Left
+        this.height := Bottom - Top
+        this.monitorIndex := monitorIndex
+        this.Left := Left
+        this.Top := Top
+        this.Right := Right
+        this.Bottom := Bottom
 
-    static Init() {
-        this.guis.Clear()  ; Clear existing GUIs
-        this.cells.Clear() ; Clear existing cells
-        this.columnCenters.Clear()
-        this.monitorInfo.Clear()
+        this.cols := 13
+        this.rows := 13
+        this.cellWidth := this.width // this.cols
+        this.cellHeight := this.height // this.rows
 
-        loop MonitorGetCount() {
-            MonitorGetWorkArea(A_Index, &Left, &Top, &Right, &Bottom)
-            this.monitorInfo[A_Index] := {
-                left: Left,
-                top: Top,
-                right: Right,
-                bottom: Bottom,
-                width: Right - Left,
-                height: Bottom - Top
-            }
-        }
-    }
+        this.cells := Map()
+        this.gui.SetFont("s" Min(this.cellWidth, this.cellHeight) // 4, "Arial")
+        this.gui.Add("Picture", "w" this.width " h" this.height)
 
-    static Show() {
-        this.Init()  ; Always reinitialize when showing
-
-        for monitorIndex, info in this.monitorInfo {
-            this.CreateMonitorGrid(monitorIndex, info)
-        }
-
-        currentMonitor := this.GetCurrentMonitor()
-        State.currentMonitor := currentMonitor
-
-        for index, gui in this.guis {
-            gui.gui.Show("NoActivate")
-        }
-
-        State.isGridActive := true
-        this.ResetState()
-    }
-
-    static CreateMonitorGrid(monitorIndex, monitorInfo) {
-        global thisGui := Gui("+AlwaysOnTop -Caption +ToolWindow")
-        cols := 13
-        rows := 13
-        cellWidth := monitorInfo.width // cols
-        cellHeight := monitorInfo.height // rows
-
-        thisGui.BackColor := "000000"
-        thisGui.SetFont("s" Min(cellWidth, cellHeight) // 4, "Arial")
-
-        ; Create semi-transparent overlay
-        thisGui.Add("Picture", "w" monitorInfo.width " h" monitorInfo.height)
-
-        ; Create column highlight overlay (initially hidden)
-        columnHighlight := thisGui.Add("Progress",
-            "x0 y0 w" cellWidth " h" monitorInfo.height " Hidden Background00FF00")
-
-        ; Create cell highlight overlay (initially hidden)
-        cellHighlight := thisGui.Add("Progress",
-            "x0 y0 w" cellWidth " h" cellHeight " Hidden Background0099FF")
-
-        ; First letters (horizontal columns)
-        ; todo: potential layout here is Tab, q,w,e,r,t,y,u,i,o,p,[,]
         colLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
-        ; Second letters (vertical rows)
         rowLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
 
-        ; Store GUI information
-        this.guis[monitorIndex] := {
-            gui: thisGui,
-            columnHighlight: columnHighlight,
-            cellHighlight: cellHighlight
-        }
-
-        ; Loop through horizontal positions first (columns)
-        for horizIndex, firstLetter in colLetters {
-            x := (horizIndex - 1) * cellWidth
-
-            ; Store column center positions for instant movement
-            this.columnCenters[monitorIndex "_" firstLetter] := {
-                x: x + cellWidth / 2 + monitorInfo.left,
-                width: cellWidth,
-                left: x
-            }
-
-            ; Then through vertical positions (rows)
-            for vertIndex, secondLetter in rowLetters {
-                y := (vertIndex - 1) * cellHeight
-
-                ; Create cell key with monitor index and coordinates
-                cellKey := monitorIndex "_" firstLetter secondLetter
+        for colIndex, firstLetter in colLetters {
+            x := (colIndex - 1) * this.cellWidth
+            for rowIndex, secondLetter in rowLetters {
+                y := (rowIndex - 1) * this.cellHeight
+                cellKey := firstLetter secondLetter
                 this.cells[cellKey] := {
-                    x: x + cellWidth / 2 + monitorInfo.left,
-                    y: y + cellHeight / 2 + monitorInfo.top,
-                    left: x,
-                    top: y,
-                    width: cellWidth,
-                    height: cellHeight
+                    x: Left + x + (this.cellWidth // 2),
+                    y: Top + y + (this.cellHeight // 2)
                 }
-
-                ; Display coordinates with monitor number
-                thisGui.Add("Text",
+                this.gui.Add("Text",
                     "x" x " y" y
-                    " w" cellWidth " h" cellHeight
+                    " w" this.cellWidth " h" this.cellHeight
                     " Center BackgroundTrans cWhite",
                     monitorIndex ":" firstLetter secondLetter)
             }
         }
 
-        thisGui.Opt("+E0x20")  ; Click-through
-        WinSetTransColor("000000 200", thisGui)
-
-        ; Position the GUI on the correct monitor
-        thisGui.Move(monitorInfo.left, monitorInfo.top)
+        WinSetTransColor("000000 200", this.gui)
+        this.x := Left
+        this.y := Top
     }
 
-    static GetCurrentMonitor() {
-        MouseGetPos(&mouseX, &mouseY)
-        for index, info in this.monitorInfo {
-            if (mouseX >= info.left && mouseX < info.right &&
-                mouseY >= info.top && mouseY < info.bottom) {
-                return index
-            }
+    Show() {
+        this.gui.Show(Format("x{} y{} NoActivate", this.x, this.y))
+    }
+
+    Hide() {
+        this.gui.Hide()
+    }
+
+    MoveToCellCenter(cellKey) {
+        if this.cells.Has(cellKey) {
+            coord := this.cells[cellKey]
+            MouseMove(coord.x, coord.y, 0)  ; Absolute coordinates
+            return true
         }
-        return 1  ; Default to first monitor
+        ToolTip "Cell not found: " cellKey
+        return false
     }
 
-    static Hide() {
-        if this.guis.Count {
-            for index, gui in this.guis {
-                gui.gui.Hide()
-            }
-            this.ResetState()
-            State.isGridActive := false  ; Ensure grid mode is completely disabled
-        }
+    ContainsPoint(x, y) {
+        return (x >= this.Left && x < this.Right && y >= this.Top && y < this.Bottom)
     }
+}
 
-    static ResetState() {
+class State {
+    static overlays := []
+    static isVisible := false
+    static firstKey := ""
+    static currentOverlay := ""
+}
+
+CapsLock & h:: {
+    if (State.isVisible) {
+        for overlay in State.overlays
+            overlay.Hide()
+        State.isVisible := false
         State.firstKey := ""
-        State.currentColumn := ""
-        State.cellReached := false
-        this.HideHighlights()
+        State.currentOverlay := ""
+        ToolTip
+        SetTimer(TrackCursor, 0)
+        return
     }
 
-    static HideHighlights() {
-        for index, gui in this.guis {
-            gui.columnHighlight.Visible := false
-            gui.cellHighlight.Visible := false
+    State.overlays := []
+    MouseGetPos(&startX, &startY)
+
+    ; Create overlays and detect initial monitor
+    loop MonitorGetCount() {
+        MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+        overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom)
+        overlay.Show()
+        State.overlays.Push(overlay)
+        ; Explicitly check if cursor is within this monitor's bounds
+        if (overlay.ContainsPoint(startX, startY)) {
+            State.currentOverlay := overlay
+            ToolTip "Started on Monitor " overlay.monitorIndex " at X:" startX " Y:" startY
         }
     }
 
-    static HighlightColumn(letter) {
-        if this.columnCenters.Has(State.currentMonitor "_" letter) {
-            col := this.columnCenters[State.currentMonitor "_" letter]
-            this.guis[State.currentMonitor].columnHighlight.Move(col.left, 0)
-            this.guis[State.currentMonitor].columnHighlight.Visible := true
-        }
+    ; Fallback: if no overlay contains the cursor (edge case), default to first monitor
+    if (!State.currentOverlay && State.overlays.Length > 0) {
+        State.currentOverlay := State.overlays[1]
+        ToolTip "Fallback to Monitor 1"
     }
 
-    static HighlightCell(cell) {
-        if this.cells.Has(State.currentMonitor "_" cell) {
-            pos := this.cells[State.currentMonitor "_" cell]
-            this.guis[State.currentMonitor].cellHighlight.Move(pos.left, pos.top)
-            this.guis[State.currentMonitor].cellHighlight.Visible := true
-        }
-    }
+    State.isVisible := true
+    SetTimer(TrackCursor, 50)
+}
 
-    static MoveToColumn(letter) {
-        if this.columnCenters.Has(State.currentMonitor "_" letter) {
-            col := this.columnCenters[State.currentMonitor "_" letter]
-            MouseMove(col.x, this.monitorInfo[State.currentMonitor].top + this.monitorInfo[State.currentMonitor].height /
-                2)
-            this.HighlightColumn(letter)
-            State.currentColumn := letter
-            return true
-        }
-        return false
-    }
+TrackCursor() {
+    if (!State.isVisible)
+        return
 
-    static MoveTo(cell) {
-        if this.cells.Has(State.currentMonitor "_" cell) {
-            pos := this.cells[State.currentMonitor "_" cell]
-            MouseMove(pos.x, pos.y)
-            this.HighlightCell(cell)
-            State.cellReached := true
-            return true
+    MouseGetPos(&x, &y)
+    for overlay in State.overlays {
+        if (overlay.ContainsPoint(x, y)) {
+            if (State.currentOverlay !== overlay) {
+                State.currentOverlay := overlay
+                ToolTip "Moved to Monitor " overlay.monitorIndex " at X:" x " Y:" y
+            }
+            return
         }
-        return false
     }
 }
 
-#HotIf GetKeyState('CapsLock', 'P')
-SetCapsLockState("AlwaysOff")
+#HotIf State.isVisible
 
-Alt:: {
-    if !State.isGridActive {
-        GridOverlay.Show()
-    }
-}
-#HotIf
-
-; Define hotkeys that only work when grid is active
-#HotIf State.isGridActive
-
-; Handle letter keys
 A:: HandleKey("A")
 B:: HandleKey("B")
 C:: HandleKey("C")
@@ -232,48 +148,68 @@ J:: HandleKey("J")
 K:: HandleKey("K")
 L:: HandleKey("L")
 M:: HandleKey("M")
-N:: HandleKey("N")
-O:: HandleKey("O")
-P:: HandleKey("P")
 
-; Handle number keys for monitor selection
-1:: SelectMonitor(1)
-2:: SelectMonitor(2)
-3:: SelectMonitor(3)
-4:: SelectMonitor(4)
+1:: SwitchMonitor(1)
+2:: SwitchMonitor(2)
+3:: SwitchMonitor(3)
+4:: SwitchMonitor(4)
 
-; Click handlers
 Space:: {
     Click
-    GridOverlay.Hide()
+    Cleanup()
 }
 
 RButton:: {
     Click "Right"
-    GridOverlay.Hide()
+    Cleanup()
 }
 
-; Cancel grid
-Escape:: GridOverlay.Hide()
+Escape:: {
+    Cleanup()
+}
 
-#HotIf
+Cleanup() {
+    for overlay in State.overlays
+        overlay.Hide()
+    State.isVisible := false
+    State.firstKey := ""
+    State.currentOverlay := ""
+    ToolTip
+    SetTimer(TrackCursor, 0)
+}
 
-SelectMonitor(number) {
-    if (number <= MonitorGetCount()) {
-        State.currentMonitor := number
-        if (State.currentColumn != "") {
-            GridOverlay.MoveToColumn(State.currentColumn)
-        }
+SwitchMonitor(monitorNum) {
+    if (!State.isVisible || monitorNum > State.overlays.Length)
+        return
+
+    ; Switch to the requested monitor
+    newOverlay := State.overlays[monitorNum]
+    if (newOverlay) {
+        State.currentOverlay := newOverlay
+        ; Move cursor to center of the selected monitor
+        centerX := newOverlay.Left + (newOverlay.width // 2)
+        centerY := newOverlay.Top + (newOverlay.height // 2)
+        MouseMove(centerX, centerY, 0)
+        ToolTip "Switched to Monitor " newOverlay.monitorIndex " at X:" centerX " Y:" centerY
     }
 }
 
+#HotIf
+
 HandleKey(key) {
-    if State.firstKey = "" {
-        if GridOverlay.MoveToColumn(key) {
-            State.firstKey := key
+    if (!State.isVisible || !State.currentOverlay)
+        return
+
+    if (State.firstKey = "") {
+        State.firstKey := key
+        ToolTip "First key: " key " on Monitor " State.currentOverlay.monitorIndex
+    } else {
+        cellKey := State.firstKey key
+        if (State.currentOverlay.MoveToCellCenter(cellKey)) {
+            ToolTip "Moved to: " cellKey " on Monitor " State.currentOverlay.monitorIndex
+            Sleep 1000
+            ToolTip
         }
-    } else if !State.cellReached {
-        targetCell := State.firstKey key
-        GridOverlay.MoveTo(targetCell)
+        State.firstKey := ""
     }
 }
