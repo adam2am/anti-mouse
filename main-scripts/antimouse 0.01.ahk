@@ -120,7 +120,7 @@ class State {
     static activeRowKeys := [] ; Keys for the currently active layout's rows
 }
 
-CapsLock & h:: {
+CapsLock & q:: {
     if (State.isVisible) {
         Cleanup() ; Use the cleanup function to hide and reset state
         return
