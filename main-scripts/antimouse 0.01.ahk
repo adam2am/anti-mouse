@@ -1,5 +1,8 @@
 #Requires AutoHotkey v2.0
 SetCapsLockState("AlwaysOff")
+CoordMode "Mouse", "Screen" ; Ensure mouse coordinates are relative to the virtual screen
+
+global showcaseDebug := false ; Set to true to enable debug tooltips and delays
 
 class OverlayGUI {
     __New(monitorIndex, Left, Top, Right, Bottom) {
@@ -68,7 +71,17 @@ class OverlayGUI {
     }
 
     ContainsPoint(x, y) {
-        return (x >= this.Left && x < this.Right && y >= this.Top && y < this.Bottom)
+        checkResult := (x >= this.Left && x < this.Right && y >= this.Top && y < this.Bottom)
+        ; DEBUG: Show the exact check being performed
+        if (showcaseDebug) {
+            ToolTip("Checking Monitor " this.monitorIndex ": Point(" x "," y ") in Bounds(" this.Left "," this.Top "," this
+                .Right "," this.Bottom ")? -> " checkResult, , , 3) ; Use ToolTip ID 3
+            Sleep 1500 ; Give time to read
+            ToolTip(, , , 3) ; Clear tooltip 3
+        }
+        ; Validation: Uncomment to log point and boundaries for debugging
+        ; ToolTip "Checking X=" x " Y=" y " vs L=" this.Left " T=" this.Top " R=" Right " B=" Bottom
+        return checkResult
     }
 }
 
@@ -93,28 +106,52 @@ CapsLock & h:: {
 
     State.overlays := []
     MouseGetPos(&startX, &startY)
+    ; Validation: Display initial cursor position for debugging
+    ToolTip "Start X=" startX " Y=" startY, 100, 100
 
-    ; Create overlays and detect initial monitor
     loop MonitorGetCount() {
         MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+        ; DEBUG: Show assigned index and coordinates
+        if (showcaseDebug) {
+            ToolTip("Monitor " A_Index " assigned: L=" Left " T=" Top " R=" Right " B=" Bottom, , , 1) ; Use ToolTip ID 1
+            Sleep 1500 ; Give time to read the tooltip
+            ToolTip(, , , 1) ; Clear tooltip 1
+        }
+        ; Validation: Log monitor boundaries to ensure they're correct
+        ; ToolTip "Monitor " A_Index ": L=" Left " T=" Top " R=" Right " B=" Bottom, 200, 100 + (A_Index * 20)
+
         overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom)
         overlay.Show()
         State.overlays.Push(overlay)
-        ; Explicitly check if cursor is within this monitor's bounds
+
         if (overlay.ContainsPoint(startX, startY)) {
             State.currentOverlay := overlay
-            ToolTip "Started on Monitor " overlay.monitorIndex " at X:" startX " Y:" startY
+            ; Validation: Confirm detected monitor
+            ToolTip "Detected Monitor " overlay.monitorIndex " at X=" startX " Y=" startY, 100, 100
         }
     }
 
-    ; Fallback: if no overlay contains the cursor (edge case), default to first monitor
+    ; Improved Fallback: Default to primary monitor (contains 0,0) if detection fails
     if (!State.currentOverlay && State.overlays.Length > 0) {
-        State.currentOverlay := State.overlays[1]
-        ToolTip "Fallback to Monitor 1"
+        for overlay in State.overlays {
+            if (overlay.ContainsPoint(0, 0)) {
+                State.currentOverlay := overlay
+                ToolTip "Fallback to Monitor " overlay.monitorIndex " (Primary)", 100, 100
+                break
+            }
+        }
+        if (!State.currentOverlay) {
+            State.currentOverlay := State.overlays[1]
+            ToolTip "Last Resort: Monitor 1", 100, 100
+        }
     }
 
-    State.isVisible := true
-    SetTimer(TrackCursor, 50)
+    if (State.currentOverlay) {
+        State.isVisible := true
+        SetTimer(TrackCursor, 50)
+    } else {
+        ToolTip "Error: No monitor detected", 100, 100
+    }
 }
 
 TrackCursor() {
@@ -126,7 +163,8 @@ TrackCursor() {
         if (overlay.ContainsPoint(x, y)) {
             if (State.currentOverlay !== overlay) {
                 State.currentOverlay := overlay
-                ToolTip "Moved to Monitor " overlay.monitorIndex " at X:" x " Y:" y
+                ; Validation: Confirm monitor switch detection
+                ; ToolTip "Switched to Monitor " overlay.monitorIndex " at X=" x " Y=" y, 100, 100
             }
             return
         }
@@ -182,15 +220,25 @@ SwitchMonitor(monitorNum) {
     if (!State.isVisible || monitorNum > State.overlays.Length)
         return
 
-    ; Switch to the requested monitor
     newOverlay := State.overlays[monitorNum]
-    if (newOverlay) {
+    if (newOverlay && State.currentOverlay !== newOverlay) { ; Only move if switching monitors
         State.currentOverlay := newOverlay
-        ; Move cursor to center of the selected monitor
         centerX := newOverlay.Left + (newOverlay.width // 2)
         centerY := newOverlay.Top + (newOverlay.height // 2)
+        ; DEBUG: Show target monitor index and calculated center coordinates
+        if (showcaseDebug) {
+            ToolTip("Switching to Monitor Index: " newOverlay.monitorIndex ". Target Coords: X=" centerX " Y=" centerY, , ,
+                2) ; Use ToolTip ID 2
+            Sleep 1500 ; Give time to read the tooltip
+            ToolTip(, , , 2) ; Clear tooltip 2
+        }
+        ; Validation: Log calculated center to ensure it's within monitor bounds
+        ; ToolTip "Switch to Monitor " newOverlay.monitorIndex " Center X=" centerX " Y=" centerY, 100, 100
+
         MouseMove(centerX, centerY, 0)
-        ToolTip "Switched to Monitor " newOverlay.monitorIndex " at X:" centerX " Y:" centerY
+    } else {
+        ; Validation: Confirm no movement when already on the target monitor
+        ToolTip "Already on Monitor " (newOverlay ? newOverlay.monitorIndex : "None"), 100, 100
     }
 }
 
