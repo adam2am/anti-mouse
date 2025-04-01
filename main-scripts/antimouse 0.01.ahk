@@ -3,9 +3,32 @@ SetCapsLockState("AlwaysOff")
 CoordMode "Mouse", "Screen" ; Ensure mouse coordinates are relative to the virtual screen
 
 global showcaseDebug := false ; Set to true to enable debug tooltips and delays
+global selectedLayout := 1 ; 1: User QWERTY/ASDF, 2: Home Row ASDF/JKL;, 3: WASD/QWER
+
+; Define Layout Configurations
+global layoutConfigs := Map(
+    1, Map( ; User's 10x10 QWERTY/ASDF layout
+        "cols", 10,
+        "rows", 10,
+        "colKeys", ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+        "rowKeys", ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"]
+    ),
+    2, Map( ; Roo's 4x4 Home Row ASDF/JKL; layout
+        "cols", 4,
+        "rows", 4,
+        "colKeys", ["a", "s", "d", "f"],
+        "rowKeys", ["j", "k", "l", ";"]
+    ),
+    3, Map( ; Roo's 4x4 WASD/QWER layout (Alternative)
+        "cols", 4,
+        "rows", 4,
+        "colKeys", ["q", "w", "e", "r"],
+        "rowKeys", ["a", "s", "d", "f"]
+    )
+)
 
 class OverlayGUI {
-    __New(monitorIndex, Left, Top, Right, Bottom) {
+    __New(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys) { ; Accept layout keys
         this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
         this.gui.BackColor := "000000"
         this.gui.Opt("+E0x20")
@@ -18,8 +41,13 @@ class OverlayGUI {
         this.Right := Right
         this.Bottom := Bottom
 
-        this.cols := 13
-        this.rows := 13
+        ; Store the keys used for this specific overlay
+        this.colKeys := colKeys
+        this.rowKeys := rowKeys
+
+        ; Use dimensions from the provided keys
+        this.cols := this.colKeys.Length
+        this.rows := this.rowKeys.Length
         this.cellWidth := this.width // this.cols
         this.cellHeight := this.height // this.rows
 
@@ -27,14 +55,12 @@ class OverlayGUI {
         this.gui.SetFont("s" Min(this.cellWidth, this.cellHeight) // 4, "Arial")
         this.gui.Add("Picture", "w" this.width " h" this.height)
 
-        colLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
-        rowLetters := ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"]
-
-        for colIndex, firstLetter in colLetters {
+        ; Use the provided keys for iteration and labeling
+        for colIndex, firstKey in this.colKeys {
             x := (colIndex - 1) * this.cellWidth
-            for rowIndex, secondLetter in rowLetters {
+            for rowIndex, secondKey in this.rowKeys {
                 y := (rowIndex - 1) * this.cellHeight
-                cellKey := firstLetter secondLetter
+                cellKey := firstKey . secondKey ; Combine the actual keys pressed
                 this.cells[cellKey] := {
                     x: Left + x + (this.cellWidth // 2),
                     y: Top + y + (this.cellHeight // 2)
@@ -43,7 +69,7 @@ class OverlayGUI {
                     "x" x " y" y
                     " w" this.cellWidth " h" this.cellHeight
                     " Center BackgroundTrans cWhite",
-                    monitorIndex ":" firstLetter secondLetter)
+                    monitorIndex ":" firstKey . secondKey) ; Display the keys
             }
         }
 
@@ -90,19 +116,28 @@ class State {
     static isVisible := false
     static firstKey := ""
     static currentOverlay := ""
+    static activeColKeys := [] ; Keys for the currently active layout's columns
+    static activeRowKeys := [] ; Keys for the currently active layout's rows
 }
 
 CapsLock & h:: {
     if (State.isVisible) {
-        for overlay in State.overlays
-            overlay.Hide()
-        State.isVisible := false
-        State.firstKey := ""
-        State.currentOverlay := ""
-        ToolTip
-        SetTimer(TrackCursor, 0)
+        Cleanup() ; Use the cleanup function to hide and reset state
         return
     }
+
+    ; Get the configuration for the selected layout
+    currentConfig := layoutConfigs[selectedLayout]
+    if (!IsObject(currentConfig)) {
+        ToolTip "Error: Invalid selectedLayout (" selectedLayout ")", , , 4
+        Sleep 2000
+        ToolTip(, , , 4) ; Clear tooltip 4
+        return
+    }
+
+    ; Store the active keys in the State
+    State.activeColKeys := currentConfig["colKeys"]
+    State.activeRowKeys := currentConfig["rowKeys"]
 
     State.overlays := []
     MouseGetPos(&startX, &startY)
@@ -120,7 +155,8 @@ CapsLock & h:: {
         ; Validation: Log monitor boundaries to ensure they're correct
         ; ToolTip "Monitor " A_Index ": L=" Left " T=" Top " R=" Right " B=" Bottom, 200, 100 + (A_Index * 20)
 
-        overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom)
+        ; Pass the active keys to the constructor
+        overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, State.activeColKeys, State.activeRowKeys)
         overlay.Show()
         State.overlays.Push(overlay)
 
@@ -173,20 +209,30 @@ TrackCursor() {
 
 #HotIf State.isVisible
 
-A:: HandleKey("A")
-B:: HandleKey("B")
-C:: HandleKey("C")
-D:: HandleKey("D")
-E:: HandleKey("E")
-F:: HandleKey("F")
-G:: HandleKey("G")
-H:: HandleKey("H")
-I:: HandleKey("I")
-J:: HandleKey("J")
-K:: HandleKey("K")
-L:: HandleKey("L")
-M:: HandleKey("M")
+; --- Define Hotkeys for ALL potential layout keys ---
+q:: HandleKey("q")
+w:: HandleKey("w")
+e:: HandleKey("e")
+r:: HandleKey("r")
+t:: HandleKey("t")
+y:: HandleKey("y")
+u:: HandleKey("u")
+i:: HandleKey("i")
+o:: HandleKey("o")
+p:: HandleKey("p")
 
+a:: HandleKey("a")
+s:: HandleKey("s")
+d:: HandleKey("d")
+f:: HandleKey("f")
+g:: HandleKey("g")
+h:: HandleKey("h")
+j:: HandleKey("j")
+k:: HandleKey("k")
+l:: HandleKey("l")
+`;:: HandleKey(";") ; Semicolon needs escaping
+
+; --- Other Hotkeys ---
 1:: SwitchMonitor(1)
 2:: SwitchMonitor(2)
 3:: SwitchMonitor(3)
@@ -212,6 +258,8 @@ Cleanup() {
     State.isVisible := false
     State.firstKey := ""
     State.currentOverlay := ""
+    State.activeColKeys := [] ; Reset active keys
+    State.activeRowKeys := [] ; Reset active keys
     ToolTip
     SetTimer(TrackCursor, 0)
 }
@@ -249,15 +297,46 @@ HandleKey(key) {
         return
 
     if (State.firstKey = "") {
-        State.firstKey := key
-        ToolTip "First key: " key " on Monitor " State.currentOverlay.monitorIndex
-    } else {
-        cellKey := State.firstKey key
-        if (State.currentOverlay.MoveToCellCenter(cellKey)) {
-            ToolTip "Moved to: " cellKey " on Monitor " State.currentOverlay.monitorIndex
+        ; Check if the pressed key is a valid *first* key (column key) for the active layout
+        isValidFirstKey := false
+        for _, colKey in State.activeColKeys {
+            if (key = colKey) {
+                isValidFirstKey := true
+                break
+            }
+        }
+
+        if (isValidFirstKey) {
+            State.firstKey := key
+            ToolTip "First key: " key " on Monitor " State.currentOverlay.monitorIndex
+        } else {
+            ToolTip "Invalid first key: " key " for current layout."
             Sleep 1000
             ToolTip
         }
-        State.firstKey := ""
+    } else {
+        ; Check if the pressed key is a valid *second* key (row key) for the active layout
+        isValidSecondKey := false
+        for _, rowKey in State.activeRowKeys {
+            if (key = rowKey) {
+                isValidSecondKey := true
+                break
+            }
+        }
+
+        if (isValidSecondKey) {
+            cellKey := State.firstKey . key ; Combine the actual keys
+            if (State.currentOverlay.MoveToCellCenter(cellKey)) {
+                ToolTip "Moved to: " cellKey " on Monitor " State.currentOverlay.monitorIndex
+                Sleep 1000
+                ToolTip
+            }
+            State.firstKey := "" ; Reset after successful move or attempt
+        } else {
+            ToolTip "Invalid second key: " key " for current layout."
+            Sleep 1000
+            ToolTip
+            ; Don't reset firstKey here, allow user to try a different second key
+        }
     }
 }
