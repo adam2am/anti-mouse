@@ -62,6 +62,7 @@ class OverlayGUI {
 
         this.cells := Map() ; Store cell boundary info relative to GUI
         this.subGridControls := Map() ; Store dynamically added sub-grid controls {key: ControlObj}
+        this.controlsToDestroy := Map() ; Store controls pending destruction
         this.mainFontSize := Max(4, Min(this.cellWidth, this.cellHeight) // 4) ; Ensure minimum size 4
         this.gui.SetFont("s" this.mainFontSize, "Arial")
 
@@ -137,8 +138,25 @@ class OverlayGUI {
     }
 
     ShowSubGrid(cellKey) {
-        ; Clear any existing ones first
-        this.HideSubGrid()
+        ; --- ADD DESTRUCTION LOGIC START ---
+        ; Destroy controls queued from previous HideSubGrid call
+        if (this.controlsToDestroy.Count > 0) {
+            ; Consider disabling redraw during destruction if needed, though it might be fast enough
+            for key, controlObj in this.controlsToDestroy {
+                if (IsObject(controlObj) && controlObj.Hwnd) {
+                    try {
+                        controlObj.Destroy()
+                    } catch {
+                        ; Ignore errors if already gone
+                    }
+                }
+            }
+            this.controlsToDestroy.Clear() ; Clear the queue
+        }
+        ; --- ADD DESTRUCTION LOGIC END ---
+
+        ; Clear any existing ones first (redundant now, but safe)
+        ; this.HideSubGrid() <-- No longer needed here as HideSubGrid is called before ShowSubGrid
         if (!this.cells.Has(cellKey)) {
             return
         }
@@ -178,6 +196,7 @@ class OverlayGUI {
                     StrReplace(subKey, "Numpad", "")) ; Display "7" instead of "Numpad7"
 
                 ; Add sub-grid lines (optional, can make it busy)
+                /* --- COMMENT OUT START
                 if (row > 0) {
                     lineCtrl := this.gui.Add("Progress", "x" subX " y" subY " w" subCellW " h" 1 " Background" borderSubColor
                     )
@@ -188,6 +207,7 @@ class OverlayGUI {
                     )
                     this.subGridControls[subKey "_vline" col] := lineCtrl ; Store line control too
                 }
+                --- COMMENT OUT END */
 
                 keyIndex += 1
             }
@@ -203,31 +223,37 @@ class OverlayGUI {
     }
 
     HideSubGrid() {
-        if (this.subGridControls.Count > 0) {
+        ; Move current controls to the destruction queue
+        this.controlsToDestroy := this.subGridControls
+        this.subGridControls := Map() ; Clear the active map
+
+        if (this.controlsToDestroy.Count > 0) {
             needsRedraw := false
 
             ; Disable GUI updates temporarily
             DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
 
-            for key, controlObj in this.subGridControls {
+            for key, controlObj in this.controlsToDestroy {
                 if (IsObject(controlObj) && controlObj.Hwnd) {
                     try {
                         if (controlObj.Visible) { ; Only hide/redraw if currently visible
                             controlObj.Visible := false
                             needsRedraw := true
                         }
-                        ; Destroy immediately after hiding attempt
-                        controlObj.Destroy()
+                        ; --- DO NOT DESTROY HERE ANYMORE ---
+                        ; controlObj.Destroy()
                     } catch {
-                        ; Ignore errors
+                        ; Ignore errors if control is already gone
                     }
                 }
             }
-            this.subGridControls.Clear() ; Clear the map
+            ; --- DO NOT CLEAR controlsToDestroy HERE ---
+            ; this.controlsToDestroy.Clear()
 
             ; Re-enable GUI updates only if redraw is needed
             if (needsRedraw) {
                 DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
+                ; No explicit WinRedraw here, relying on natural repaint
             }
         }
     }
