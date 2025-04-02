@@ -148,6 +148,7 @@ class OverlayGUI {
         if (subCellW <= 0 || subCellH <= 0) {
             return ; Cell too small
         }
+
         subGridFontSize := Max(4, Min(subCellW, subCellH) // 3) ; Adjust font size for sub-grid
         textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Cyan/Yellow for sub-grid
         borderSubColor := showcaseDebug ? "808080" : "404040" ; Gray for sub-grid lines
@@ -201,6 +202,7 @@ class OverlayGUI {
                 }
             }
             this.subGridControls.Clear() ; Clear the map
+            WinRedraw(this.gui.Hwnd) ; Force redraw after destroying controls
         }
     }
 }
