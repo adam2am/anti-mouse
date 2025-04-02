@@ -606,6 +606,7 @@ l:: StartNewSelection("l")
 #HotIf
 
 ; --- Hotkeys active during EITHER main grid OR sub-grid targeting ---
+#HotIf State.isVisible || State.subGridActive ; <--- ADD THIS CONDITION
 Space:: {
     Click ; Clicks at current mouse position
     Cleanup()
@@ -617,4 +618,5 @@ RButton:: {
 Escape:: {
     Cleanup()
 }
-#HotIf
+#HotIf ; <--- ADD THIS TO CLOSE THE NEW CONDITION
+#HotIf ; This one closes the outer context if needed, or does nothing if already closed.
