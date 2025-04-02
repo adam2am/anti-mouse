@@ -27,6 +27,15 @@ global layoutConfigs := Map(
     )
 )
 
+; Define Sub-Grid Keys (Numpad 7-9, 4-6, 1-3)
+global subGridKeys := [
+    "Numpad7", "Numpad8", "Numpad9",
+    "Numpad4", "Numpad5", "Numpad6",
+    "Numpad1", "Numpad2", "Numpad3"
+]
+global subGridRows := 3
+global subGridCols := 3
+
 ; ==============================================================================
 ; Main Grid Overlay Class
 ; ==============================================================================
@@ -52,9 +61,7 @@ class OverlayGUI {
         this.cellHeight := this.height // this.rows
 
         this.cells := Map() ; Store cell boundary info relative to GUI
-        this.precisionControls := Map() ; Store dynamically added precision controls {key: ControlObj}
-
-        ; --- Calculate and set main font size ---
+        this.subGridControls := Map() ; Store dynamically added sub-grid controls {key: ControlObj}
         this.mainFontSize := Max(4, Min(this.cellWidth, this.cellHeight) // 4) ; Ensure minimum size 4
         this.gui.SetFont("s" this.mainFontSize, "Arial")
 
@@ -106,7 +113,7 @@ class OverlayGUI {
     }
 
     Hide() {
-        this.HidePrecisionTargets() ; Ensure precision targets are hidden too
+        this.HideSubGrid() ; Ensure sub-grid targets are hidden too
         this.gui.Hide()
     }
 
@@ -129,44 +136,71 @@ class OverlayGUI {
         return checkResult
     }
 
-    ShowPrecisionTargets(cellKey) {
-        this.HidePrecisionTargets() ; Clear any existing ones first
+    ShowSubGrid(cellKey) {
+        this.HideSubGrid() ; Clear any existing ones first
         if (!this.cells.Has(cellKey)) {
             return
         }
 
         cellRel := this.cells[cellKey]
-        precisionFontSize := Max(4, Min(cellRel.w, cellRel.h) // 6) ; Ensure minimum size 4
-        padding := precisionFontSize // 2
-        textColor := showcaseDebug ? "FF00FF" : "00FF00" ; Magenta/Green
+        subCellW := cellRel.w // subGridCols
+        subCellH := cellRel.h // subGridRows
+        if (subCellW <= 0 || subCellH <= 0) {
+            return ; Cell too small
+        }
+        subGridFontSize := Max(4, Min(subCellW, subCellH) // 3) ; Adjust font size for sub-grid
+        textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Cyan/Yellow for sub-grid
+        borderSubColor := showcaseDebug ? "808080" : "404040" ; Gray for sub-grid lines
 
-        ; Calculate positions relative to the cell's top-left corner within the GUI
-        xW := cellRel.x + padding
-        yW := cellRel.y + padding
-        xA := cellRel.x + padding
-        yA := cellRel.y + cellRel.h - precisionFontSize - padding
-        xS := cellRel.x + cellRel.w - precisionFontSize - padding
-        yS := cellRel.y + cellRel.h - precisionFontSize - padding
-        xD := cellRel.x + cellRel.w - precisionFontSize - padding
-        yD := cellRel.y + padding
+        this.gui.SetFont("s" subGridFontSize, "Arial")
 
-        ; Add small text controls inside the cell using the calculated precision font size
-        this.gui.SetFont("s" precisionFontSize, "Arial") ; Set font for precision labels
-        this.precisionControls["W"] := this.gui.Add("Text", "x" xW " y" yW " BackgroundTrans c" textColor, "W")
-        this.precisionControls["A"] := this.gui.Add("Text", "x" xA " y" yA " BackgroundTrans c" textColor, "A")
-        this.precisionControls["S"] := this.gui.Add("Text", "x" xS " y" yS " BackgroundTrans c" textColor, "S")
-        this.precisionControls["D"] := this.gui.Add("Text", "x" xD " y" yD " BackgroundTrans c" textColor, "D")
-        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font back to main size
+        keyIndex := 0
+        loop subGridRows {
+            row := A_Index - 1 ; 0-based row index
+            loop subGridCols {
+                col := A_Index - 1 ; 0-based col index
+                if (keyIndex >= subGridKeys.Length) {
+                    break ; Safety break inner loop
+                }
+                subX := cellRel.x + col * subCellW
+                subY := cellRel.y + row * subCellH
+                subKey := subGridKeys[keyIndex + 1] ; 1-based index
+
+                ; Add sub-grid label
+                this.subGridControls[subKey] := this.gui.Add("Text",
+                    "x" subX " y" subY " w" subCellW " h" subCellH
+                    " Center BackgroundTrans c" textColor,
+                    StrReplace(subKey, "Numpad", "")) ; Display "7" instead of "Numpad7"
+
+                ; Add sub-grid lines (optional, can make it busy)
+                if (row > 0) {
+                    lineCtrl := this.gui.Add("Progress", "x" subX " y" subY " w" subCellW " h" 1 " Background" borderSubColor
+                    )
+                    this.subGridControls[subKey "_hline" row] := lineCtrl ; Store line control too
+                }
+                if (col > 0) {
+                    lineCtrl := this.gui.Add("Progress", "x" subX " y" subY " w" 1 " h" subCellH " Background" borderSubColor
+                    )
+                    this.subGridControls[subKey "_vline" col] := lineCtrl ; Store line control too
+                }
+
+                keyIndex += 1
+            }
+            if (keyIndex >= subGridKeys.Length) {
+                break ; Safety break outer loop
+            }
+        }
+        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font for main labels
     }
 
-    HidePrecisionTargets() {
-        if (this.precisionControls.Count > 0) {
-            for key, controlObj in this.precisionControls {
+    HideSubGrid() {
+        if (this.subGridControls.Count > 0) {
+            for key, controlObj in this.subGridControls {
                 if (IsObject(controlObj) && controlObj.Hwnd) { ; Check if control is valid
                     try controlObj.Destroy() ; Destroy the control
                 }
             }
-            this.precisionControls.Clear() ; Clear the map
+            this.subGridControls.Clear() ; Clear the map
         }
     }
 }
@@ -181,41 +215,44 @@ class State {
     static currentOverlay := ""
     static activeColKeys := []
     static activeRowKeys := []
-    static precisionTargetingActive := false ; Flag for precision input stage
-    static targetedCellKey := "" ; Key of the cell targeted for precision (e.g., "es")
+    static subGridActive := false ; Flag for sub-grid input stage
+    static activeCellKey := "" ; Key of the cell where sub-grid is active (e.g., "es")
+    static activeSubCellKey := "" ; Numpad key of the last selected sub-cell
 }
 
 ; ==============================================================================
 ; Global Helper Functions (Defined before use in hotkeys)
 ; ==============================================================================
 Cleanup() {
-    if (IsObject(State.currentOverlay) && State.precisionTargetingActive) {
-        State.currentOverlay.HidePrecisionTargets() ; Ensure targets are cleared
+    if (IsObject(State.currentOverlay) && State.subGridActive) {
+        State.currentOverlay.HideSubGrid() ; Ensure targets are cleared
     }
     for overlay in State.overlays {
-        overlay.Hide() ; Hides GUI and precision targets via its Hide method
+        overlay.Hide() ; Hides GUI and sub-grid targets via its Hide method
     }
 
     State.isVisible := false
-    State.precisionTargetingActive := false
+    State.subGridActive := false
     State.firstKey := ""
     State.currentOverlay := ""
     State.activeColKeys := []
     State.activeRowKeys := []
-    State.targetedCellKey := ""
+    State.activeCellKey := ""
+    State.activeSubCellKey := ""
 
     ToolTip() ; Clear tooltip
     SetTimer(TrackCursor, 0)
 }
 
-CancelPrecisionMode() {
-    if (State.precisionTargetingActive && IsObject(State.currentOverlay)) {
-        State.currentOverlay.HidePrecisionTargets()
-        State.precisionTargetingActive := false
-        State.targetedCellKey := ""
+CancelSubGridMode() {
+    if (State.subGridActive && IsObject(State.currentOverlay)) {
+        State.currentOverlay.HideSubGrid()
+        State.subGridActive := false
+        State.activeCellKey := ""
+        State.activeSubCellKey := ""
         State.firstKey := "" ; Reset key sequence
         State.isVisible := true ; Return to main grid visibility state
-        ToolTip() ; Clear precision tooltip
+        ToolTip() ; Clear sub-grid tooltip
     }
 }
 
@@ -224,9 +261,9 @@ SwitchMonitor(monitorNum) {
         return
     }
 
-    CancelPrecisionMode() ; Cancel precision if active before switching
+    CancelSubGridMode() ; Cancel sub-grid if active before switching
 
-    if (!State.isVisible) { ; Ensure overlays are visible if we cancelled precision
+    if (!State.isVisible) { ; Ensure overlays are visible if we cancelled sub-grid
         for overlay in State.overlays {
             overlay.Show()
         }
@@ -253,7 +290,7 @@ SwitchMonitor(monitorNum) {
 }
 
 HandleKey(key) {
-    ; Called only when State.isVisible is true and State.precisionTargetingActive is false
+    ; Called only when State.isVisible is true and State.subGridActive is false
     if (!IsObject(State.currentOverlay)) {
         return
     }
@@ -294,12 +331,12 @@ HandleKey(key) {
                 centerY := boundaries.y + (boundaries.h // 2)
                 MouseMove(centerX, centerY, 0)
 
-                ; Activate precision targeting for this cell
-                State.currentOverlay.ShowPrecisionTargets(cellKey)
-                State.precisionTargetingActive := true
-                State.targetedCellKey := cellKey
+                ; Activate sub-grid targeting for this cell
+                State.currentOverlay.ShowSubGrid(cellKey)
+                State.subGridActive := true
+                State.activeCellKey := cellKey
                 State.firstKey := "" ; Reset for next potential sequence
-                ToolTip("Cell '" . cellKey . "' targeted. Use W/A/S/D for corner, or select new cell.")
+                ToolTip("Cell '" . cellKey . "' targeted. Use Numpad 1-9 for sub-cell, or select new cell.")
 
             } else {
                 ToolTip("Error getting boundaries for cell: " . cellKey)
@@ -316,45 +353,55 @@ HandleKey(key) {
     }
 }
 
-MoveToCorner(corner) {
-    ; Called only when State.precisionTargetingActive is true
-    if (!State.precisionTargetingActive || !State.targetedCellKey || !IsObject(State.currentOverlay)) {
+HandleSubGridKey(subKey) {
+    ; Called only when State.subGridActive is true
+    if (!State.subGridActive || !State.activeCellKey || !IsObject(State.currentOverlay)) {
         return
     }
 
-    boundaries := State.currentOverlay.GetCellBoundaries(State.targetedCellKey)
-    if (!IsObject(boundaries)) {
+    mainBoundaries := State.currentOverlay.GetCellBoundaries(State.activeCellKey)
+    if (!IsObject(mainBoundaries)) {
         return
-    } ; Should not happen if state is correct
-
-    targetX := 0
-    targetY := 0
-    cell := boundaries
-
-    switch corner {
-        case "TL":
-            targetX := cell.x
-            targetY := cell.y
-        case "BL":
-            targetX := cell.x
-            targetY := cell.y + cell.h - 1
-        case "BR":
-            targetX := cell.x + cell.w - 1
-            targetY := cell.y + cell.h - 1
-        case "TR":
-            targetX := cell.x + cell.w - 1
-            targetY := cell.y
     }
+
+    ; Find the index of the pressed Numpad key in our defined list
+    subKeyIndex := -1
+    for index, keyName in subGridKeys {
+        if (keyName = subKey) {
+            subKeyIndex := index - 1 ; Get 0-based index
+            break
+        }
+    }
+    if (subKeyIndex = -1) {
+        ToolTip("Invalid sub-grid key: " . subKey)
+        Sleep 1000
+        ToolTip()
+        return ; Not a valid sub-grid key
+    }
+
+    ; Calculate row and column within the 3x3 sub-grid
+    subRow := subKeyIndex // subGridCols
+    subCol := Mod(subKeyIndex, subGridCols)
+
+    ; Calculate sub-cell dimensions
+    subCellW := mainBoundaries.w // subGridCols
+    subCellH := mainBoundaries.h // subGridRows
+    if (subCellW <= 0 || subCellH <= 0) {
+        return ; Cell too small
+    }
+    ; Calculate target sub-cell center coordinates
+    targetX := mainBoundaries.x + (subCol * subCellW) + (subCellW // 2)
+    targetY := mainBoundaries.y + (subRow * subCellH) + (subCellH // 2)
 
     MouseMove(targetX, targetY, 0)
-    ToolTip("Moved to " . corner . " corner.")
-    Sleep 500
-    Cleanup() ; Finish the operation
+    State.activeSubCellKey := subKey ; Remember last sub-cell selected
+    ToolTip("Moved to sub-cell " . subKey.Replace("Numpad", "") . " within " . State.activeCellKey)
+    ; --- DO NOT CALL Cleanup() HERE ---
 }
 
 StartNewSelection(firstKey) {
-    ; Called only when State.precisionTargetingActive is true and a valid first key is pressed
-    if (!State.precisionTargetingActive || !IsObject(State.currentOverlay)) {
+    ; Called only when State.subGridActive is true and a valid first key is pressed
+    if (!State.subGridActive || !IsObject(State.currentOverlay)) {
         return
     }
 
@@ -373,14 +420,14 @@ StartNewSelection(firstKey) {
         return ; Ignore if not a valid first key
     }
 
-    CancelPrecisionMode() ; Clear old precision targets & reset state
+    CancelSubGridMode() ; Clear old sub-grid targets & reset state
 
     ; Start the new selection process
     HandleKey(firstKey) ; Process the pressed key as the first key of a new sequence
 }
 
 TrackCursor() {
-    if (!State.isVisible || State.precisionTargetingActive) {
+    if (!State.isVisible || State.subGridActive) { ; Don't track if sub-grid is active
         return
     }
 
@@ -404,7 +451,7 @@ TrackCursor() {
 ; Main Activation Hotkey (Global Scope)
 ; ==============================================================================
 CapsLock & q:: {
-    if (State.isVisible || State.precisionTargetingActive) {
+    if (State.isVisible || State.subGridActive) {
         Cleanup()
         return
     }
@@ -486,8 +533,8 @@ CapsLock & q:: {
 ; Hotkey Contexts and Definitions (Global Scope)
 ; ==============================================================================
 
-; --- Hotkeys active only during main grid display (before precision targeting) ---
-#HotIf State.isVisible && !State.precisionTargetingActive
+; --- Hotkeys active only during main grid display (before sub-grid targeting) ---
+#HotIf State.isVisible && !State.subGridActive
 q:: HandleKey("q")
 w:: HandleKey("w")
 e:: HandleKey("e")
@@ -514,19 +561,24 @@ l:: HandleKey("l")
 4:: SwitchMonitor(4)
 #HotIf
 
-; --- Hotkeys active only during precision targeting ---
-#HotIf State.precisionTargetingActive
-; Corner selection
-w:: MoveToCorner("TL")
-a:: MoveToCorner("BL")
-s:: MoveToCorner("BR")
-d:: MoveToCorner("TR")
+; --- Hotkeys active only during sub-grid targeting ---
+#HotIf State.subGridActive
+; Sub-grid selection
+Numpad7:: HandleSubGridKey("Numpad7")
+Numpad8:: HandleSubGridKey("Numpad8")
+Numpad9:: HandleSubGridKey("Numpad9")
+Numpad4:: HandleSubGridKey("Numpad4")
+Numpad5:: HandleSubGridKey("Numpad5")
+Numpad6:: HandleSubGridKey("Numpad6")
+Numpad1:: HandleSubGridKey("Numpad1")
+Numpad2:: HandleSubGridKey("Numpad2")
+Numpad3:: HandleSubGridKey("Numpad3")
 
-; Start new cell selection (override precision targeting)
+; Start new cell selection (override sub-grid targeting)
 ; Define all potential FIRST keys from all layouts here explicitly
 ; Layout 1 Col Keys
 q:: StartNewSelection("q")
-; w is used for corner selection
+w:: StartNewSelection("w")
 e:: StartNewSelection("e")
 r:: StartNewSelection("r")
 t:: StartNewSelection("t")
@@ -536,9 +588,9 @@ i:: StartNewSelection("i")
 o:: StartNewSelection("o")
 p:: StartNewSelection("p")
 ; Layout 2 Col Keys (also covers Layout 3 Row Keys)
-; a is used for corner selection
-; s is used for corner selection
-; d is used for corner selection
+a:: StartNewSelection("a")
+s:: StartNewSelection("s")
+d:: StartNewSelection("d")
 f:: StartNewSelection("f")
 ; Layout 3 Col Keys already covered by Layout 1
 ; Layout 1 Row Keys (if they could be first keys in another layout)
@@ -550,17 +602,17 @@ k:: StartNewSelection("k")
 l:: StartNewSelection("l")
 `;:: StartNewSelection(";")
 
-; Monitor switching (override precision targeting)
+; Monitor switching (override sub-grid targeting)
 1:: SwitchMonitor(1)
 2:: SwitchMonitor(2)
 3:: SwitchMonitor(3)
 4:: SwitchMonitor(4)
 #HotIf
 
-; --- Hotkeys active during EITHER main grid OR precision input ---
-#HotIf State.isVisible || State.precisionTargetingActive
+; --- Hotkeys active during EITHER main grid OR sub-grid targeting ---
+#HotIf State.isVisible || State.subGridActive
 Space:: {
-    Click ; Clicks at current position (center or corner)
+    Click ; Clicks at current mouse position
     Cleanup()
 }
 RButton:: {
