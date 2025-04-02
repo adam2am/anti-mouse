@@ -107,6 +107,18 @@ class OverlayGUI {
         WinSetTransColor("000000 200", this.gui)
         this.x := Left
         this.y := Top
+
+        ; --- Pre-create Sub-Grid Controls (Hidden) ---
+        ; Use a smaller font size for sub-grid controls (half of main font size)
+        subGridFontSize := Max(4, this.mainFontSize // 2)
+        textColor := showcaseDebug ? "00FFFF" : "FFFF00"
+        this.gui.SetFont("s" subGridFontSize, "Arial")
+        for index, subKey in subGridKeys {
+            ctrl := this.gui.Add("Text", "x-1 y-1 w0 h0 Hidden Center BackgroundTrans c" textColor, StrReplace(subKey,
+                "Numpad", ""))
+            this.subGridControls[subKey] := ctrl
+        }
+        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset to main font size
     }
 
     Show() {
@@ -138,25 +150,19 @@ class OverlayGUI {
     }
 
     ShowSubGrid(cellKey) {
-        ; --- ADD DESTRUCTION LOGIC START ---
-        ; Destroy controls queued from previous HideSubGrid call
+        ; --- REMOVE DESTRUCTION LOGIC START ---
+        /*
         if (this.controlsToDestroy.Count > 0) {
-            ; Consider disabling redraw during destruction if needed, though it might be fast enough
             for key, controlObj in this.controlsToDestroy {
                 if (IsObject(controlObj) && controlObj.Hwnd) {
-                    try {
-                        controlObj.Destroy()
-                    } catch {
-                        ; Ignore errors if already gone
-                    }
+                    try { controlObj.Destroy() } catch {}
                 }
             }
-            this.controlsToDestroy.Clear() ; Clear the queue
+            this.controlsToDestroy.Clear()
         }
-        ; --- ADD DESTRUCTION LOGIC END ---
+        */
+        ; --- REMOVE DESTRUCTION LOGIC END ---
 
-        ; Clear any existing ones first (redundant now, but safe)
-        ; this.HideSubGrid() <-- No longer needed here as HideSubGrid is called before ShowSubGrid
         if (!this.cells.Has(cellKey)) {
             return
         }
@@ -168,94 +174,187 @@ class OverlayGUI {
             return ; Cell too small
         }
 
-        subGridFontSize := Max(4, Min(subCellW, subCellH) // 3) ; Adjust font size for sub-grid
-        textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Cyan/Yellow for sub-grid
-        borderSubColor := showcaseDebug ? "808080" : "404040" ; Gray for sub-grid lines
+        subGridFontSize := Max(4, this.mainFontSize // 2) ; Match the size used in constructor
+        textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Use appropriate color
 
-        ; Disable GUI updates temporarily
         DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
-
-        this.gui.SetFont("s" subGridFontSize, "Arial")
+        this.gui.SetFont("s" subGridFontSize, "Arial") ; Set font for sub-grid controls
 
         keyIndex := 0
         loop subGridRows {
-            row := A_Index - 1 ; 0-based row index
+            row := A_Index - 1
             loop subGridCols {
-                col := A_Index - 1 ; 0-based col index
+                col := A_Index - 1
                 if (keyIndex >= subGridKeys.Length) {
-                    break ; Safety break inner loop
+                    break
                 }
+
                 subX := cellRel.x + col * subCellW
                 subY := cellRel.y + row * subCellH
-                subKey := subGridKeys[keyIndex + 1] ; 1-based index
+                subKey := subGridKeys[keyIndex + 1]
 
-                ; Add sub-grid label
+                ; --- MODIFY EXISTING CONTROL ---
+                if this.subGridControls.Has(subKey) {
+                    ctrl := this.subGridControls[subKey]
+                    if IsObject(ctrl) {
+                        ctrl.Text := StrReplace(subKey, "Numpad", "")
+                        ctrl.Move(subX, subY, subCellW, subCellH)
+                        ctrl.Visible := true
+                    }
+                }
+                /* --- REMOVE OLD CONTROL CREATION ---
                 this.subGridControls[subKey] := this.gui.Add("Text",
                     "x" subX " y" subY " w" subCellW " h" subCellH
                     " Center BackgroundTrans c" textColor,
-                    StrReplace(subKey, "Numpad", "")) ; Display "7" instead of "Numpad7"
+                    StrReplace(subKey, "Numpad", ""))
+                */
 
-                ; Add sub-grid lines (optional, can make it busy)
-                /* --- COMMENT OUT START
-                if (row > 0) {
-                    lineCtrl := this.gui.Add("Progress", "x" subX " y" subY " w" subCellW " h" 1 " Background" borderSubColor
-                    )
-                    this.subGridControls[subKey "_hline" row] := lineCtrl ; Store line control too
-                }
-                if (col > 0) {
-                    lineCtrl := this.gui.Add("Progress", "x" subX " y" subY " w" 1 " h" subCellH " Background" borderSubColor
-                    )
-                    this.subGridControls[subKey "_vline" col] := lineCtrl ; Store line control too
-                }
-                --- COMMENT OUT END */
+                /* --- REMOVE LINES --- (Already commented out) */
 
                 keyIndex += 1
             }
             if (keyIndex >= subGridKeys.Length) {
-                break ; Safety break outer loop
+                break
             }
         }
-        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font for main labels
 
-        ; Re-enable GUI updates and force redraw
+        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font for main labels
         DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
-        WinRedraw(this.gui.Hwnd)
+        WinRedraw(this.gui.Hwnd) ; Keep this redraw for now
     }
 
     HideSubGrid() {
-        ; Move current controls to the destruction queue
+        ; --- REMOVE QUEUE LOGIC START ---
+        /*
         this.controlsToDestroy := this.subGridControls
         this.subGridControls := Map() ; Clear the active map
+        */
+        ; --- REMOVE QUEUE LOGIC END ---
 
-        if (this.controlsToDestroy.Count > 0) {
+        ; --- HIDE PRE-EXISTING CONTROLS ---
+        if (this.subGridControls.Count > 0) { ; Check if controls exist
             needsRedraw := false
-
-            ; Disable GUI updates temporarily
             DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
 
-            for key, controlObj in this.controlsToDestroy {
-                if (IsObject(controlObj) && controlObj.Hwnd) {
+            for subKey, controlObj in this.subGridControls {
+                if (IsObject(controlObj) && controlObj.Hwnd && controlObj.Visible) {
                     try {
-                        if (controlObj.Visible) { ; Only hide/redraw if currently visible
-                            controlObj.Visible := false
-                            needsRedraw := true
-                        }
-                        ; --- DO NOT DESTROY HERE ANYMORE ---
-                        ; controlObj.Destroy()
+                        controlObj.Visible := false
+                        needsRedraw := true
                     } catch {
-                        ; Ignore errors if control is already gone
+                        ; Ignore errors
                     }
                 }
             }
-            ; --- DO NOT CLEAR controlsToDestroy HERE ---
-            ; this.controlsToDestroy.Clear()
 
-            ; Re-enable GUI updates only if redraw is needed
             if (needsRedraw) {
                 DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
-                ; No explicit WinRedraw here, relying on natural repaint
+                ; No explicit WinRedraw needed here usually
             }
         }
+    }
+}
+
+; ==============================================================================
+; Sub Grid Overlay Class (Separate Window)
+; ==============================================================================
+class SubGridOverlay {
+    __New(cellX, cellY, cellWidth, cellHeight) {
+        ; Create a new separate window for the sub-grid
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
+        this.gui.BackColor := "222222" ; Slightly different color than main grid
+
+        ; Store dimensions
+        this.width := cellWidth
+        this.height := cellHeight
+        this.x := cellX
+        this.y := cellY
+
+        ; Calculate sub-cell dimensions
+        this.subCellWidth := this.width // subGridCols
+        this.subCellHeight := this.height // subGridRows
+
+        ; Set font size based on cell dimensions
+        subGridFontSize := Max(4, Min(this.subCellWidth, this.subCellHeight) // 3)
+        textColor := showcaseDebug ? "00FFFF" : "FFFF00"
+        this.gui.SetFont("s" subGridFontSize, "Arial")
+
+        ; Add number labels (1-9)
+        this.controls := Map()
+        keyIndex := 0
+
+        ; Add thin border around the entire sub-grid
+        borderColor := showcaseDebug ? "FF0000" : "444444"
+        borderThickness := 1
+        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" borderColor)
+        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" borderColor
+        )
+        this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" borderColor)
+        this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" borderColor
+        )
+
+        loop subGridRows {
+            row := A_Index - 1
+            loop subGridCols {
+                col := A_Index - 1
+                if (keyIndex >= subGridKeys.Length) {
+                    break
+                }
+
+                subX := col * this.subCellWidth
+                subY := row * this.subCellHeight
+                subKey := subGridKeys[keyIndex + 1]
+
+                this.gui.Add("Text",
+                    "x" subX " y" subY " w" this.subCellWidth " h" this.subCellHeight
+                    " Center BackgroundTrans c" textColor,
+                    StrReplace(subKey, "Numpad", ""))
+
+                keyIndex += 1
+            }
+            if (keyIndex >= subGridKeys.Length) {
+                break
+            }
+        }
+
+        ; Make the window semi-transparent
+        WinSetTransColor("222222 220", this.gui)
+    }
+
+    Show() {
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+    }
+
+    Hide() {
+        this.gui.Hide()
+    }
+
+    Destroy() {
+        this.gui.Destroy()
+    }
+
+    GetTargetCoordinates(subKey) {
+        ; Find the index of the key in subGridKeys
+        subKeyIndex := -1
+        for index, key in subGridKeys {
+            if (key = subKey) {
+                subKeyIndex := index - 1 ; Get 0-based index
+                break
+            }
+        }
+        if (subKeyIndex = -1) {
+            return false
+        }
+
+        ; Calculate row and column
+        subRow := subKeyIndex // subGridCols
+        subCol := Mod(subKeyIndex, subGridCols)
+
+        ; Calculate center position within the sub-cell
+        targetX := this.x + (subCol * this.subCellWidth) + (this.subCellWidth // 2)
+        targetY := this.y + (subRow * this.subCellHeight) + (this.subCellHeight // 2)
+
+        return { x: targetX, y: targetY }
     }
 }
 
@@ -272,15 +371,18 @@ class State {
     static subGridActive := false ; Flag for sub-grid input stage
     static activeCellKey := "" ; Key of the cell where sub-grid is active (e.g., "es")
     static activeSubCellKey := "" ; Numpad key of the last selected sub-cell
+    static subGridOverlay := "" ; Reference to the current SubGridOverlay object
 }
 
 ; ==============================================================================
 ; Global Helper Functions (Defined before use in hotkeys)
 ; ==============================================================================
 Cleanup() {
-    if (IsObject(State.currentOverlay) && State.subGridActive) {
-        State.currentOverlay.HideSubGrid() ; Ensure targets are cleared
+    if (IsObject(State.subGridOverlay)) {
+        State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window if it exists
+        State.subGridOverlay := ""
     }
+
     for overlay in State.overlays {
         overlay.Hide() ; Hides GUI and sub-grid targets via its Hide method
     }
@@ -299,8 +401,11 @@ Cleanup() {
 }
 
 CancelSubGridMode() {
-    if (State.subGridActive && IsObject(State.currentOverlay)) {
-        State.currentOverlay.HideSubGrid()
+    if (State.subGridActive) {
+        if (IsObject(State.subGridOverlay)) {
+            State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window
+            State.subGridOverlay := ""
+        }
         State.subGridActive := false
         State.activeCellKey := ""
         State.activeSubCellKey := ""
@@ -399,8 +504,9 @@ HandleKey(key) {
 
             if (IsObject(boundaries)) {
                 ; Clear any existing sub-grid first
-                if (State.subGridActive) {
-                    State.currentOverlay.HideSubGrid()
+                if (State.subGridActive && IsObject(State.subGridOverlay)) {
+                    State.subGridOverlay.Destroy()
+                    State.subGridOverlay := ""
                 }
 
                 ; Move mouse to center
@@ -408,13 +514,17 @@ HandleKey(key) {
                 centerY := boundaries.y + (boundaries.h // 2)
                 MouseMove(centerX, centerY, 0)
 
-                ; Activate sub-grid targeting for this cell
-                State.currentOverlay.ShowSubGrid(cellKey)
+                ; Create and show a new separate SubGridOverlay window
+                State.subGridOverlay := SubGridOverlay(
+                    boundaries.x, boundaries.y,
+                    boundaries.w, boundaries.h
+                )
+                State.subGridOverlay.Show()
+
                 State.subGridActive := true
                 State.activeCellKey := cellKey
                 State.firstKey := "" ; Reset for next potential sequence
                 ToolTip("Cell '" . cellKey . "' targeted. Use Numpad 1-9 for sub-cell, or select new cell.")
-
             } else {
                 ToolTip("Error getting boundaries for cell: " . cellKey)
                 Sleep 1000
@@ -432,47 +542,23 @@ HandleKey(key) {
 
 HandleSubGridKey(subKey) {
     ; Called only when State.subGridActive is true
-    if (!State.subGridActive || !State.activeCellKey || !IsObject(State.currentOverlay)) {
+    if (!State.subGridActive || !State.activeCellKey || !IsObject(State.subGridOverlay)) {
         return
     }
 
-    mainBoundaries := State.currentOverlay.GetCellBoundaries(State.activeCellKey)
-    if (!IsObject(mainBoundaries)) {
-        return
-    }
-
-    ; Find the index of the pressed Numpad key in our defined list
-    subKeyIndex := -1
-    for index, keyName in subGridKeys {
-        if (keyName = subKey) {
-            subKeyIndex := index - 1 ; Get 0-based index
-            break
-        }
-    }
-    if (subKeyIndex = -1) {
+    ; Use the SubGridOverlay to get target coordinates
+    targetCoords := State.subGridOverlay.GetTargetCoordinates(subKey)
+    if (!IsObject(targetCoords)) {
         ToolTip("Invalid sub-grid key: " . subKey)
         Sleep 1000
         ToolTip()
-        return ; Not a valid sub-grid key
+        return
     }
 
-    ; Calculate row and column within the 3x3 sub-grid
-    subRow := subKeyIndex // subGridCols
-    subCol := Mod(subKeyIndex, subGridCols)
-
-    ; Calculate sub-cell dimensions
-    subCellW := mainBoundaries.w // subGridCols
-    subCellH := mainBoundaries.h // subGridRows
-    if (subCellW <= 0 || subCellH <= 0) {
-        return ; Cell too small
-    }
-    ; Calculate target sub-cell center coordinates
-    targetX := mainBoundaries.x + (subCol * subCellW) + (subCellW // 2)
-    targetY := mainBoundaries.y + (subRow * subCellH) + (subCellH // 2)
-
-    MouseMove(targetX, targetY, 0)
-    State.activeSubCellKey := subKey ; Remember last sub-cell selected
-    ToolTip("Moved to sub-cell " . StrReplace(subKey, "Numpad", "") . " within " . State.activeCellKey) ; Use StrReplace
+    ; Move to the target coordinates
+    MouseMove(targetCoords.x, targetCoords.y, 0)
+    State.activeSubCellKey := subKey
+    ToolTip("Moved to sub-cell " . StrReplace(subKey, "Numpad", "") . " within " . State.activeCellKey)
     ; --- DO NOT CALL Cleanup() HERE ---
 }
 
