@@ -27,11 +27,11 @@ global layoutConfigs := Map(
     )
 )
 
-; Define Sub-Grid Keys (Numpad 7-9, 4-6, 1-3)
+; Define Sub-Grid Keys (Standard numbers 7-9, 4-6, 1-3)
 global subGridKeys := [
-    "Numpad7", "Numpad8", "Numpad9",
-    "Numpad4", "Numpad5", "Numpad6",
-    "Numpad1", "Numpad2", "Numpad3"
+    "7", "8", "9",
+    "4", "5", "6",
+    "1", "2", "3"
 ]
 global subGridRows := 3
 global subGridCols := 3
@@ -395,7 +395,7 @@ HandleSubGridKey(subKey) {
 
     MouseMove(targetX, targetY, 0)
     State.activeSubCellKey := subKey ; Remember last sub-cell selected
-    ToolTip("Moved to sub-cell " . subKey.Replace("Numpad", "") . " within " . State.activeCellKey)
+    ToolTip("Moved to sub-cell " . StrReplace(subKey, "Numpad", "") . " within " . State.activeCellKey) ; Use StrReplace
     ; --- DO NOT CALL Cleanup() HERE ---
 }
 
@@ -564,15 +564,15 @@ l:: HandleKey("l")
 ; --- Hotkeys active only during sub-grid targeting ---
 #HotIf State.subGridActive
 ; Sub-grid selection
-Numpad7:: HandleSubGridKey("Numpad7")
-Numpad8:: HandleSubGridKey("Numpad8")
-Numpad9:: HandleSubGridKey("Numpad9")
-Numpad4:: HandleSubGridKey("Numpad4")
-Numpad5:: HandleSubGridKey("Numpad5")
-Numpad6:: HandleSubGridKey("Numpad6")
-Numpad1:: HandleSubGridKey("Numpad1")
-Numpad2:: HandleSubGridKey("Numpad2")
-Numpad3:: HandleSubGridKey("Numpad3")
+7:: HandleSubGridKey("7")
+8:: HandleSubGridKey("8")
+9:: HandleSubGridKey("9")
+4:: HandleSubGridKey("4")
+5:: HandleSubGridKey("5")
+6:: HandleSubGridKey("6")
+1:: HandleSubGridKey("1")
+2:: HandleSubGridKey("2")
+3:: HandleSubGridKey("3")
 
 ; Start new cell selection (override sub-grid targeting)
 ; Define all potential FIRST keys from all layouts here explicitly
@@ -602,15 +602,10 @@ k:: StartNewSelection("k")
 l:: StartNewSelection("l")
 `;:: StartNewSelection(";")
 
-; Monitor switching (override sub-grid targeting)
-1:: SwitchMonitor(1)
-2:: SwitchMonitor(2)
-3:: SwitchMonitor(3)
-4:: SwitchMonitor(4)
+; Monitor switching is handled in the main grid context only now.
 #HotIf
 
 ; --- Hotkeys active during EITHER main grid OR sub-grid targeting ---
-#HotIf State.isVisible || State.subGridActive
 Space:: {
     Click ; Clicks at current mouse position
     Cleanup()
