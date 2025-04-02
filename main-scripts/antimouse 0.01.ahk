@@ -137,7 +137,8 @@ class OverlayGUI {
     }
 
     ShowSubGrid(cellKey) {
-        this.HideSubGrid() ; Clear any existing ones first
+        ; Clear any existing ones first
+        this.HideSubGrid()
         if (!this.cells.Has(cellKey)) {
             return
         }
@@ -153,6 +154,7 @@ class OverlayGUI {
         textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Cyan/Yellow for sub-grid
         borderSubColor := showcaseDebug ? "808080" : "404040" ; Gray for sub-grid lines
 
+        ; Removed DllCall to disable redraw
         this.gui.SetFont("s" subGridFontSize, "Arial")
 
         keyIndex := 0
@@ -192,17 +194,35 @@ class OverlayGUI {
             }
         }
         this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font for main labels
+
+        ; Removed DllCall to re-enable redraw
+        ; Force redraw after adding new controls
+        WinRedraw(this.gui.Hwnd)
     }
 
     HideSubGrid() {
         if (this.subGridControls.Count > 0) {
+            needsRedraw := false
             for key, controlObj in this.subGridControls {
-                if (IsObject(controlObj) && controlObj.Hwnd) { ; Check if control is valid
-                    try controlObj.Destroy() ; Destroy the control
+                if (IsObject(controlObj) && controlObj.Hwnd) {
+                    try {
+                        if (controlObj.Visible) { ; Only hide/redraw if currently visible
+                            controlObj.Visible := false
+                            needsRedraw := true
+                        }
+                        ; Destroy immediately after hiding attempt
+                        controlObj.Destroy()
+                    } catch {
+                        ; Ignore errors
+                    }
                 }
             }
             this.subGridControls.Clear() ; Clear the map
-            WinRedraw(this.gui.Hwnd) ; Force redraw after destroying controls
+
+            if (needsRedraw) {
+                Sleep 10 ; Brief pause
+                WinRedraw(this.gui.Hwnd) ; Force redraw after loop if anything was hidden/destroyed
+            }
         }
     }
 }
@@ -307,6 +327,14 @@ HandleKey(key) {
             }
         }
         if (isValidFirstKey) {
+            ; Clear any previous sub-grid if it exists
+            if (State.subGridActive) {
+                State.currentOverlay.HideSubGrid()
+                State.subGridActive := false
+                State.activeCellKey := ""
+                Sleep 10 ; Pause after hiding
+            }
+
             State.firstKey := key
             ToolTip("First key: " . key . ". Select second key (row).")
         } else {
@@ -328,6 +356,12 @@ HandleKey(key) {
             boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
 
             if (IsObject(boundaries)) {
+                ; Clear any existing sub-grid first
+                if (State.subGridActive) {
+                    State.currentOverlay.HideSubGrid()
+                    Sleep 10 ; Pause after hiding
+                }
+
                 ; Move mouse to center
                 centerX := boundaries.x + (boundaries.w // 2)
                 centerY := boundaries.y + (boundaries.h // 2)
