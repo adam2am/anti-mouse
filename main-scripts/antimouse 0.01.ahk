@@ -154,7 +154,9 @@ class OverlayGUI {
         textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Cyan/Yellow for sub-grid
         borderSubColor := showcaseDebug ? "808080" : "404040" ; Gray for sub-grid lines
 
-        ; Removed DllCall to disable redraw
+        ; Disable GUI updates temporarily
+        DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
+
         this.gui.SetFont("s" subGridFontSize, "Arial")
 
         keyIndex := 0
@@ -195,14 +197,18 @@ class OverlayGUI {
         }
         this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font for main labels
 
-        ; Removed DllCall to re-enable redraw
-        ; Force redraw after adding new controls
+        ; Re-enable GUI updates and force redraw
+        DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
         WinRedraw(this.gui.Hwnd)
     }
 
     HideSubGrid() {
         if (this.subGridControls.Count > 0) {
             needsRedraw := false
+
+            ; Disable GUI updates temporarily
+            DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
+
             for key, controlObj in this.subGridControls {
                 if (IsObject(controlObj) && controlObj.Hwnd) {
                     try {
@@ -219,9 +225,9 @@ class OverlayGUI {
             }
             this.subGridControls.Clear() ; Clear the map
 
+            ; Re-enable GUI updates only if redraw is needed
             if (needsRedraw) {
-                Sleep 10 ; Brief pause
-                WinRedraw(this.gui.Hwnd) ; Force redraw after loop if anything was hidden/destroyed
+                DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
             }
         }
     }
@@ -332,7 +338,6 @@ HandleKey(key) {
                 State.currentOverlay.HideSubGrid()
                 State.subGridActive := false
                 State.activeCellKey := ""
-                Sleep 10 ; Pause after hiding
             }
 
             State.firstKey := key
@@ -359,7 +364,6 @@ HandleKey(key) {
                 ; Clear any existing sub-grid first
                 if (State.subGridActive) {
                     State.currentOverlay.HideSubGrid()
-                    Sleep 10 ; Pause after hiding
                 }
 
                 ; Move mouse to center
