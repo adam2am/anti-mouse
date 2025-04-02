@@ -359,7 +359,18 @@ HandleKey(key) {
             }
         }
         if (isValidFirstKey) {
-            ; Clear any previous sub-grid if it exists
+            ; --- MOUSE MOVE ON FIRST KEY START ---
+            firstRowKey := State.activeRowKeys[1] ; Get the first key defined for rows
+            firstCellInColKey := key . firstRowKey
+            boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
+            if (IsObject(boundaries)) {
+                MouseGetPos(, &currentY) ; Get current mouse Y
+                targetX := boundaries.x + (boundaries.w // 2) ; Center of the first cell in the column
+                MouseMove(targetX, currentY, 0) ; Move instantly horizontally
+            }
+            ; --- MOUSE MOVE ON FIRST KEY END ---
+
+            ; Clear any previous sub-grid if it exists (logic moved slightly)
             if (State.subGridActive) {
                 State.currentOverlay.HideSubGrid()
                 State.subGridActive := false
