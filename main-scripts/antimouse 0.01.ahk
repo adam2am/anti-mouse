@@ -572,6 +572,18 @@ HandleKey(key, activateSubGrid := false) {
         return
     }
 
+    ; Get currently active cell column and row keys (if any)
+    if (State.highlightedCellKey != "") {
+        currentColKey := SubStr(State.highlightedCellKey, 1, 1)
+        currentRowKey := SubStr(State.highlightedCellKey, 2, 1)
+
+        ; If the pressed key matches either the column or row of the current cell, do nothing
+        if (key = currentColKey || key = currentRowKey) {
+            ; Completely ignore this keypress - do absolutely nothing
+            return
+        }
+    }
+
     ; Only clean up highlights if we're moving to a different cell
     ; We'll check this in each specific case below instead of doing it globally
 
