@@ -88,7 +88,26 @@ class HighlightOverlay {
     }
 
     Destroy() {
-        this.gui.Destroy()
+        try {
+            ; Store the handle before destroying
+            hwnd := this.gui.Hwnd
+
+            ; First try to hide it
+            this.gui.Hide()
+
+            ; Then destroy it
+            this.gui.Destroy()
+
+            ; Force close if it still exists
+            if (WinExist("ahk_id " hwnd)) {
+                WinClose("ahk_id " hwnd)
+                if (WinExist("ahk_id " hwnd)) {
+                    WinKill("ahk_id " hwnd)
+                }
+            }
+        } catch {
+            ; Silently ignore errors
+        }
     }
 }
 
@@ -573,15 +592,25 @@ class State {
 
 ; Function to clean up highlights - completely rewritten to use the new HighlightOverlay
 CleanupHighlight() {
+    global State
+
     if (IsObject(State.currentHighlight)) {
         try {
-            State.currentHighlight.Destroy()
+            ; First reset the state variables to prevent any chance of reuse
+            highlightToDestroy := State.currentHighlight
+            State.currentHighlight := ""
+            State.highlightedCellKey := ""
+
+            ; Then destroy the highlight
+            highlightToDestroy.Destroy()
         } catch {
             ; Silently ignore destruction errors
         }
-        State.currentHighlight := ""
-        State.highlightedCellKey := "" ; Also reset the tracked cell
     }
+
+    ; Also explicitly reset these just to be absolutely sure
+    State.currentHighlight := ""
+    State.highlightedCellKey := ""
 }
 
 ; Modified HighlightCell to check if we're already highlighting the same cell
@@ -1491,8 +1520,8 @@ TrackCursor() {
         return
     }
 
-    ; Skip if it's the same cell we've already processed
-    if (currentCellKey == lastTrackedCell && IsObject(State.subGridOverlay)) {
+    ; Skip if it's the same cell we've already processed AND both highlight and subgrid are already displayed
+    if (currentCellKey == lastTrackedCell && IsObject(State.subGridOverlay) && IsObject(State.currentHighlight)) {
         return
     }
 
@@ -1747,7 +1776,24 @@ Space:: {
     ; Store current mouse position
     MouseGetPos(&mouseX, &mouseY)
 
-    ; First hide all GUI elements so they don't interfere with the click
+    ; First stop the cursor tracking to prevent recreating elements
+    SetTimer(TrackCursor, 0)
+
+    ; Force state changes first to prevent any recreation
+    State.isVisible := false
+    State.subGridActive := false
+    State.activeCellKey := ""
+    State.activeSubCellKey := ""
+    lastTrackedCell := ""
+
+    ; Force immediate cleanup of all UI elements BEFORE clicking
+    ; First explicitly destroy highlights and reset state
+    CleanupHighlight()
+
+    ; Complete cleanup of ALL sub-grids
+    CleanupAllSubGrids()
+
+    ; Hide all main grid overlays
     for overlay in State.overlays {
         try {
             overlay.Hide()
@@ -1756,22 +1802,15 @@ Space:: {
         }
     }
 
-    if (IsObject(State.subGridOverlay)) {
-        try {
-            State.subGridOverlay.Hide()
-        } catch {
-            ; Silently ignore any errors
-        }
-    }
+    ; Additional delay to ensure GUI destruction completes
+    Sleep 30
 
-    ; Clean up highlight if it exists
-    if (IsObject(State.currentHighlight)) {
-        try {
-            State.currentHighlight.Hide()
-        } catch {
-            ; Silently ignore any errors
-        }
-    }
+    ; One final check for any stray GUI elements
+    CleanupHighlight()
+    CleanupAllSubGrids()
+
+    ; Absolutely brute-force close any remaining AHK GUIs
+    ForceCloseAllGuis()
 
     ; Perform the mouse click on the actual application beneath
     MouseClick "Left", mouseX, mouseY, 1, 0
@@ -1968,4 +2007,24 @@ CleanupStraySubGrids() {
     if (!State.isVisible && !State.subGridActive && IsObject(State.currentHighlight)) {
         CleanupHighlight()
     }
+}
+
+; Function to force close all AHK GUIs with specific criteria
+ForceCloseAllGuis() {
+    ; Turn on detection of hidden windows
+    DetectHiddenWindows(true)
+
+    ; First try standard window classes for AHK GUI windows
+    loop {
+        hwnd := WinExist("ahk_class AutoHotkeyGUI ahk_exe AutoHotkey.exe")
+        if (!hwnd)
+            break
+
+        WinClose("ahk_id " hwnd)
+        if (WinExist("ahk_id " hwnd))
+            WinKill("ahk_id " hwnd)
+    }
+
+    ; Reset detection mode
+    DetectHiddenWindows(false)
 }
