@@ -1,328 +1,61 @@
+; instead of destroying - hide+show, and other stuff
+; actually 0.012 - improved flow
+
 #Requires AutoHotkey v2.0
 SetCapsLockState("AlwaysOff")
-CoordMode "Mouse", "Screen" ; Ensure mouse coordinates are relative to the virtual screen
+CoordMode "Mouse", "Screen" ; Mouse coordinates relative to the virtual screen
 
-global showcaseDebug := false ; Set to true to enable debug tooltips, delays, and border colors
-global selectedLayout := 1 ; 1: User QWERTY/ASDF, 2: Home Row ASDF/JKL;, 3: WASD/QWER
+; Global configuration
+global showcaseDebug := false       ; Enable debug tooltips and delays
+global selectedLayout := 1          ; Layout options: 1=User QWERTY/ASDF, 2=Home Row ASDF/JKL;, 3=WASD/QWER
+global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
+global highlightColor := "33AAFF"   ; Highlight color for selected cells
 
-; Define Layout Configurations
+; Finite State Machine state
+global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
+
+; GUI instances for reuse
+global highlight := ""              ; Single HighlightOverlay instance (initialized later)
+global subGrid := ""                ; Single SubGridOverlay instance (initialized later)
+
+; Layout configurations
 global layoutConfigs := Map(
-    1, Map( ; User's 10x10 QWERTY/ASDF layout
-        "cols", 10,
-        "rows", 10,
-        "colKeys", ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
-        "rowKeys", ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"]
-    ),
-    2, Map( ; Roo's 4x4 Home Row ASDF/JKL; layout
-        "cols", 4,
-        "rows", 4,
-        "colKeys", ["a", "s", "d", "f"],
-        "rowKeys", ["j", "k", "l", ";"]
-    ),
-    3, Map( ; Roo's 4x4 WASD/QWER layout (Alternative)
-        "cols", 4,
-        "rows", 4,
-        "colKeys", ["q", "w", "e", "r"],
-        "rowKeys", ["a", "s", "d", "f"]
-    )
+    1, Map("cols", 10, "rows", 10, "colKeys", ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"], "rowKeys", ["a", "s",
+        "d", "f", "g", "h", "j", "k", "l", ";"]),
+    2, Map("cols", 4, "rows", 4, "colKeys", ["a", "s", "d", "f"], "rowKeys", ["j", "k", "l", ";"]),
+    3, Map("cols", 4, "rows", 4, "colKeys", ["q", "w", "e", "r"], "rowKeys", ["a", "s", "d", "f"])
 )
 
-; Define Sub-Grid Keys (Standard numbers 7-9, 4-6, 1-3)
-global subGridKeys := [
-    "7", "8", "9",
-    "4", "5", "6",
-    "1", "2", "3"
-]
+; Sub-grid configuration
+global subGridKeys := ["7", "8", "9", "4", "5", "6", "1", "2", "3"]
 global subGridRows := 3
 global subGridCols := 3
 
-; ==============================================================================
-; Main Grid Overlay Class
-; ==============================================================================
-class OverlayGUI {
-    __New(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys) {
+; This section defines global variables and configurations, initializing the FSM state and placeholders for GUI reuse. Yes, implemented.
+
+; Highlight Overlay Class with GUI Reuse
+class HighlightOverlay {
+    __New() {
         this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
-        this.gui.BackColor := "000000"
-        this.gui.Opt("+E0x20")
-
-        this.width := Right - Left
-        this.height := Bottom - Top
-        this.monitorIndex := monitorIndex
-        this.Left := Left
-        this.Top := Top
-        this.Right := Right
-        this.Bottom := Bottom
-
-        this.colKeys := colKeys
-        this.rowKeys := rowKeys
-        this.cols := this.colKeys.Length
-        this.rows := this.rowKeys.Length
-        this.cellWidth := this.width // this.cols
-        this.cellHeight := this.height // this.rows
-
-        this.cells := Map() ; Store cell boundary info relative to GUI
-        this.subGridControls := Map() ; Store dynamically added sub-grid controls {key: ControlObj}
-        this.controlsToDestroy := Map() ; Store controls pending destruction
-        this.mainFontSize := Max(4, Min(this.cellWidth, this.cellHeight) // 4) ; Ensure minimum size 4
-        this.gui.SetFont("s" this.mainFontSize, "Arial")
-
-        borderThickness := 1
-        borderColor := showcaseDebug ? "FF0000" : "FFFFFF"
-
-        ; --- Add Outer Border ---
-        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" borderColor)
-        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" borderColor
-        )
-        this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" borderColor)
-        this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" borderColor
-        )
-
-        ; --- Add Cells, Labels, and Borders ---
-        for colIndex, firstKey in this.colKeys {
-            cellX := (colIndex - 1) * this.cellWidth
-            for rowIndex, secondKey in this.rowKeys {
-                cellY := (rowIndex - 1) * this.cellHeight
-                cellKey := firstKey . secondKey
-
-                this.cells[cellKey] := { x: cellX, y: cellY, w: this.cellWidth, h: this.cellHeight }
-
-                ; --- Add Main Cell Text Label FIRST ---
-                this.gui.Add("Text",
-                    "x" cellX " y" cellY " w" this.cellWidth " h" this.cellHeight
-                    " Center BackgroundTrans c" borderColor,
-                    monitorIndex ":" cellKey)
-
-                ; --- Add Inner Cell Borders AFTER Text ---
-                if (rowIndex > 1) {
-                    this.gui.Add("Progress", "x" cellX " y" cellY " w" this.cellWidth " h" borderThickness " Background" borderColor
-                    )
-                }
-                if (colIndex > 1) {
-                    this.gui.Add("Progress", "x" cellX " y" cellY " w" borderThickness " h" this.cellHeight " Background" borderColor
-                    )
-                }
-            }
-        }
-
-        WinSetTransColor("000000 200", this.gui)
-        this.x := Left
-        this.y := Top
-
-        ; --- Pre-create Sub-Grid Controls (Hidden) ---
-        ; Use a smaller font size for sub-grid controls (half of main font size)
-        subGridFontSize := Max(4, this.mainFontSize // 2)
-        textColor := showcaseDebug ? "00FFFF" : "FFFF00"
-        this.gui.SetFont("s" subGridFontSize, "Arial")
-        for index, subKey in subGridKeys {
-            ctrl := this.gui.Add("Text", "x-1 y-1 w0 h0 Hidden Center BackgroundTrans c" textColor, StrReplace(subKey,
-                "Numpad", ""))
-            this.subGridControls[subKey] := ctrl
-        }
-        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset to main font size
+        this.gui.BackColor := highlightColor
+        this.x := 0
+        this.y := 0
+        this.width := 0
+        this.height := 0
+        borderSize := 3
+        interiorColor := "000000"
+        this.progress := this.gui.Add("Progress", "x" borderSize " y" borderSize " w0 h0 Background" interiorColor)
+        WinSetTransColor(interiorColor " 255", this.gui)
     }
 
-    Show() {
-        this.gui.Show(Format("x{} y{} NoActivate", this.x, this.y))
-    }
-
-    Hide() {
-        this.HideSubGrid() ; Ensure sub-grid targets are hidden too
-        this.gui.Hide()
-    }
-
-    GetCellBoundaries(cellKey) {
-        if this.cells.Has(cellKey) {
-            cellRel := this.cells[cellKey]
-            return { x: this.Left + cellRel.x, y: this.Top + cellRel.y, w: cellRel.w, h: cellRel.h }
-        }
-        return false
-    }
-
-    ContainsPoint(x, y) {
-        checkResult := (x >= this.Left && x < this.Right && y >= this.Top && y < this.Bottom)
-        if (showcaseDebug) {
-            ToolTip("Checking Monitor " this.monitorIndex ": Point(" x "," y ") in Bounds(" this.Left "," this.Top "," this
-                .Right "," this.Bottom ")? -> " checkResult, , , 3)
-            Sleep 1500
-            ToolTip(, , , 3)
-        }
-        return checkResult
-    }
-
-    ShowSubGrid(cellKey) {
-        ; --- REMOVE DESTRUCTION LOGIC START ---
-        /*
-        if (this.controlsToDestroy.Count > 0) {
-            for key, controlObj in this.controlsToDestroy {
-                if (IsObject(controlObj) && controlObj.Hwnd) {
-                    try { controlObj.Destroy() } catch {}
-                }
-            }
-            this.controlsToDestroy.Clear()
-        }
-        */
-        ; --- REMOVE DESTRUCTION LOGIC END ---
-
-        if (!this.cells.Has(cellKey)) {
-            return
-        }
-
-        cellRel := this.cells[cellKey]
-        subCellW := cellRel.w // subGridCols
-        subCellH := cellRel.h // subGridRows
-        if (subCellW <= 0 || subCellH <= 0) {
-            return ; Cell too small
-        }
-
-        subGridFontSize := Max(4, this.mainFontSize // 2) ; Match the size used in constructor
-        textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Use appropriate color
-
-        DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
-        this.gui.SetFont("s" subGridFontSize, "Arial") ; Set font for sub-grid controls
-
-        keyIndex := 0
-        loop subGridRows {
-            row := A_Index - 1
-            loop subGridCols {
-                col := A_Index - 1
-                if (keyIndex >= subGridKeys.Length) {
-                    break
-                }
-
-                subX := cellRel.x + col * subCellW
-                subY := cellRel.y + row * subCellH
-                subKey := subGridKeys[keyIndex + 1]
-
-                ; --- MODIFY EXISTING CONTROL ---
-                if this.subGridControls.Has(subKey) {
-                    ctrl := this.subGridControls[subKey]
-                    if IsObject(ctrl) {
-                        ctrl.Text := StrReplace(subKey, "Numpad", "")
-                        ctrl.Move(subX, subY, subCellW, subCellH)
-                        ctrl.Visible := true
-                    }
-                }
-                /* --- REMOVE OLD CONTROL CREATION ---
-                this.subGridControls[subKey] := this.gui.Add("Text",
-                    "x" subX " y" subY " w" subCellW " h" subCellH
-                    " Center BackgroundTrans c" textColor,
-                    StrReplace(subKey, "Numpad", ""))
-                */
-
-                /* --- REMOVE LINES --- (Already commented out) */
-
-                keyIndex += 1
-            }
-            if (keyIndex >= subGridKeys.Length) {
-                break
-            }
-        }
-
-        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font for main labels
-        DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
-        WinRedraw(this.gui.Hwnd) ; Keep this redraw for now
-    }
-
-    HideSubGrid() {
-        ; --- REMOVE QUEUE LOGIC START ---
-        /*
-        this.controlsToDestroy := this.subGridControls
-        this.subGridControls := Map() ; Clear the active map
-        */
-        ; --- REMOVE QUEUE LOGIC END ---
-
-        ; --- HIDE PRE-EXISTING CONTROLS ---
-        if (this.subGridControls.Count > 0) { ; Check if controls exist
-            needsRedraw := false
-            DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
-
-            for subKey, controlObj in this.subGridControls {
-                if (IsObject(controlObj) && controlObj.Hwnd && controlObj.Visible) {
-                    try {
-                        controlObj.Visible := false
-                        needsRedraw := true
-                    } catch {
-                        ; Ignore errors
-                    }
-                }
-            }
-
-            if (needsRedraw) {
-                DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
-                ; No explicit WinRedraw needed here usually
-            }
-        }
-    }
-}
-
-; ==============================================================================
-; Sub Grid Overlay Class (Separate Window)
-; ==============================================================================
-class SubGridOverlay {
-    __New(cellX, cellY, cellWidth, cellHeight) {
-        ; Create a new separate window for the sub-grid
-        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
-        this.gui.BackColor := "222222" ; Slightly different color than main grid
-
-        ; Store dimensions
-        this.width := cellWidth
-        this.height := cellHeight
-        this.x := cellX
-        this.y := cellY
-
-        ; Calculate sub-cell dimensions
-        this.subCellWidth := this.width // subGridCols
-        this.subCellHeight := this.height // subGridRows
-
-        ; Set font size based on cell dimensions
-        subGridFontSize := Max(4, Min(this.subCellWidth, this.subCellHeight) // 3)
-        textColor := showcaseDebug ? "00FFFF" : "FFFF00"
-        this.gui.SetFont("s" subGridFontSize, "Arial")
-
-        ; Add number labels (1-9)
-        this.controls := Map()
-        keyIndex := 0
-
-        ; Add thin border around the entire sub-grid
-        borderColor := showcaseDebug ? "FF0000" : "444444"
-        borderThickness := 1
-        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" borderColor)
-        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" borderColor
-        )
-        this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" borderColor)
-        this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" borderColor
-        )
-
-        loop subGridRows {
-            row := A_Index - 1
-            loop subGridCols {
-                col := A_Index - 1
-                if (keyIndex >= subGridKeys.Length) {
-                    break
-                }
-
-                subX := col * this.subCellWidth
-                subY := row * this.subCellHeight
-                subKey := subGridKeys[keyIndex + 1]
-
-                this.gui.Add("Text",
-                    "x" subX " y" subY " w" this.subCellWidth " h" this.subCellHeight
-                    " Center BackgroundTrans c" textColor,
-                    StrReplace(subKey, "Numpad", ""))
-
-                keyIndex += 1
-            }
-            if (keyIndex >= subGridKeys.Length) {
-                break
-            }
-        }
-
-        ; Make the window semi-transparent
-        WinSetTransColor("222222 220", this.gui)
-    }
-
-    Show() {
-        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+    Update(x, y, w, h) {
+        this.x := x
+        this.y := y
+        this.width := w
+        this.height := h
+        borderSize := 3
+        this.progress.Move(borderSize, borderSize, w - 2 * borderSize, h - 2 * borderSize)
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", x, y, w, h))
     }
 
     Hide() {
@@ -330,456 +63,1140 @@ class SubGridOverlay {
     }
 
     Destroy() {
-        this.gui.Destroy()
+        try {
+            ; Store the handle before destroying
+            hwnd := this.gui.Hwnd
+
+            ; First try to hide it
+            this.gui.Hide()
+
+            ; Then destroy it
+            this.gui.Destroy()
+
+            ; Force close if it still exists
+            if (WinExist("ahk_id " hwnd)) {
+                WinClose("ahk_id " hwnd)
+                if (WinExist("ahk_id " hwnd)) {
+                    WinKill("ahk_id " hwnd)
+                }
+            }
+        } catch {
+            ; Silently ignore errors
+        }
+    }
+}
+
+; Sub-Grid Overlay Class with GUI Reuse
+class SubGridOverlay {
+    __New() {
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow", "SubGrid")
+        this.gui.BackColor := "222222"
+        this.x := 0
+        this.y := 0
+        this.width := 0
+        this.height := 0
+        this.subCellWidth := 0
+        this.subCellHeight := 0
+        this.borderControls := []
+        this.textControls := []
+        ; Add border controls
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Top
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Bottom
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Left
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Right
+        ; Add text controls for sub-cells
+        loop 9 {
+            this.textControls.Push(this.gui.Add("Text", "x0 y0 w0 h0 Center BackgroundTrans cFFFF00", subGridKeys[
+                A_Index]))
+        }
+        this.transparency := defaultTransparency + 20
+        WinSetTransColor("222222 " this.transparency, this.gui)
+    }
+
+    Update(x, y, w, h) {
+        this.x := x
+        this.y := y
+        this.width := w
+        this.height := h
+        this.subCellWidth := w // 3
+        this.subCellHeight := h // 3
+        fontSize := Max(4, Min(this.subCellWidth, this.subCellHeight) // 3)
+        this.gui.SetFont("s" fontSize, "Arial")
+        ; Update borders
+        this.borderControls[1].Move(0, 0, w, 1)         ; Top
+        this.borderControls[2].Move(0, h - 1, w, 1)    ; Bottom
+        this.borderControls[3].Move(0, 0, 1, h)        ; Left
+        this.borderControls[4].Move(w - 1, 0, 1, h)    ; Right
+        ; Update text controls
+        index := 1
+        loop 3 {
+            row := A_Index - 1
+            loop 3 {
+                col := A_Index - 1
+                subX := col * this.subCellWidth
+                subY := row * this.subCellHeight
+                this.textControls[index].Move(subX, subY, this.subCellWidth, this.subCellHeight)
+                index += 1
+            }
+        }
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", x, y, w, h))
+    }
+
+    Hide() {
+        this.gui.Hide()
+    }
+
+    Destroy() {
+        try {
+            if (IsObject(this.gui)) {
+                ; Store handle before destroying the GUI
+                hwnd := this.gui.Hwnd
+
+                ; Try normal destroy first
+                this.gui.Destroy()
+
+                ; Additional: force close the window if it still exists
+                if (WinExist("ahk_id " hwnd)) {
+                    WinClose("ahk_id " hwnd)
+                    if (WinExist("ahk_id " hwnd)) {
+                        WinKill("ahk_id " hwnd)
+                    }
+                }
+            }
+        } catch {
+            ; Silently ignore errors
+        }
     }
 
     GetTargetCoordinates(subKey) {
-        ; Find the index of the key in subGridKeys
         subKeyIndex := -1
-        for index, key in subGridKeys {
+        for i, key in subGridKeys {
             if (key = subKey) {
-                subKeyIndex := index - 1 ; Get 0-based index
+                subKeyIndex := i - 1
                 break
             }
         }
         if (subKeyIndex = -1) {
             return false
         }
-
-        ; Calculate row and column
         subRow := subKeyIndex // subGridCols
         subCol := Mod(subKeyIndex, subGridCols)
-
-        ; Calculate center position within the sub-cell
         targetX := this.x + (subCol * this.subCellWidth) + (this.subCellWidth // 2)
         targetY := this.y + (subRow * this.subCellHeight) + (this.subCellHeight // 2)
-
         return { x: targetX, y: targetY }
     }
 }
 
-; ==============================================================================
-; Global State Management
-; ==============================================================================
-class State {
-    static overlays := []
-    static isVisible := false ; Are main grids visible?
-    static firstKey := ""
-    static currentOverlay := ""
-    static activeColKeys := []
-    static activeRowKeys := []
-    static subGridActive := false ; Flag for sub-grid input stage
-    static activeCellKey := "" ; Key of the cell where sub-grid is active (e.g., "es")
-    static activeSubCellKey := "" ; Numpad key of the last selected sub-cell
-    static subGridOverlay := "" ; Reference to the current SubGridOverlay object
+; Grid Overlay Class (unchanged for simplicity)
+class GridOverlay {
+    __New(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys) {
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08")
+        this.gui.BackColor := "000000"
+        this.width := Right - Left
+        this.height := Bottom - Top
+        this.x := Left
+        this.y := Top
+        this.monitorIndex := monitorIndex
+        this.cols := colKeys.Length
+        this.rows := rowKeys.Length
+        this.cellWidth := this.width // this.cols
+        this.cellHeight := this.height // this.rows
+        this.colKeys := colKeys
+        this.rowKeys := rowKeys
+        this.cells := Map()
+        fontSize := Max(8, Min(this.cellWidth, this.cellHeight) // 6)
+        this.gui.SetFont("s" fontSize, "Arial")
+        this.borderColor := showcaseDebug ? "FF0000" : "444444"
+        this.textColor := showcaseDebug ? "FF0000" : "FFFFFF"
+        this.CreateGrid()
+        this.transparency := defaultTransparency
+        WinSetTransColor("000000 " this.transparency, this.gui)
+    }
+
+    CreateGrid() {
+        borderThickness := 1
+        for colIndex, colKey in this.colKeys {
+            for rowIndex, rowKey in this.rowKeys {
+                cellKey := colKey . rowKey
+                cellX := (colIndex - 1) * this.cellWidth
+                cellY := (rowIndex - 1) * this.cellHeight
+                this.cells[cellKey] := { x: cellX, y: cellY, w: this.cellWidth, h: this.cellHeight, absX: this.x +
+                    cellX, absY: this.y + cellY }
+                this.gui.Add("Text", "x" cellX " y" cellY " w" this.cellWidth " h" this.cellHeight " +0x200 Center BackgroundTrans c" this
+                    .textColor, cellKey)
+            }
+        }
+        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" this.borderColor)
+        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" this
+        .borderColor)
+        this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" this.borderColor)
+        this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" this
+        .borderColor)
+        for colIndex, _ in this.colKeys {
+            if (colIndex > 1) {
+                cellX := (colIndex - 1) * this.cellWidth
+                this.gui.Add("Progress", "x" cellX " y0 w" borderThickness " h" this.height " Background" this.borderColor
+                )
+            }
+        }
+        for rowIndex, _ in this.rowKeys {
+            if (rowIndex > 1) {
+                cellY := (rowIndex - 1) * this.cellHeight
+                this.gui.Add("Progress", "x0 y" cellY " w" this.width " h" borderThickness " Background" this.borderColor
+                )
+            }
+        }
+    }
+
+    Show() {
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+        WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+    }
+
+    Hide() {
+        this.gui.Hide()
+    }
+
+    Destroy() {
+        try {
+            if (IsObject(this.gui)) {
+                hwnd := this.gui.Hwnd
+                this.gui.Hide()
+                this.gui.Destroy()
+
+                if (WinExist("ahk_id " hwnd)) {
+                    WinClose("ahk_id " hwnd)
+                    if (WinExist("ahk_id " hwnd)) {
+                        WinKill("ahk_id " hwnd)
+                    }
+                }
+            }
+        } catch {
+            ; Silently ignore errors
+        }
+    }
+
+    GetCellBoundaries(cellKey) {
+        if this.cells.Has(cellKey) {
+            cell := this.cells[cellKey]
+            return { x: this.x + cell.x, y: this.y + cell.y, w: cell.w, h: cell.h }
+        }
+        return false
+    }
+
+    ContainsPoint(x, y) {
+        return (x >= this.x && x < this.x + this.width && y >= this.y && y < this.y + this.height)
+    }
 }
 
-; ==============================================================================
-; Global Helper Functions (Defined before use in hotkeys)
-; ==============================================================================
+; OverlayGUI Class (wrapper for GridOverlay)
+class OverlayGUI {
+    __New(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys) {
+        this.width := Right - Left
+        this.height := Bottom - Top
+        this.monitorIndex := monitorIndex
+        this.Left := Left
+        this.Top := Top
+        this.Right := Right
+        this.Bottom := Bottom
+        this.colKeys := colKeys
+        this.rowKeys := rowKeys
+        this.cols := colKeys.Length
+        this.rows := rowKeys.Length
+        this.cellWidth := this.width // this.cols
+        this.cellHeight := this.height // this.rows
+        this.gridOverlay := GridOverlay(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys)
+        this.cells := this.gridOverlay.cells
+    }
+
+    Show() {
+        this.gridOverlay.Show()
+    }
+
+    Hide() {
+        this.gridOverlay.Hide()
+    }
+
+    Destroy() {
+        this.gridOverlay.Destroy()
+    }
+
+    GetCellBoundaries(cellKey) {
+        return this.gridOverlay.GetCellBoundaries(cellKey)
+    }
+
+    ContainsPoint(x, y) {
+        return (x >= this.Left && x < this.Right && y >= this.Top && y < this.Bottom)
+    }
+}
+
+; This section defines classes with GUI reuse for HighlightOverlay and SubGridOverlay, keeping GridOverlay and OverlayGUI largely unchanged. Yes, implemented.
+
+class State {
+    static overlays := []           ; Array of OverlayGUI instances per monitor
+    static currentOverlay := ""     ; Current active OverlayGUI
+    static activeColKeys := []      ; Current layout column keys
+    static activeRowKeys := []      ; Current layout row keys
+    static firstKey := ""           ; First key in two-key cell selection
+    static activeCellKey := ""      ; Current selected cell key (e.g., "es")
+    static activeSubCellKey := ""   ; Current sub-cell key (e.g., "5")
+    static currentColIndex := 0     ; Current column index
+    static currentRowIndex := 0     ; Current row index
+    static lastSelectedRowIndex := 0 ; Last selected row index
+}
+
+; This section defines a simplified State class for managing application state within the FSM framework. Yes, implemented.
+
+; Helper function to ensure index is within valid range
+ValidateIndex(index, arrayLength) {
+    if (index < 1)
+        return 1
+    if (index > arrayLength)
+        return arrayLength
+    return index
+}
+
+ForceCloseAllGuis() {
+    ; Force close any stray GUIs that might be left
+    try {
+        DetectHiddenWindows(true)
+        WinClose("ahk_class AutoHotkeyGUI")
+        Sleep(30)
+        WinClose("ahk_class AutoHotkeyGUI")
+    } catch {
+        ; Silently ignore errors
+    }
+}
+
 Cleanup() {
-    if (IsObject(State.subGridOverlay)) {
-        State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window if it exists
-        State.subGridOverlay := ""
+    global currentState, highlight, subGrid
+
+    ; First stop the cursor tracking to prevent recreation
+    SetTimer(TrackCursor, 0)
+
+    ; Hide elements before destroying them
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
     }
 
     for overlay in State.overlays {
-        overlay.Hide() ; Hides GUI and sub-grid targets via its Hide method
+        overlay.Hide()
     }
 
-    State.isVisible := false
-    State.subGridActive := false
+    ; Small delay to ensure GUIs have time to hide
+    Sleep(20)
+
+    ; Now destroy GUIs
+    if (IsObject(highlight)) {
+        highlight.Destroy()
+    }
+
+    if (IsObject(subGrid)) {
+        subGrid.Destroy()
+    }
+
+    for overlay in State.overlays {
+        try {
+            overlay.Destroy()
+        } catch {
+            ; Silently ignore errors
+        }
+    }
+
+    ; Forcefully close any remaining GUIs
+    ForceCloseAllGuis()
+
+    ; Reset state variables
     State.firstKey := ""
     State.currentOverlay := ""
     State.activeColKeys := []
     State.activeRowKeys := []
     State.activeCellKey := ""
     State.activeSubCellKey := ""
+    State.currentColIndex := 0
+    State.currentRowIndex := 0
+    State.lastSelectedRowIndex := 0
 
-    ToolTip() ; Clear tooltip
-    SetTimer(TrackCursor, 0)
-}
+    ; Reset the FSM state to IDLE
+    currentState := "IDLE"
 
-CancelSubGridMode() {
-    if (State.subGridActive) {
-        if (IsObject(State.subGridOverlay)) {
-            State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window
-            State.subGridOverlay := ""
-        }
-        State.subGridActive := false
-        State.activeCellKey := ""
-        State.activeSubCellKey := ""
-        State.firstKey := "" ; Reset key sequence
-        State.isVisible := true ; Return to main grid visibility state
-        ToolTip() ; Clear sub-grid tooltip
-    }
+    ; Clear tooltips
+    ToolTip()
 }
 
 SwitchMonitor(monitorNum) {
-    if (monitorNum > State.overlays.Length) {
+    global currentState, highlight, subGrid
+
+    if (monitorNum > State.overlays.Length || currentState == "IDLE") {
         return
-    }
-
-    CancelSubGridMode() ; Cancel sub-grid if active before switching
-
-    if (!State.isVisible) { ; Ensure overlays are visible if we cancelled sub-grid
-        for overlay in State.overlays {
-            overlay.Show()
-        }
-        State.isVisible := true
     }
 
     newOverlay := State.overlays[monitorNum]
     if (newOverlay && State.currentOverlay !== newOverlay) {
+        ; Update state
         State.currentOverlay := newOverlay
+
+        ; Calculate center position
         centerX := newOverlay.Left + (newOverlay.width // 2)
         centerY := newOverlay.Top + (newOverlay.height // 2)
-        if (showcaseDebug) {
-            ToolTip("Switching to Monitor Index: " . newOverlay.monitorIndex . ". Target Coords: X=" . centerX . " Y=" .
-                centerY, , , 2)
-            Sleep 1500
-            ToolTip(, , , 2)
-        }
+
+        ; Move cursor to center of new monitor
         MouseMove(centerX, centerY, 0)
-    } else {
-        ToolTip("Already on Monitor " . (newOverlay ? newOverlay.monitorIndex : "None"), 100, 100)
-        Sleep 1000
-        ToolTip()
+
+        ; Reset any active cell highlighting
+        State.activeCellKey := ""
+
+        ; Update the TrackCursor once immediately to detect any cell at the new position
+        try {
+            TrackCursor()
+        } catch {
+            ; Ignore any errors during this initial tracking
+        }
+
+        if (showcaseDebug) {
+            ToolTip("Switched to Monitor " monitorNum)
+            Sleep(1000)
+            ToolTip()
+        }
     }
+}
+
+GetCellAtPosition(x, y) {
+    if (!IsObject(State.currentOverlay)) {
+        return ""
+    }
+    if (!State.currentOverlay.ContainsPoint(x, y)) {
+        return ""
+    }
+    for colKey in State.activeColKeys {
+        for rowKey in State.activeRowKeys {
+            cellKey := colKey . rowKey
+            boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+            if (IsObject(boundaries) && x >= boundaries.x && x < boundaries.x + boundaries.w && y >= boundaries.y && y <
+            boundaries.y + boundaries.h) {
+                return cellKey
+            }
+        }
+    }
+    return ""
 }
 
 HandleKey(key) {
-    ; Called only when State.isVisible is true and State.subGridActive is false
-    if (!IsObject(State.currentOverlay)) {
+    global currentState, highlight, subGrid
+
+    ; IMPROVEMENT: Explicit hiding at the beginning
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+
+    ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference
+    SetTimer(TrackCursor, 0)
+
+    if (currentState != "GRID_VISIBLE" || !IsObject(State.currentOverlay)) {
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
         return
     }
 
-    if (State.firstKey = "") {
-        ; --- First Key Input ---
-        isValidFirstKey := false
-        for _, colKey in State.activeColKeys {
-            if (key = colKey) {
-                isValidFirstKey := true
-                break
-            }
-        }
-        if (isValidFirstKey) {
-            ; --- MOUSE MOVE ON FIRST KEY START ---
-            firstRowKey := State.activeRowKeys[1] ; Get the first key defined for rows
-            firstCellInColKey := key . firstRowKey
-            boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
-            if (IsObject(boundaries)) {
-                MouseGetPos(, &currentY) ; Get current mouse Y
-                targetX := boundaries.x + (boundaries.w // 2) ; Center of the first cell in the column
-                MouseMove(targetX, currentY, 0) ; Move instantly horizontally
-            }
-            ; --- MOUSE MOVE ON FIRST KEY END ---
-
-            ; Clear any previous sub-grid if it exists (logic moved slightly)
-            if (State.subGridActive) {
-                State.currentOverlay.HideSubGrid()
-                State.subGridActive := false
-                State.activeCellKey := ""
-            }
-
-            State.firstKey := key
-            ToolTip("First key: " . key . ". Select second key (row).")
-        } else {
-            ToolTip("Invalid first key: '" . key . "' for current layout.")
-            Sleep 1000
-            ToolTip()
-        }
-    } else {
-        ; --- Second Key Input ---
-        isValidSecondKey := false
-        for _, rowKey in State.activeRowKeys {
-            if (key = rowKey) {
-                isValidSecondKey := true
-                break
-            }
-        }
-        if (isValidSecondKey) {
-            cellKey := State.firstKey . key
-            boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
-
-            if (IsObject(boundaries)) {
-                ; Clear any existing sub-grid first
-                if (State.subGridActive && IsObject(State.subGridOverlay)) {
-                    State.subGridOverlay.Destroy()
-                    State.subGridOverlay := ""
-                }
-
-                ; Move mouse to center
-                centerX := boundaries.x + (boundaries.w // 2)
-                centerY := boundaries.y + (boundaries.h // 2)
-                MouseMove(centerX, centerY, 0)
-
-                ; Create and show a new separate SubGridOverlay window
-                State.subGridOverlay := SubGridOverlay(
-                    boundaries.x, boundaries.y,
-                    boundaries.w, boundaries.h
-                )
-                State.subGridOverlay.Show()
-
-                State.subGridActive := true
-                State.activeCellKey := cellKey
-                State.firstKey := "" ; Reset for next potential sequence
-                ToolTip("Cell '" . cellKey . "' targeted. Use Numpad 1-9 for sub-cell, or select new cell.")
-            } else {
-                ToolTip("Error getting boundaries for cell: " . cellKey)
-                Sleep 1000
-                ToolTip()
-                State.firstKey := "" ; Reset on error
-            }
-        } else {
-            ToolTip("Invalid second key: '" . key . "' for first key '" . State.firstKey . "'.")
-            Sleep 1000
-            ToolTip()
-            ; Don't reset firstKey, allow user to try a different second key
-        }
-    }
-}
-
-HandleSubGridKey(subKey) {
-    ; Called only when State.subGridActive is true
-    if (!State.subGridActive || !State.activeCellKey || !IsObject(State.subGridOverlay)) {
-        return
-    }
-
-    ; Use the SubGridOverlay to get target coordinates
-    targetCoords := State.subGridOverlay.GetTargetCoordinates(subKey)
-    if (!IsObject(targetCoords)) {
-        ToolTip("Invalid sub-grid key: " . subKey)
-        Sleep 1000
-        ToolTip()
-        return
-    }
-
-    ; Move to the target coordinates
-    MouseMove(targetCoords.x, targetCoords.y, 0)
-    State.activeSubCellKey := subKey
-    ToolTip("Moved to sub-cell " . StrReplace(subKey, "Numpad", "") . " within " . State.activeCellKey)
-    ; --- DO NOT CALL Cleanup() HERE ---
-}
-
-StartNewSelection(firstKey) {
-    ; Called only when State.subGridActive is true and a valid first key is pressed
-    if (!State.subGridActive || !IsObject(State.currentOverlay)) {
-        return
-    }
-
-    ; Check if the pressed key is actually a valid *first* key for the current layout
-    isValid := false
+    ; Check if key is in column keys
+    isColKey := false
     for _, colKey in State.activeColKeys {
-        if (firstKey = colKey) {
-            isValid := true
+        if (colKey = key) {
+            isColKey := true
             break
         }
     }
-    if (!isValid) {
-        ToolTip("'" . firstKey . "' is not a valid first key for this layout.")
+
+    ; Check if key is in row keys
+    isRowKey := false
+    for _, rowKey in State.activeRowKeys {
+        if (rowKey = key) {
+            isRowKey := true
+            break
+        }
+    }
+
+    if (!isColKey && !isRowKey) {
+        ToolTip("Invalid key: " key)
         Sleep 1000
         ToolTip()
-        return ; Ignore if not a valid first key
-    }
-
-    CancelSubGridMode() ; Clear old sub-grid targets & reset state
-
-    ; Start the new selection process
-    HandleKey(firstKey) ; Process the pressed key as the first key of a new sequence
-}
-
-TrackCursor() {
-    if (!State.isVisible || State.subGridActive) { ; Don't track if sub-grid is active
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
         return
     }
 
-    MouseGetPos(&x, &y)
-    for overlay in State.overlays {
-        if (overlay.ContainsPoint(x, y)) {
-            if (State.currentOverlay !== overlay) {
-                State.currentOverlay := overlay
-                if (showcaseDebug) {
-                    ToolTip("Switched to Monitor " . overlay.monitorIndex . " at X=" . x . " Y=" . y, , , 2)
-                    Sleep 1500
-                    ToolTip(, , , 2)
+    ; Handle first key (usually column selection)
+    if (State.firstKey = "") {
+        if (isColKey) {
+            ; Store the column key for two-key selection
+            State.firstKey := key
+
+            ; Find the index of this column key
+            for i, k in State.activeColKeys {
+                if (k = key) {
+                    State.currentColIndex := i
+                    break
                 }
             }
+
+            ; Use last row if one was selected, otherwise use first row
+            rowIndex := State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1
+            rowIndex := ValidateIndex(rowIndex, State.activeRowKeys.Length)
+            cellKey := key . State.activeRowKeys[rowIndex]
+            boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+
+            if (IsObject(boundaries)) {
+                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+
+                ; Move the cursor to the center of the highlighted cell
+                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+                ; IMPROVEMENT: Small sleep after MouseMove
+                Sleep(10)
+
+                ToolTip("First key: " key ". Select row.")
+            }
+            ; Re-enable TrackCursor before returning
+            SetTimer(TrackCursor, 50)
             return
         }
-    }
-}
-
-; ==============================================================================
-; Main Activation Hotkey (Global Scope)
-; ==============================================================================
-CapsLock & q:: {
-    if (State.isVisible || State.subGridActive) {
-        Cleanup()
-        return
-    }
-
-    currentConfig := layoutConfigs[selectedLayout]
-    if (!IsObject(currentConfig)) {
-        ToolTip("Error: Invalid selectedLayout (" . selectedLayout . ")", , , 4)
-        Sleep 2000
-        ToolTip(, , , 4)
-        return
-    }
-
-    State.activeColKeys := currentConfig["colKeys"]
-    State.activeRowKeys := currentConfig["rowKeys"]
-    State.overlays := []
-    MouseGetPos(&startX, &startY)
-
-    if (showcaseDebug) {
-        ToolTip("Start X=" . startX . " Y=" . startY, , , 2)
-        Sleep 1500
-        ToolTip(, , , 2)
-    }
-
-    foundMonitor := false
-    loop MonitorGetCount() {
-        MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
-        if (showcaseDebug) {
-            ToolTip("Monitor " . A_Index . " assigned: L=" . Left . " T=" . Top . " R=" . Right . " B=" . Bottom, , , 1
-            )
-            Sleep 1500
-            ToolTip(, , , 1)
-        }
-        overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, State.activeColKeys, State.activeRowKeys)
-        overlay.Show()
-        State.overlays.Push(overlay)
-        if (!foundMonitor && overlay.ContainsPoint(startX, startY)) {
-            State.currentOverlay := overlay
-            foundMonitor := true
-            if (showcaseDebug) {
-                ToolTip("Detected Monitor " . overlay.monitorIndex . " at X=" . startX . " Y=" . startY, , , 2)
-                Sleep 1500
-                ToolTip(, , , 2)
+        else if (isRowKey) {
+            ; Direct row selection without column first
+            for i, k in State.activeRowKeys {
+                if (k = key) {
+                    State.currentRowIndex := i
+                    State.lastSelectedRowIndex := i
+                    break
+                }
             }
+
+            ; Use middle column if no column was previously selected
+            colIndex := State.currentColIndex ? State.currentColIndex : Ceil(State.activeColKeys.Length / 2)
+            colIndex := ValidateIndex(colIndex, State.activeColKeys.Length)
+            colKey := State.activeColKeys[colIndex]
+            cellKey := colKey . key
         }
     }
-
-    if (!foundMonitor && State.overlays.Length > 0) {
-        for overlay in State.overlays {
-            if (overlay.ContainsPoint(0, 0)) {
-                State.currentOverlay := overlay
-                foundMonitor := true
-                ToolTip("Fallback to Monitor " . overlay.monitorIndex . " (Primary)", 100, 100)
-                Sleep 1000
-                ToolTip()
+    else if (isRowKey) {
+        ; Complete two-key selection with row
+        for i, k in State.activeRowKeys {
+            if (k = key) {
+                State.currentRowIndex := i
+                State.lastSelectedRowIndex := i
                 break
             }
         }
-        if (!foundMonitor) {
-            State.currentOverlay := State.overlays[1]
-            foundMonitor := true
-            ToolTip("Last Resort: Monitor 1", 100, 100)
-            Sleep 1000
-            ToolTip()
+        cellKey := State.firstKey . key
+        State.firstKey := ""  ; Reset first key after completing selection
+    }
+    else {
+        ; IMPROVEMENT: Simplified column switching logic
+        ; Changed column in middle of selection - immediately update firstKey and highlight
+        State.firstKey := key
+        for i, k in State.activeColKeys {
+            if (k = key) {
+                State.currentColIndex := i
+                break
+            }
         }
+
+        ; Use last row if one was selected, otherwise use first row
+        rowIndex := State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1
+        rowIndex := ValidateIndex(rowIndex, State.activeRowKeys.Length)
+        cellKey := key . State.activeRowKeys[rowIndex]
+
+        ; Immediately highlight the new column's cell
+        boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+        if (IsObject(boundaries)) {
+            highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+            ; IMPROVEMENT: Small sleep after MouseMove
+            Sleep(10)
+            ToolTip("Column changed to: " key ". Select row.")
+        }
+        ; Re-enable TrackCursor and return
+        SetTimer(TrackCursor, 50)
+        return
     }
 
-    if (foundMonitor) {
-        State.isVisible := true
-        SetTimer(TrackCursor, 50)
+    ; Process the final cell selection
+    boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+    if (IsObject(boundaries)) {
+        highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+        subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+        MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+        ; IMPROVEMENT: Small sleep after MouseMove
+        Sleep(10)
+        State.activeCellKey := cellKey
+        currentState := "SUBGRID_ACTIVE"
+        ToolTip("Cell '" cellKey "' targeted. Use 1-9.")
+    }
+
+    ; Re-enable TrackCursor
+    SetTimer(TrackCursor, 50)
+}
+
+HandleSubGridKey(subKey) {
+    global currentState, subGrid
+    if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
+        return
+    }
+    targetCoords := subGrid.GetTargetCoordinates(subKey)
+    if (IsObject(targetCoords)) {
+        MouseMove(targetCoords.x, targetCoords.y, 0)
+        State.activeSubCellKey := subKey
+        ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey)
     } else {
-        ToolTip("Error: No monitor detected (" . startX . ", " . startY . ").", 100, 100)
-        Sleep 2000
+        ToolTip("Invalid sub-key: " subKey)
+        Sleep 1000
         ToolTip()
-        Cleanup()
     }
 }
 
-; ==============================================================================
-; Hotkey Contexts and Definitions (Global Scope)
-; ==============================================================================
+StartNewSelection(key) {
+    global currentState, subGrid, highlight
 
-; --- Hotkeys active only during main grid display (before sub-grid targeting) ---
-#HotIf State.isVisible && !State.subGridActive
-q:: HandleKey("q")
-w:: HandleKey("w")
-e:: HandleKey("e")
-r:: HandleKey("r")
-t:: HandleKey("t")
-y:: HandleKey("y")
-u:: HandleKey("u")
-i:: HandleKey("i")
-o:: HandleKey("o")
-p:: HandleKey("p")
-a:: HandleKey("a")
-s:: HandleKey("s")
-d:: HandleKey("d")
-f:: HandleKey("f")
-g:: HandleKey("g")
-h:: HandleKey("h")
-j:: HandleKey("j")
-k:: HandleKey("k")
-l:: HandleKey("l")
-`;:: HandleKey(";")
+    ; IMPROVEMENT: Temporarily disable TrackCursor
+    SetTimer(TrackCursor, 0)
+
+    if (currentState != "SUBGRID_ACTIVE") {
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
+        return
+    }
+
+    ; Hide the subgrid first
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+
+    ; Hide highlight as well
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+
+    ; Reset state before handling the new key
+    State.activeCellKey := ""
+    State.activeSubCellKey := ""
+    State.firstKey := ""
+    currentState := "GRID_VISIBLE"
+
+    ; Force a small delay to ensure state transitions properly
+    Sleep(10)
+
+    ; Call HandleKey to process the key press
+    HandleKey(key)
+
+    ; TrackCursor re-enabled in HandleKey
+}
+
+TrackCursor() {
+    global currentState, highlight, subGrid
+
+    ; Ignore if we're in the IDLE state or dragging
+    if (currentState == "IDLE" || currentState == "DRAGGING") {
+        return
+    }
+
+    try {
+        ; Get current mouse position
+        MouseGetPos(&x, &y)
+
+        ; Check if we moved to a different monitor
+        for overlay in State.overlays {
+            if (!IsObject(overlay)) {
+                continue
+            }
+
+            try {
+                if (overlay.ContainsPoint(x, y) && State.currentOverlay !== overlay) {
+                    State.currentOverlay := overlay
+                    if (showcaseDebug) {
+                        ToolTip("Switched to Monitor " overlay.monitorIndex)
+                        Sleep(1000)
+                        ToolTip()
+                    }
+                    break
+                }
+            } catch {
+                ; Skip this overlay if there's an error
+                continue
+            }
+        }
+
+        ; Only proceed if we have a valid current overlay
+        if (!IsObject(State.currentOverlay)) {
+            return
+        }
+
+        ; Check if cursor is over a cell
+        try {
+            currentCellKey := GetCellAtPosition(x, y)
+
+            ; Only update if the cell changed and we have valid boundaries
+            if (currentCellKey && currentCellKey != State.activeCellKey) {
+                boundaries := State.currentOverlay.GetCellBoundaries(currentCellKey)
+
+                if (IsObject(boundaries)) {
+                    ; Get the cell center position
+                    centerX := boundaries.x + (boundaries.w // 2)
+                    centerY := boundaries.y + (boundaries.h // 2)
+
+                    ; Update the highlight and sub-grid
+                    try {
+                        if (IsObject(highlight)) {
+                            highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                        }
+
+                        if (IsObject(subGrid)) {
+                            subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                        }
+
+                        ; Update the active cell
+                        State.activeCellKey := currentCellKey
+
+                        ; If we're in the grid visible state, switch to subgrid active
+                        if (currentState == "GRID_VISIBLE") {
+                            currentState := "SUBGRID_ACTIVE"
+                        }
+
+                        ; Extract column and row characters
+                        colChar := SubStr(currentCellKey, 1, 1)
+                        rowChar := SubStr(currentCellKey, 2, 1)
+
+                        ; Update column index based on current cell
+                        colIndex := 0
+                        for i, k in State.activeColKeys {
+                            if (colChar = k) {
+                                colIndex := i
+                                State.currentColIndex := i  ; Update the current column index
+                                break
+                            }
+                        }
+
+                        ; Update row index based on current cell
+                        rowIndex := 0
+                        for i, k in State.activeRowKeys {
+                            if (rowChar = k) {
+                                rowIndex := i
+                                State.currentRowIndex := i
+                                State.lastSelectedRowIndex := i  ; Remember this row
+                                break
+                            }
+                        }
+
+                        ; Debug output if needed
+                        if (showcaseDebug) {
+                            ToolTip("Cell: " currentCellKey " Col:" colIndex " Row:" rowIndex)
+                            Sleep(500)
+                            ToolTip()
+                        }
+                    } catch as e {
+                        if (showcaseDebug) {
+                            ToolTip("Error updating GUI: " e.Message)
+                            Sleep(1000)
+                            ToolTip()
+                        }
+                    }
+                }
+            }
+        } catch as e {
+            if (showcaseDebug) {
+                ToolTip("Error in cell tracking: " e.Message)
+                Sleep(1000)
+                ToolTip()
+            }
+        }
+    } catch as e {
+        if (showcaseDebug) {
+            ToolTip("Error in TrackCursor: " e.Message)
+            Sleep(1000)
+            ToolTip()
+        }
+    }
+}
+
+; This section includes a simplified Cleanup function, monitor switching, cell position checking, and key handling functions updated for FSM and GUI reuse. Yes, implemented.
+
+CapsLock & q:: {
+    global currentState, highlight, subGrid
+
+    ; If already active, clean up and exit
+    if (currentState != "IDLE") {
+        Cleanup()
+        return
+    }
+
+    ; Try to initialize
+    try {
+        ; IMPROVEMENT: Explicitly reset all state variables
+        State.firstKey := ""
+        State.currentOverlay := ""
+        State.activeColKeys := []
+        State.activeRowKeys := []
+        State.activeCellKey := ""
+        State.activeSubCellKey := ""
+        State.currentColIndex := 0
+        State.currentRowIndex := 0
+        State.lastSelectedRowIndex := 0
+        State.overlays := []
+
+        ; Get configured layout
+        currentConfig := layoutConfigs[selectedLayout]
+        if (!IsObject(currentConfig)) {
+            ToolTip("Invalid layout: " selectedLayout)
+            Sleep(2000)
+            ToolTip()
+            return
+        }
+
+        ; Set up state
+        State.activeColKeys := currentConfig["colKeys"]
+        State.activeRowKeys := currentConfig["rowKeys"]
+
+        ; Get current mouse position
+        MouseGetPos(&startX, &startY)
+        foundMonitor := false
+
+        ; Initialize reusable GUI elements
+        try {
+            highlight := HighlightOverlay()
+            subGrid := SubGridOverlay()
+        } catch as e {
+            ToolTip("Error initializing GUI: " e.Message)
+            Sleep(2000)
+            ToolTip()
+            return
+        }
+
+        ; Create overlay for each monitor
+        loop MonitorGetCount() {
+            try {
+                MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+                overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, State.activeColKeys, State.activeRowKeys)
+                overlay.Show()
+                State.overlays.Push(overlay)
+
+                if (overlay.ContainsPoint(startX, startY)) {
+                    State.currentOverlay := overlay
+                    foundMonitor := true
+                }
+            } catch as e {
+                if (showcaseDebug) {
+                    ToolTip("Error creating overlay for monitor " A_Index ": " e.Message)
+                    Sleep(2000)
+                    ToolTip()
+                }
+                ; Continue with next monitor
+            }
+        }
+
+        ; If no monitor found for current position, use first overlay
+        if (!foundMonitor && State.overlays.Length > 0) {
+            State.currentOverlay := State.overlays[1]
+        }
+
+        ; Only continue if overlay creation was successful
+        if (State.overlays.Length > 0 && IsObject(State.currentOverlay)) {
+            currentState := "GRID_VISIBLE"
+            SetTimer(TrackCursor, 50)
+        } else {
+            ; Clean up and show error if unsuccessful
+            Cleanup()
+            ToolTip("Failed to create grid overlays")
+            Sleep(2000)
+            ToolTip()
+        }
+    } catch as e {
+        ; Handle any uncaught errors
+        Cleanup()
+        if (showcaseDebug) {
+            ToolTip("Error initializing: " e.Message)
+            Sleep(2000)
+            ToolTip()
+        }
+    }
+}
+
+#HotIf currentState == "GRID_VISIBLE" || currentState == "SUBGRID_ACTIVE"
+q:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("q")
+    } else {
+        StartNewSelection("q")
+    }
+}
+w:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("w")
+    } else {
+        StartNewSelection("w")
+    }
+}
+e:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("e")
+    } else {
+        StartNewSelection("e")
+    }
+}
+r:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("r")
+    } else {
+        StartNewSelection("r")
+    }
+}
+t:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("t")
+    } else {
+        StartNewSelection("t")
+    }
+}
+y:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("y")
+    } else {
+        StartNewSelection("y")
+    }
+}
+u:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("u")
+    } else {
+        StartNewSelection("u")
+    }
+}
+i:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("i")
+    } else {
+        StartNewSelection("i")
+    }
+}
+o:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("o")
+    } else {
+        StartNewSelection("o")
+    }
+}
+p:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("p")
+    } else {
+        StartNewSelection("p")
+    }
+}
+a:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("a")
+    } else {
+        StartNewSelection("a")
+    }
+}
+s:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("s")
+    } else {
+        StartNewSelection("s")
+    }
+}
+d:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("d")
+    } else {
+        StartNewSelection("d")
+    }
+}
+f:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("f")
+    } else {
+        StartNewSelection("f")
+    }
+}
+g:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("g")
+    } else {
+        StartNewSelection("g")
+    }
+}
+h:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("h")
+    } else {
+        StartNewSelection("h")
+    }
+}
+j:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("j")
+    } else {
+        StartNewSelection("j")
+    }
+}
+k:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("k")
+    } else {
+        StartNewSelection("k")
+    }
+}
+l:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("l")
+    } else {
+        StartNewSelection("l")
+    }
+}
+`;:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(";")
+    } else {
+        StartNewSelection(";")
+    }
+}
+#HotIf
+
+#HotIf currentState == "SUBGRID_ACTIVE"
+1:: HandleSubGridKey("1")
+2:: HandleSubGridKey("2")
+3:: HandleSubGridKey("3")
+4:: HandleSubGridKey("4")
+5:: HandleSubGridKey("5")
+6:: HandleSubGridKey("6")
+7:: HandleSubGridKey("7")
+8:: HandleSubGridKey("8")
+9:: HandleSubGridKey("9")
+#HotIf
+
+#HotIf currentState == "GRID_VISIBLE"
 1:: SwitchMonitor(1)
 2:: SwitchMonitor(2)
 3:: SwitchMonitor(3)
 4:: SwitchMonitor(4)
 #HotIf
 
-; --- Hotkeys active only during sub-grid targeting ---
-#HotIf State.subGridActive
-; Sub-grid selection
-7:: HandleSubGridKey("7")
-8:: HandleSubGridKey("8")
-9:: HandleSubGridKey("9")
-4:: HandleSubGridKey("4")
-5:: HandleSubGridKey("5")
-6:: HandleSubGridKey("6")
-1:: HandleSubGridKey("1")
-2:: HandleSubGridKey("2")
-3:: HandleSubGridKey("3")
+#HotIf currentState != "IDLE"
+Space:: {
+    try {
+        ; Save mouse position before any cleanup
+        MouseGetPos(&mouseX, &mouseY)
 
-; Start new cell selection (override sub-grid targeting)
-; Define all potential FIRST keys from all layouts here explicitly
-; Layout 1 Col Keys
-q:: StartNewSelection("q")
-w:: StartNewSelection("w")
-e:: StartNewSelection("e")
-r:: StartNewSelection("r")
-t:: StartNewSelection("t")
-y:: StartNewSelection("y")
-u:: StartNewSelection("u")
-i:: StartNewSelection("i")
-o:: StartNewSelection("o")
-p:: StartNewSelection("p")
-; Layout 2 Col Keys (also covers Layout 3 Row Keys)
-a:: StartNewSelection("a")
-s:: StartNewSelection("s")
-d:: StartNewSelection("d")
-f:: StartNewSelection("f")
-; Layout 3 Col Keys already covered by Layout 1
-; Layout 1 Row Keys (if they could be first keys in another layout)
-g:: StartNewSelection("g")
-h:: StartNewSelection("h")
-; Layout 2 Row Keys (if they could be first keys)
-j:: StartNewSelection("j")
-k:: StartNewSelection("k")
-l:: StartNewSelection("l")
-`;:: StartNewSelection(";")
+        ; First stop tracking and change state to prevent issues
+        SetTimer(TrackCursor, 0)
 
-; Monitor switching is handled in the main grid context only now.
+        ; Hide elements immediately
+        if (IsObject(highlight))
+            highlight.Hide()
+        if (IsObject(subGrid))
+            subGrid.Hide()
+
+        ; Small delay to ensure UI elements are hidden
+        Sleep(10)
+
+        ; Now perform the mouse click
+        MouseClick("Left", mouseX, mouseY, 1, 0)
+
+        ; Clean up after the click
+        Cleanup()
+    } catch as e {
+        if (showcaseDebug) {
+            ToolTip("Error: " e.Message)
+            Sleep(1000)
+            ToolTip()
+        }
+        ; Still try to clean up if there's an error
+        Cleanup()
+    }
+}
+
+RButton:: {
+    try {
+        ; Save position before cleanup
+        MouseGetPos(&mouseX, &mouseY)
+
+        ; Hide UI elements first
+        if (IsObject(highlight))
+            highlight.Hide()
+        if (IsObject(subGrid))
+            subGrid.Hide()
+
+        ; Short delay
+        Sleep(10)
+
+        ; Perform right click
+        MouseClick("Right", mouseX, mouseY, 1, 0)
+
+        ; Clean up
+        Cleanup()
+    } catch {
+        Cleanup()
+    }
+}
+
+MButton:: {
+    try {
+        ; Save position before cleanup
+        MouseGetPos(&mouseX, &mouseY)
+
+        ; Hide UI elements first
+        if (IsObject(highlight))
+            highlight.Hide()
+        if (IsObject(subGrid))
+            subGrid.Hide()
+
+        ; Short delay
+        Sleep(10)
+
+        ; Perform middle click
+        MouseClick("Middle", mouseX, mouseY, 1, 0)
+
+        ; Clean up
+        Cleanup()
+    } catch {
+        Cleanup()
+    }
+}
+
+v:: {
+    if (currentState != "DRAGGING") {
+        try {
+            Click("Down")
+            currentState := "DRAGGING"
+            ToolTip("Drag started. Press 'b' to release.")
+        } catch {
+            ; If click fails, reset state
+            currentState := "GRID_VISIBLE"
+            ToolTip("Failed to start dragging")
+            Sleep(1000)
+            ToolTip()
+        }
+    }
+}
+
+b:: {
+    if (currentState == "DRAGGING") {
+        try {
+            Click("Up")
+            Cleanup()
+        } catch {
+            ; If click fails, still try to cleanup
+            Cleanup()
+        }
+    }
+}
+
+Escape:: Cleanup()
 #HotIf
 
-; --- Hotkeys active during EITHER main grid OR sub-grid targeting ---
-#HotIf State.isVisible || State.subGridActive ; <--- ADD THIS CONDITION
-Space:: {
-    Click ; Clicks at current mouse position
-    Cleanup()
-}
-RButton:: {
-    Click "Right"
-    Cleanup()
-}
-Escape:: {
-    Cleanup()
-}
-#HotIf ; <--- ADD THIS TO CLOSE THE NEW CONDITION
-#HotIf ; This one closes the outer context if needed, or does nothing if already closed.
+; This section consolidates hotkey definitions using FSM states, initializing GUI instances on activation. Yes, implemented.
