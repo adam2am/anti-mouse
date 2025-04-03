@@ -81,17 +81,79 @@ class HighlightOverlay {
 }
 
 ; ==============================================================================
-; Main Grid Overlay Class
+; Row Overlay Class (Separate Window for each row)
+; ==============================================================================
+class RowOverlay {
+    __New(monitorIndex, rowIndex, rowKey, left, top, width, rowHeight, colKeys, borderColor) {
+        ; Create a new separate window for this row
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08")
+        this.gui.BackColor := "000000" ; Black background
+
+        ; Store dimensions
+        this.width := width
+        this.height := rowHeight
+        this.x := left
+        this.y := top
+        this.rowKey := rowKey
+        this.rowIndex := rowIndex
+        this.monitorIndex := monitorIndex
+
+        ; Set font size based on cell dimensions
+        cellWidth := width // colKeys.Length
+        fontSize := Max(4, Min(cellWidth, rowHeight) // 4)
+        this.gui.SetFont("s" fontSize, "Arial")
+
+        ; Add row border lines
+        borderThickness := 1
+        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" borderColor)
+        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" borderColor
+        )
+
+        ; Add cells within this row
+        cellX := 0
+        for colIndex, colKey in colKeys {
+            ; Add cell label
+            cellWidth := width // colKeys.Length
+            cellKey := colKey . rowKey
+
+            this.gui.Add("Text",
+                "x" cellX " y0 w" cellWidth " h" this.height
+                " Center +0x200 BackgroundTrans c" borderColor,
+                monitorIndex ":" cellKey)
+
+            ; Add vertical cell divider (except for first column)
+            if (colIndex > 1) {
+                this.gui.Add("Progress", "x" cellX " y0 w" borderThickness " h" this.height " Background" borderColor)
+            }
+
+            cellX += cellWidth
+        }
+
+        ; Make the window semi-transparent
+        this.transparency := defaultTransparency
+        WinSetTransColor("000000 " this.transparency, this.gui)
+    }
+
+    Show() {
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+        WinSetAlwaysOnTop(true, this.gui)
+    }
+
+    Hide() {
+        this.gui.Hide()
+    }
+
+    Destroy() {
+        this.gui.Destroy()
+    }
+}
+
+; ==============================================================================
+; Main Grid Overlay Class (Modified to use RowOverlay)
 ; ==============================================================================
 class OverlayGUI {
     __New(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys) {
-        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
-        this.gui.BackColor := "000000"
-        this.gui.Opt("+E0x20")
-
-        ; Add transparency setting
-        this.transparency := defaultTransparency
-
+        ; Initialize properties
         this.width := Right - Left
         this.height := Bottom - Top
         this.monitorIndex := monitorIndex
@@ -108,73 +170,60 @@ class OverlayGUI {
         this.cellHeight := this.height // this.rows
 
         this.cells := Map() ; Store cell boundary info relative to GUI
+        this.rowOverlays := Map() ; Store RowOverlay objects
         this.subGridControls := Map() ; Store dynamically added sub-grid controls {key: ControlObj}
-        this.controlsToDestroy := Map() ; Store controls pending destruction
-        this.mainFontSize := Max(4, Min(this.cellWidth, this.cellHeight) // 4) ; Ensure minimum size 4
-        this.gui.SetFont("s" this.mainFontSize, "Arial")
+        this.transparency := defaultTransparency ; For consistency
+        this.borderColor := showcaseDebug ? "FF0000" : "FFFFFF"
 
-        borderThickness := 1
-        borderColor := showcaseDebug ? "FF0000" : "FFFFFF"
-
-        ; --- Add Outer Border ---
-        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" borderColor)
-        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" borderColor
-        )
-        this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" borderColor)
-        this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" borderColor
-        )
-
-        ; --- Add Cells, Labels, and Borders ---
+        ; Precompute cell boundaries
         for colIndex, firstKey in this.colKeys {
-            cellX := (colIndex - 1) * this.cellWidth
+            cellX := Left + (colIndex - 1) * this.cellWidth
             for rowIndex, secondKey in this.rowKeys {
-                cellY := (rowIndex - 1) * this.cellHeight
+                cellY := Top + (rowIndex - 1) * this.cellHeight
                 cellKey := firstKey . secondKey
 
-                this.cells[cellKey] := { x: cellX, y: cellY, w: this.cellWidth, h: this.cellHeight }
-
-                ; --- Add Main Cell Text Label FIRST ---
-                this.gui.Add("Text",
-                    "x" cellX " y" cellY " w" this.cellWidth " h" this.cellHeight
-                    " Center +0x200 BackgroundTrans c" borderColor,  ; +0x200 is SS_CENTERIMAGE style for vertical centering
-                    monitorIndex ":" cellKey)
-
-                ; --- Add Inner Cell Borders AFTER Text ---
-                if (rowIndex > 1) {
-                    this.gui.Add("Progress", "x" cellX " y" cellY " w" this.cellWidth " h" borderThickness " Background" borderColor
-                    )
-                }
-                if (colIndex > 1) {
-                    this.gui.Add("Progress", "x" cellX " y" cellY " w" borderThickness " h" this.cellHeight " Background" borderColor
-                    )
+                ; Store cell boundary info
+                this.cells[cellKey] := {
+                    x: cellX - Left,
+                    y: cellY - Top,
+                    w: this.cellWidth,
+                    h: this.cellHeight,
+                    absX: cellX,
+                    absY: cellY
                 }
             }
         }
 
-        WinSetTransColor("000000 " this.transparency, this.gui)
-        this.x := Left
-        this.y := Top
+        ; Create row overlays (one window per row instead of per cell)
+        for rowIndex, rowKey in this.rowKeys {
+            rowY := Top + (rowIndex - 1) * this.cellHeight
 
-        ; --- Pre-create Sub-Grid Controls (Hidden) ---
-        ; Use a smaller font size for sub-grid controls (half of main font size)
-        subGridFontSize := Max(4, this.mainFontSize // 2)
-        textColor := showcaseDebug ? "00FFFF" : "FFFF00"
-        this.gui.SetFont("s" subGridFontSize, "Arial")
-        for index, subKey in subGridKeys {
-            ctrl := this.gui.Add("Text", "x-1 y-1 w0 h0 Hidden Center BackgroundTrans c" textColor, StrReplace(subKey,
-                "Numpad", ""))
-            this.subGridControls[subKey] := ctrl
+            this.rowOverlays[rowKey] := RowOverlay(
+                monitorIndex,
+                rowIndex,
+                rowKey,
+                Left,
+                rowY,
+                this.width,
+                this.cellHeight,
+                this.colKeys,
+                this.borderColor
+            )
         }
-        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset to main font size
     }
 
     Show() {
-        this.gui.Show(Format("x{} y{} NoActivate", this.x, this.y))
+        ; Show each row overlay
+        for rowKey, overlay in this.rowOverlays {
+            overlay.Show()
+        }
     }
 
     Hide() {
         this.HideSubGrid() ; Ensure sub-grid targets are hidden too
-        this.gui.Hide()
+        for rowKey, overlay in this.rowOverlays {
+            overlay.Hide()
+        }
     }
 
     GetCellBoundaries(cellKey) {
@@ -197,19 +246,6 @@ class OverlayGUI {
     }
 
     ShowSubGrid(cellKey) {
-        ; --- REMOVE DESTRUCTION LOGIC START ---
-        /*
-        if (this.controlsToDestroy.Count > 0) {
-            for key, controlObj in this.controlsToDestroy {
-                if (IsObject(controlObj) && controlObj.Hwnd) {
-                    try { controlObj.Destroy() } catch {}
-                }
-            }
-            this.controlsToDestroy.Clear()
-        }
-        */
-        ; --- REMOVE DESTRUCTION LOGIC END ---
-
         if (!this.cells.Has(cellKey)) {
             return
         }
@@ -221,11 +257,8 @@ class OverlayGUI {
             return ; Cell too small
         }
 
-        subGridFontSize := Max(4, this.mainFontSize // 2) ; Match the size used in constructor
+        subGridFontSize := Max(4, this.cellHeight // 6) ; Calculate a reasonable font size
         textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Use appropriate color
-
-        DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
-        this.gui.SetFont("s" subGridFontSize, "Arial") ; Set font for sub-grid controls
 
         keyIndex := 0
         loop subGridRows {
@@ -240,65 +273,17 @@ class OverlayGUI {
                 subY := cellRel.y + row * subCellH
                 subKey := subGridKeys[keyIndex + 1]
 
-                ; --- MODIFY EXISTING CONTROL ---
-                if this.subGridControls.Has(subKey) {
-                    ctrl := this.subGridControls[subKey]
-                    if IsObject(ctrl) {
-                        ctrl.Text := StrReplace(subKey, "Numpad", "")
-                        ctrl.Move(subX, subY, subCellW, subCellH)
-                        ctrl.Visible := true
-                    }
-                }
-                /* --- REMOVE OLD CONTROL CREATION ---
-                this.subGridControls[subKey] := this.gui.Add("Text",
-                    "x" subX " y" subY " w" subCellW " h" subCellH
-                    " Center BackgroundTrans c" textColor,
-                    StrReplace(subKey, "Numpad", ""))
-                */
-
-                /* --- REMOVE LINES --- (Already commented out) */
-
                 keyIndex += 1
             }
             if (keyIndex >= subGridKeys.Length) {
                 break
             }
         }
-
-        this.gui.SetFont("s" this.mainFontSize, "Arial") ; Reset font for main labels
-        DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
-        WinRedraw(this.gui.Hwnd) ; Keep this redraw for now
     }
 
     HideSubGrid() {
-        ; --- REMOVE QUEUE LOGIC START ---
-        /*
-        this.controlsToDestroy := this.subGridControls
-        this.subGridControls := Map() ; Clear the active map
-        */
-        ; --- REMOVE QUEUE LOGIC END ---
-
-        ; --- HIDE PRE-EXISTING CONTROLS ---
-        if (this.subGridControls.Count > 0) { ; Check if controls exist
-            needsRedraw := false
-            DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 0, "Int", 0) ; WM_SETREDRAW = 0x000B
-
-            for subKey, controlObj in this.subGridControls {
-                if (IsObject(controlObj) && controlObj.Hwnd && controlObj.Visible) {
-                    try {
-                        controlObj.Visible := false
-                        needsRedraw := true
-                    } catch {
-                        ; Ignore errors
-                    }
-                }
-            }
-
-            if (needsRedraw) {
-                DllCall("SendMessage", "Ptr", this.gui.Hwnd, "UInt", 0x000B, "Int", 1, "Int", 0) ; WM_SETREDRAW = 0x000B
-                ; No explicit WinRedraw needed here usually
-            }
-        }
+        ; This is now handled by the SubGridOverlay class directly
+        ; We don't need to do anything here
     }
 }
 
@@ -308,7 +293,7 @@ class OverlayGUI {
 class SubGridOverlay {
     __New(cellX, cellY, cellWidth, cellHeight) {
         ; Create a new separate window for the sub-grid
-        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08")
         this.gui.BackColor := "222222" ; Slightly different color than main grid
 
         ; Store dimensions
@@ -371,6 +356,7 @@ class SubGridOverlay {
 
     Show() {
         this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+        WinSetAlwaysOnTop(true, this.gui)
     }
 
     Hide() {
@@ -1205,15 +1191,20 @@ CapsLock & q:: {
 
     foundMonitor := false
     loop MonitorGetCount() {
+        ; Use MonitorGet to get full screen area including the taskbar
         MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
-        if (showcaseDebug) {
-            ToolTip("Monitor " . A_Index . " assigned: L=" . Left . " T=" . Top . " R=" . Right . " B=" . Bottom, , , 1
-            )
-            Sleep 1500
-            ToolTip(, , , 1)
-        }
+
+        ; Also get work area to determine taskbar position
+        MonitorGetWorkArea(A_Index, &WLeft, &WTop, &WRight, &WBottom)
+
+        ; Create the overlay with stronger AlwaysOnTop settings
         overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, State.activeColKeys, State.activeRowKeys)
+
+        ; Force this window to be truly topmost - no longer needed with individual cell windows
         overlay.Show()
+
+        ; Individual cells already have proper settings for displaying above taskbar
+
         State.overlays.Push(overlay)
         if (!foundMonitor && overlay.ContainsPoint(startX, startY)) {
             State.currentOverlay := overlay
