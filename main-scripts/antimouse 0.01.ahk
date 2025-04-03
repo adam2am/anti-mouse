@@ -136,7 +136,7 @@ class RowOverlay {
 
     Show() {
         this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
-        WinSetAlwaysOnTop(true, this.gui)
+        WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
     }
 
     Hide() {
@@ -251,7 +251,7 @@ class GridOverlay {
 
     Show() {
         this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
-        WinSetAlwaysOnTop(true, this.gui)
+        WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
     }
 
     Hide() {
@@ -407,7 +407,7 @@ class SubGridOverlay {
 
     Show() {
         this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
-        WinSetAlwaysOnTop(true, this.gui)
+        WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
     }
 
     Hide() {
@@ -525,7 +525,11 @@ Cleanup() {
     CleanupHighlight()
 
     for overlay in State.overlays {
-        overlay.Hide() ; Hides GUI and sub-grid targets via its Hide method
+        try {
+            overlay.Hide() ; Hides the grid overlay
+        } catch {
+            ; Silently ignore any errors
+        }
     }
 
     ; Remove status bar - we're not using it anymore
@@ -1378,7 +1382,44 @@ l:: StartNewSelection("l")
 ; --- Hotkeys active during EITHER main grid OR sub-grid targeting ---
 #HotIf State.isVisible || State.subGridActive
 Space:: {
-    Click ; Clicks at current mouse position
+    if (showcaseDebug) {
+        ToolTip("Space pressed - executing click at current position")
+        Sleep 500
+    }
+
+    ; Store current mouse position
+    MouseGetPos(&mouseX, &mouseY)
+
+    ; First hide all GUI elements so they don't interfere with the click
+    for overlay in State.overlays {
+        try {
+            overlay.Hide()
+        } catch {
+            ; Silently ignore any errors
+        }
+    }
+
+    if (IsObject(State.subGridOverlay)) {
+        try {
+            State.subGridOverlay.Hide()
+        } catch {
+            ; Silently ignore any errors
+        }
+    }
+
+    ; Clean up highlight if it exists
+    if (IsObject(State.currentHighlight)) {
+        try {
+            State.currentHighlight.Hide()
+        } catch {
+            ; Silently ignore any errors
+        }
+    }
+
+    ; Perform the mouse click on the actual application beneath
+    MouseClick "Left", mouseX, mouseY, 1, 0
+
+    ; Now perform the full cleanup
     Cleanup()
 }
 RButton:: {
@@ -1413,28 +1454,30 @@ b:: {
 ; Transparency control
 [:: {
     ; Decrease transparency (make more transparent)
-    if (IsObject(State.currentOverlay) && State.currentOverlay.transparency > 50) {
-        State.currentOverlay.transparency -= 20
-        WinSetTransColor("000000 " State.currentOverlay.transparency, State.currentOverlay.gui)
+    if (IsObject(State.currentOverlay) && State.currentOverlay.gridOverlay.transparency > 50) {
+        State.currentOverlay.gridOverlay.transparency -= 20
+        WinSetTransColor("000000 " State.currentOverlay.gridOverlay.transparency, "ahk_id " State.currentOverlay.gridOverlay
+            .gui.Hwnd)
         if (IsObject(State.subGridOverlay)) {
             State.subGridOverlay.transparency -= 20
-            WinSetTransColor("222222 " State.subGridOverlay.transparency, State.subGridOverlay.gui)
+            WinSetTransColor("222222 " State.subGridOverlay.transparency, "ahk_id " State.subGridOverlay.gui.Hwnd)
         }
-        ToolTip("Transparency: " . Round((State.currentOverlay.transparency / 255) * 100) . "%")
+        ToolTip("Transparency: " . Round((State.currentOverlay.gridOverlay.transparency / 255) * 100) . "%")
         Sleep 500
         ToolTip()
     }
 }
 ]:: {
     ; Increase transparency (make more opaque)
-    if (IsObject(State.currentOverlay) && State.currentOverlay.transparency < 235) {
-        State.currentOverlay.transparency += 20
-        WinSetTransColor("000000 " State.currentOverlay.transparency, State.currentOverlay.gui)
+    if (IsObject(State.currentOverlay) && State.currentOverlay.gridOverlay.transparency < 235) {
+        State.currentOverlay.gridOverlay.transparency += 20
+        WinSetTransColor("000000 " State.currentOverlay.gridOverlay.transparency, "ahk_id " State.currentOverlay.gridOverlay
+            .gui.Hwnd)
         if (IsObject(State.subGridOverlay)) {
             State.subGridOverlay.transparency += 20
-            WinSetTransColor("222222 " State.subGridOverlay.transparency, State.subGridOverlay.gui)
+            WinSetTransColor("222222 " State.subGridOverlay.transparency, "ahk_id " State.subGridOverlay.gui.Hwnd)
         }
-        ToolTip("Transparency: " . Round((State.currentOverlay.transparency / 255) * 100) . "%")
+        ToolTip("Transparency: " . Round((State.currentOverlay.gridOverlay.transparency / 255) * 100) . "%")
         Sleep 500
         ToolTip()
     }
