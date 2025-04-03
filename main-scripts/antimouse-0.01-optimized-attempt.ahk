@@ -1,4 +1,4 @@
-; instead of destroy - hide+show, and other stuff
+; instead of destroying - hide+show, and other stuff
 
 #Requires AutoHotkey v2.0
 SetCapsLockState("AlwaysOff")
@@ -346,6 +346,15 @@ class State {
 
 ; This section defines a simplified State class for managing application state within the FSM framework. Yes, implemented.
 
+; Helper function to ensure index is within valid range
+ValidateIndex(index, arrayLength) {
+    if (index < 1)
+        return 1
+    if (index > arrayLength)
+        return arrayLength
+    return index
+}
+
 ForceCloseAllGuis() {
     ; Force close any stray GUIs that might be left
     try {
@@ -419,18 +428,37 @@ Cleanup() {
 }
 
 SwitchMonitor(monitorNum) {
+    global currentState, highlight, subGrid
+
     if (monitorNum > State.overlays.Length || currentState == "IDLE") {
         return
     }
+
     newOverlay := State.overlays[monitorNum]
     if (newOverlay && State.currentOverlay !== newOverlay) {
+        ; Update state
         State.currentOverlay := newOverlay
+
+        ; Calculate center position
         centerX := newOverlay.Left + (newOverlay.width // 2)
         centerY := newOverlay.Top + (newOverlay.height // 2)
+
+        ; Move cursor to center of new monitor
         MouseMove(centerX, centerY, 0)
+
+        ; Reset any active cell highlighting
+        State.activeCellKey := ""
+
+        ; Update the TrackCursor once immediately to detect any cell at the new position
+        try {
+            TrackCursor()
+        } catch {
+            ; Ignore any errors during this initial tracking
+        }
+
         if (showcaseDebug) {
             ToolTip("Switched to Monitor " monitorNum)
-            Sleep 1000
+            Sleep(1000)
             ToolTip()
         }
     }
@@ -486,23 +514,39 @@ HandleKey(key) {
         ToolTip()
         return
     }
+
+    ; Handle first key (usually column selection)
     if (State.firstKey = "") {
         if (isColKey) {
+            ; Store the column key for two-key selection
             State.firstKey := key
+
+            ; Find the index of this column key
             for i, k in State.activeColKeys {
                 if (k = key) {
                     State.currentColIndex := i
                     break
                 }
             }
-            cellKey := key . State.activeRowKeys[State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1]
+
+            ; Use last row if one was selected, otherwise use first row
+            rowIndex := State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1
+            rowIndex := ValidateIndex(rowIndex, State.activeRowKeys.Length)
+            cellKey := key . State.activeRowKeys[rowIndex]
             boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+
             if (IsObject(boundaries)) {
                 highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+
+                ; Move the cursor to the center of the highlighted cell
+                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+
                 ToolTip("First key: " key ". Select row.")
             }
             return
-        } else if (isRowKey) {
+        }
+        else if (isRowKey) {
+            ; Direct row selection without column first
             for i, k in State.activeRowKeys {
                 if (k = key) {
                     State.currentRowIndex := i
@@ -510,11 +554,16 @@ HandleKey(key) {
                     break
                 }
             }
-            colKey := State.activeColKeys[State.currentColIndex ? State.currentColIndex : Ceil(State.activeColKeys.Length /
-                2)]
+
+            ; Use middle column if no column was previously selected
+            colIndex := State.currentColIndex ? State.currentColIndex : Ceil(State.activeColKeys.Length / 2)
+            colIndex := ValidateIndex(colIndex, State.activeColKeys.Length)
+            colKey := State.activeColKeys[colIndex]
             cellKey := colKey . key
         }
-    } else if (isRowKey) {
+    }
+    else if (isRowKey) {
+        ; Complete two-key selection with row
         for i, k in State.activeRowKeys {
             if (k = key) {
                 State.currentRowIndex := i
@@ -523,8 +572,10 @@ HandleKey(key) {
             }
         }
         cellKey := State.firstKey . key
-        State.firstKey := ""
-    } else {
+        State.firstKey := ""  ; Reset first key after completing selection
+    }
+    else {
+        ; Changed column in middle of selection
         State.firstKey := key
         for i, k in State.activeColKeys {
             if (k = key) {
@@ -532,8 +583,14 @@ HandleKey(key) {
                 break
             }
         }
-        cellKey := key . State.activeRowKeys[State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1]
+
+        ; Use last row if one was selected, otherwise use first row
+        rowIndex := State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1
+        rowIndex := ValidateIndex(rowIndex, State.activeRowKeys.Length)
+        cellKey := key . State.activeRowKeys[rowIndex]
     }
+
+    ; Process the final cell selection
     boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
     if (IsObject(boundaries)) {
         highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
@@ -563,15 +620,26 @@ HandleSubGridKey(subKey) {
 }
 
 StartNewSelection(key) {
-    global currentState, subGrid
+    global currentState, subGrid, highlight
     if (currentState != "SUBGRID_ACTIVE") {
         return
     }
-    subGrid.Hide()
+
+    ; Hide the subgrid first
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+
+    ; Reset state before handling the new key
     State.activeCellKey := ""
     State.activeSubCellKey := ""
     State.firstKey := ""
     currentState := "GRID_VISIBLE"
+
+    ; Force a small delay to ensure state transitions properly
+    Sleep(10)
+
+    ; Call HandleKey to process the key press
     HandleKey(key)
 }
 
@@ -609,15 +677,24 @@ TrackCursor() {
             }
         }
 
+        ; Only proceed if we have a valid current overlay
+        if (!IsObject(State.currentOverlay)) {
+            return
+        }
+
         ; Check if cursor is over a cell
         try {
             currentCellKey := GetCellAtPosition(x, y)
 
             ; Only update if the cell changed and we have valid boundaries
-            if (currentCellKey && currentCellKey != State.activeCellKey && IsObject(State.currentOverlay)) {
+            if (currentCellKey && currentCellKey != State.activeCellKey) {
                 boundaries := State.currentOverlay.GetCellBoundaries(currentCellKey)
 
                 if (IsObject(boundaries)) {
+                    ; Get the cell center position
+                    centerX := boundaries.x + (boundaries.w // 2)
+                    centerY := boundaries.y + (boundaries.h // 2)
+
                     ; Update the highlight and sub-grid
                     try {
                         if (IsObject(highlight)) {
@@ -636,23 +713,36 @@ TrackCursor() {
                             currentState := "SUBGRID_ACTIVE"
                         }
 
-                        ; Update indices
+                        ; Extract column and row characters
                         colChar := SubStr(currentCellKey, 1, 1)
                         rowChar := SubStr(currentCellKey, 2, 1)
 
+                        ; Update column index based on current cell
+                        colIndex := 0
                         for i, k in State.activeColKeys {
                             if (colChar = k) {
-                                State.currentColIndex := i
+                                colIndex := i
+                                State.currentColIndex := i  ; Update the current column index
                                 break
                             }
                         }
 
+                        ; Update row index based on current cell
+                        rowIndex := 0
                         for i, k in State.activeRowKeys {
                             if (rowChar = k) {
+                                rowIndex := i
                                 State.currentRowIndex := i
-                                State.lastSelectedRowIndex := i
+                                State.lastSelectedRowIndex := i  ; Remember this row
                                 break
                             }
+                        }
+
+                        ; Debug output if needed
+                        if (showcaseDebug) {
+                            ToolTip("Cell: " currentCellKey " Col:" colIndex " Row:" rowIndex)
+                            Sleep(500)
+                            ToolTip()
                         }
                     } catch as e {
                         if (showcaseDebug) {
