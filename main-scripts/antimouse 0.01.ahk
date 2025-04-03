@@ -149,7 +149,135 @@ class RowOverlay {
 }
 
 ; ==============================================================================
-; Main Grid Overlay Class (Modified to use RowOverlay)
+; Grid Overlay Class (Single window per monitor)
+; ==============================================================================
+class GridOverlay {
+    __New(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys) {
+        ; Create a single window for the entire grid
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08")
+        this.gui.BackColor := "000000" ; Black background
+
+        ; Store dimensions
+        this.width := Right - Left
+        this.height := Bottom - Top
+        this.x := Left
+        this.y := Top
+        this.monitorIndex := monitorIndex
+
+        ; Calculate cell dimensions
+        this.cols := colKeys.Length
+        this.rows := rowKeys.Length
+        this.cellWidth := this.width // this.cols
+        this.cellHeight := this.height // this.rows
+
+        ; Store keys for reference
+        this.colKeys := colKeys
+        this.rowKeys := rowKeys
+
+        ; Prepare cell map
+        this.cells := Map()
+
+        ; Set reasonable font size
+        fontSize := Max(8, Min(this.cellWidth, this.cellHeight) // 6)
+        this.gui.SetFont("s" fontSize, "Arial")
+
+        ; Choose colors
+        this.borderColor := showcaseDebug ? "FF0000" : "444444"
+        this.textColor := showcaseDebug ? "FF0000" : "FFFFFF"
+
+        ; Add grid labels and minimal borders
+        this.CreateGrid()
+
+        ; Set transparency
+        this.transparency := defaultTransparency
+        WinSetTransColor("000000 " this.transparency, this.gui)
+    }
+
+    CreateGrid() {
+        ; Use minimal drawing operations for speed
+        borderThickness := 1
+
+        ; Draw the cell labels and necessary borders only
+        for colIndex, colKey in this.colKeys {
+            for rowIndex, rowKey in this.rowKeys {
+                cellKey := colKey . rowKey
+                cellX := (colIndex - 1) * this.cellWidth
+                cellY := (rowIndex - 1) * this.cellHeight
+
+                ; Store cell information
+                this.cells[cellKey] := {
+                    x: cellX,
+                    y: cellY,
+                    w: this.cellWidth,
+                    h: this.cellHeight,
+                    absX: this.x + cellX,
+                    absY: this.y + cellY
+                }
+
+                ; Add cell label - center both horizontally and vertically
+                this.gui.Add("Text",
+                    "x" cellX " y" cellY " w" this.cellWidth " h" this.cellHeight
+                    " +0x200 Center BackgroundTrans c" this.textColor,
+                    cellKey)
+            }
+        }
+
+        ; Add minimal borders - just the outer border
+        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" this.borderColor)
+        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" this
+        .borderColor)
+        this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" this.borderColor)
+        this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" this
+        .borderColor)
+
+        ; Add column dividers (vertical lines)
+        for colIndex, colKey in this.colKeys {
+            if (colIndex > 1) {
+                cellX := (colIndex - 1) * this.cellWidth
+                this.gui.Add("Progress", "x" cellX " y0 w" borderThickness " h" this.height " Background" this.borderColor
+                )
+            }
+        }
+
+        ; Add row dividers (horizontal lines)
+        for rowIndex, rowKey in this.rowKeys {
+            if (rowIndex > 1) {
+                cellY := (rowIndex - 1) * this.cellHeight
+                this.gui.Add("Progress", "x0 y" cellY " w" this.width " h" borderThickness " Background" this.borderColor
+                )
+            }
+        }
+    }
+
+    Show() {
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+        WinSetAlwaysOnTop(true, this.gui)
+    }
+
+    Hide() {
+        this.gui.Hide()
+    }
+
+    Destroy() {
+        this.gui.Destroy()
+    }
+
+    GetCellBoundaries(cellKey) {
+        if this.cells.Has(cellKey) {
+            cell := this.cells[cellKey]
+            return { x: this.x + cell.x, y: this.y + cell.y, w: cell.w, h: cell.h }
+        }
+        return false
+    }
+
+    ContainsPoint(x, y) {
+        return (x >= this.x && x < this.x + this.width &&
+            y >= this.y && y < this.y + this.height)
+    }
+}
+
+; ==============================================================================
+; Main Grid Overlay Class (Redesigned for maximum performance)
 ; ==============================================================================
 class OverlayGUI {
     __New(monitorIndex, Left, Top, Right, Bottom, colKeys, rowKeys) {
@@ -169,121 +297,44 @@ class OverlayGUI {
         this.cellWidth := this.width // this.cols
         this.cellHeight := this.height // this.rows
 
-        this.cells := Map() ; Store cell boundary info relative to GUI
-        this.rowOverlays := Map() ; Store RowOverlay objects
-        this.subGridControls := Map() ; Store dynamically added sub-grid controls {key: ControlObj}
-        this.transparency := defaultTransparency ; For consistency
-        this.borderColor := showcaseDebug ? "FF0000" : "FFFFFF"
+        ; Create single grid overlay for this monitor
+        this.gridOverlay := GridOverlay(
+            monitorIndex,
+            Left,
+            Top,
+            Right,
+            Bottom,
+            colKeys,
+            rowKeys
+        )
 
-        ; Precompute cell boundaries
-        for colIndex, firstKey in this.colKeys {
-            cellX := Left + (colIndex - 1) * this.cellWidth
-            for rowIndex, secondKey in this.rowKeys {
-                cellY := Top + (rowIndex - 1) * this.cellHeight
-                cellKey := firstKey . secondKey
-
-                ; Store cell boundary info
-                this.cells[cellKey] := {
-                    x: cellX - Left,
-                    y: cellY - Top,
-                    w: this.cellWidth,
-                    h: this.cellHeight,
-                    absX: cellX,
-                    absY: cellY
-                }
-            }
-        }
-
-        ; Create row overlays (one window per row instead of per cell)
-        for rowIndex, rowKey in this.rowKeys {
-            rowY := Top + (rowIndex - 1) * this.cellHeight
-
-            this.rowOverlays[rowKey] := RowOverlay(
-                monitorIndex,
-                rowIndex,
-                rowKey,
-                Left,
-                rowY,
-                this.width,
-                this.cellHeight,
-                this.colKeys,
-                this.borderColor
-            )
-        }
+        ; We're reusing the cells map from the gridOverlay
+        this.cells := this.gridOverlay.cells
     }
 
     Show() {
-        ; Show each row overlay
-        for rowKey, overlay in this.rowOverlays {
-            overlay.Show()
-        }
+        ; Show the grid
+        this.gridOverlay.Show()
     }
 
     Hide() {
-        this.HideSubGrid() ; Ensure sub-grid targets are hidden too
-        for rowKey, overlay in this.rowOverlays {
-            overlay.Hide()
-        }
+        this.gridOverlay.Hide()
     }
 
     GetCellBoundaries(cellKey) {
-        if this.cells.Has(cellKey) {
-            cellRel := this.cells[cellKey]
-            return { x: this.Left + cellRel.x, y: this.Top + cellRel.y, w: cellRel.w, h: cellRel.h }
-        }
-        return false
+        return this.gridOverlay.GetCellBoundaries(cellKey)
     }
 
     ContainsPoint(x, y) {
-        checkResult := (x >= this.Left && x < this.Right && y >= this.Top && y < this.Bottom)
-        if (showcaseDebug) {
-            ToolTip("Checking Monitor " this.monitorIndex ": Point(" x "," y ") in Bounds(" this.Left "," this.Top "," this
-                .Right "," this.Bottom ")? -> " checkResult, , , 3)
-            Sleep 1500
-            ToolTip(, , , 3)
-        }
-        return checkResult
+        return (x >= this.Left && x < this.Right && y >= this.Top && y < this.Bottom)
     }
 
     ShowSubGrid(cellKey) {
-        if (!this.cells.Has(cellKey)) {
-            return
-        }
-
-        cellRel := this.cells[cellKey]
-        subCellW := cellRel.w // subGridCols
-        subCellH := cellRel.h // subGridRows
-        if (subCellW <= 0 || subCellH <= 0) {
-            return ; Cell too small
-        }
-
-        subGridFontSize := Max(4, this.cellHeight // 6) ; Calculate a reasonable font size
-        textColor := showcaseDebug ? "00FFFF" : "FFFF00" ; Use appropriate color
-
-        keyIndex := 0
-        loop subGridRows {
-            row := A_Index - 1
-            loop subGridCols {
-                col := A_Index - 1
-                if (keyIndex >= subGridKeys.Length) {
-                    break
-                }
-
-                subX := cellRel.x + col * subCellW
-                subY := cellRel.y + row * subCellH
-                subKey := subGridKeys[keyIndex + 1]
-
-                keyIndex += 1
-            }
-            if (keyIndex >= subGridKeys.Length) {
-                break
-            }
-        }
+        ; We'll handle this through the SubGridOverlay class directly
     }
 
     HideSubGrid() {
-        ; This is now handled by the SubGridOverlay class directly
-        ; We don't need to do anything here
+        ; We'll handle this through the SubGridOverlay class directly
     }
 }
 
