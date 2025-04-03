@@ -7,6 +7,18 @@ global selectedLayout := 1 ; 1: User QWERTY/ASDF, 2: Home Row ASDF/JKL;, 3: WASD
 global defaultTransparency := 180 ; Default transparency level (0-255, where 255 is opaque)
 global highlightColor := "33AAFF" ; Color for highlighting selected cells
 global directNavEnabled := true ; Enable direct navigation between cells using arrow keys
+global allSubGridOverlays := [] ; Global array to track ALL created sub-grid overlays
+global subGridWindowHandles := [] ; Global array to track window handles directly
+global keyProcessingInProgress := false ; Lock to prevent concurrent key processing
+global lastKeyPressTime := 0 ; Track timing of key presses
+global keyDebounceTime := 50 ; Minimum ms between key processing (prevent race conditions)
+global maxCleanupRetries := 3 ; Maximum number of cleanup attempts
+global autoTrackingEnabled := true ; Enable/disable automatic cell tracking
+global lastTrackedCell := "" ; Track the last cell we were in to prevent flickering
+global lastCursorMoveTime := 0 ; When the cursor last moved to a new cell
+
+; Start the cleanup timer - will run every 500ms to ensure no stray sub-grids
+SetTimer(CleanupStraySubGrids, 500)
 
 ; Define Layout Configurations
 global layoutConfigs := Map(
@@ -344,70 +356,141 @@ class OverlayGUI {
 class SubGridOverlay {
     __New(cellX, cellY, cellWidth, cellHeight) {
         ; Create a new separate window for the sub-grid
-        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08")
-        this.gui.BackColor := "222222" ; Slightly different color than main grid
+        try {
+            ; Use a specific name/title to help with cleanup later
+            this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x08", "SubGrid")
+            this.gui.BackColor := "222222" ; Slightly different color than main grid
 
-        ; Store dimensions
-        this.width := cellWidth
-        this.height := cellHeight
-        this.x := cellX
-        this.y := cellY
+            ; Store dimensions
+            this.width := cellWidth
+            this.height := cellHeight
+            this.x := cellX
+            this.y := cellY
 
-        ; Calculate sub-cell dimensions
-        this.subCellWidth := this.width // subGridCols
-        this.subCellHeight := this.height // subGridRows
+            ; Add this instance to the global tracking array
+            global allSubGridOverlays, subGridWindowHandles
+            allSubGridOverlays.Push(this)
 
-        ; Set font size based on cell dimensions
-        subGridFontSize := Max(4, Min(this.subCellWidth, this.subCellHeight) // 3)
-        textColor := showcaseDebug ? "00FFFF" : "FFFF00"
-        this.gui.SetFont("s" subGridFontSize, "Arial")
+            ; Calculate sub-cell dimensions
+            this.subCellWidth := this.width // subGridCols
+            this.subCellHeight := this.height // subGridRows
 
-        ; Add number labels (1-9)
-        this.controls := Map()
-        keyIndex := 0
+            ; Set font size based on cell dimensions
+            subGridFontSize := Max(4, Min(this.subCellWidth, this.subCellHeight) // 3)
+            textColor := showcaseDebug ? "00FFFF" : "FFFF00"
 
-        ; Add thin border around the entire sub-grid
-        borderColor := showcaseDebug ? "FF0000" : "444444"
-        borderThickness := 1
-        this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" borderColor)
-        this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" borderColor
-        )
-        this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" borderColor)
-        this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" borderColor
-        )
+            ; Check if GUI still exists before setting font
+            if (!IsObject(this.gui)) {
+                return ; Exit if GUI was destroyed
+            }
 
-        loop subGridRows {
-            row := A_Index - 1
-            loop subGridCols {
-                col := A_Index - 1
+            this.gui.SetFont("s" subGridFontSize, "Arial")
+
+            ; Add number labels (1-9)
+            this.controls := Map()
+            keyIndex := 0
+
+            ; Add thin border around the entire sub-grid
+            borderColor := showcaseDebug ? "FF0000" : "444444"
+            borderThickness := 1
+
+            ; Check if GUI still exists before adding controls
+            if (!IsObject(this.gui)) {
+                return ; Exit if GUI was destroyed
+            }
+
+            ; Add main borders with try/catch
+            try {
+                this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" borderColor)
+                this.gui.Add("Progress", "x0 y" (this.height - borderThickness) " w" this.width " h" borderThickness " Background" borderColor
+                )
+                this.gui.Add("Progress", "x0 y0 w" borderThickness " h" this.height " Background" borderColor)
+                this.gui.Add("Progress", "x" (this.width - borderThickness) " y0 w" borderThickness " h" this.height " Background" borderColor
+                )
+            } catch {
+                ; Silently ignore errors - GUI may have been destroyed
+                return
+            }
+
+            loop subGridRows {
+                row := A_Index - 1
+                loop subGridCols {
+                    col := A_Index - 1
+                    if (keyIndex >= subGridKeys.Length) {
+                        break
+                    }
+
+                    subX := col * this.subCellWidth
+                    subY := row * this.subCellHeight
+                    subKey := subGridKeys[keyIndex + 1]
+
+                    ; Check again if GUI exists and use try/catch
+                    if (!IsObject(this.gui)) {
+                        return ; Exit if GUI was destroyed
+                    }
+
+                    try {
+                        this.gui.Add("Text",
+                            "x" subX " y" subY " w" this.subCellWidth " h" this.subCellHeight
+                            " Center BackgroundTrans c" textColor,
+                            StrReplace(subKey, "Numpad", ""))
+                    } catch {
+                        ; Silently ignore errors - GUI may have been destroyed
+                        return
+                    }
+
+                    keyIndex += 1
+                }
                 if (keyIndex >= subGridKeys.Length) {
                     break
                 }
-
-                subX := col * this.subCellWidth
-                subY := row * this.subCellHeight
-                subKey := subGridKeys[keyIndex + 1]
-
-                this.gui.Add("Text",
-                    "x" subX " y" subY " w" this.subCellWidth " h" this.subCellHeight
-                    " Center BackgroundTrans c" textColor,
-                    StrReplace(subKey, "Numpad", ""))
-
-                keyIndex += 1
             }
-            if (keyIndex >= subGridKeys.Length) {
-                break
+
+            ; Make the window semi-transparent
+            this.transparency := defaultTransparency + 20 ; Slightly more opaque than main grid
+
+            ; Final check if GUI still exists
+            if (IsObject(this.gui)) {
+                try {
+                    WinSetTransColor("222222 " this.transparency, this.gui)
+                } catch {
+                    ; Silently ignore errors
+                }
+            }
+        } catch as e {
+            ; Gracefully handle any errors during construction
+            if (showcaseDebug) {
+                ToolTip("Error creating SubGridOverlay: " . e.Message, , , 3)
+                Sleep 1500
+                ToolTip(, , , 3)
             }
         }
-
-        ; Make the window semi-transparent
-        this.transparency := defaultTransparency + 20 ; Slightly more opaque than main grid
-        WinSetTransColor("222222 " this.transparency, this.gui)
     }
 
     Show() {
-        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
-        WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+        try {
+            ; Check if the GUI object itself is still valid
+            if (!IsObject(this.gui)) {
+                return ; GUI was likely destroyed, do nothing
+            }
+            this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+
+            ; Check again after Show, just in case, and verify Hwnd
+            if (IsObject(this.gui) && this.gui.Hwnd) {
+                WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+
+                ; Store the window handle for direct manipulation if needed
+                global subGridWindowHandles
+                subGridWindowHandles.Push(this.gui.Hwnd)
+            }
+        } catch as e {
+            ; Log or display error if needed, especially during debugging
+            if (showcaseDebug) {
+                ToolTip("Error showing SubGridOverlay: " . e.Message, , , 3)
+                Sleep 1500
+                ToolTip(, , , 3)
+            }
+        }
     }
 
     Hide() {
@@ -415,7 +498,25 @@ class SubGridOverlay {
     }
 
     Destroy() {
-        this.gui.Destroy()
+        try {
+            if (IsObject(this.gui)) {
+                ; Store handle before destroying the GUI
+                hwnd := this.gui.Hwnd
+
+                ; Try normal destroy first
+                this.gui.Destroy()
+
+                ; Additional: force close the window if it still exists
+                if (WinExist("ahk_id " hwnd)) {
+                    WinClose("ahk_id " hwnd)
+                    if (WinExist("ahk_id " hwnd)) {
+                        WinKill("ahk_id " hwnd)
+                    }
+                }
+            }
+        } catch {
+            ; Silently ignore errors
+        }
     }
 
     GetTargetCoordinates(subKey) {
@@ -515,14 +616,91 @@ HighlightCell(cellKey, boundaries) {
     }
 }
 
-Cleanup() {
-    if (IsObject(State.subGridOverlay)) {
-        State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window if it exists
-        State.subGridOverlay := ""
+; Function to ensure ALL tracked sub-grid overlays are destroyed
+CleanupAllSubGrids() {
+    global allSubGridOverlays, subGridWindowHandles
+
+    ; First, try to destroy any tracked sub-grid GUI objects
+    if (allSubGridOverlays.Length > 0) {
+        for index, overlay in allSubGridOverlays {
+            try {
+                if (IsObject(overlay) && IsObject(overlay.gui)) {
+                    overlay.gui.Destroy()
+                }
+            } catch {
+                ; Silently ignore errors during cleanup
+            }
+        }
+        allSubGridOverlays := []
     }
 
-    ; Clean up highlight if it exists
+    ; Forcefully destroy any known window handles
+    if (subGridWindowHandles.Length > 0) {
+        for index, hwnd in subGridWindowHandles {
+            try {
+                if (WinExist("ahk_id " hwnd)) {
+                    WinClose("ahk_id " hwnd)
+                    ; If window still exists after close, try destroy
+                    if (WinExist("ahk_id " hwnd)) {
+                        WinKill("ahk_id " hwnd)
+                    }
+                }
+            } catch {
+                ; Silently ignore errors
+            }
+        }
+        subGridWindowHandles := []
+    }
+
+    ; Final check - ensure all windows with our specific class are closed
+    try {
+        DetectHiddenWindows(true)
+        loop {
+            hwnd := WinExist("ahk_class AutoHotkeyGUI ahk_exe AutoHotkey.exe SubGrid")
+            if (!hwnd) {
+                break  ; No more matching windows found
+            }
+            WinClose("ahk_id " hwnd)
+            if (WinExist("ahk_id " hwnd)) {
+                WinKill("ahk_id " hwnd)
+            }
+        }
+        DetectHiddenWindows(false)
+    } catch {
+        ; Silently ignore errors
+    }
+
+    ; Also reset the current sub-grid reference in State
+    State.subGridOverlay := ""
+
+    ; Double check for any remaining highlights
     CleanupHighlight()
+
+    ; Hide tooltips that might be related to sub-grids
+    ToolTip()
+}
+
+Cleanup() {
+    ; Release any processing lock first
+    keyProcessingInProgress := false
+
+    ; Retry logic for stubborn cleanup cases
+    retryCount := 0
+    while (retryCount < maxCleanupRetries) {
+        ; Comprehensive cleanup of all sub-grids
+        CleanupAllSubGrids()
+
+        ; Clean up highlight if it exists
+        CleanupHighlight()
+
+        ; Check if we actually need to retry
+        if (!IsObject(State.currentHighlight) && !State.subGridActive) {
+            break
+        }
+
+        retryCount++
+        Sleep 10 ; Brief pause between cleanup attempts
+    }
 
     for overlay in State.overlays {
         try {
@@ -553,14 +731,13 @@ Cleanup() {
 
     ToolTip() ; Clear tooltip
     SetTimer(TrackCursor, 0)
+    SetTimer(CleanupStraySubGrids, 500) ; Re-enable stray cleanup timer
 }
 
 CancelSubGridMode() {
     if (State.subGridActive) {
-        if (IsObject(State.subGridOverlay)) {
-            State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window
-            State.subGridOverlay := ""
-        }
+        ; Ensure comprehensive sub-grid cleanup
+        CleanupAllSubGrids()
 
         ; Clean up highlight borders if they exist
         CleanupHighlight()
@@ -570,7 +747,8 @@ CancelSubGridMode() {
         State.activeSubCellKey := ""
         State.firstKey := "" ; Reset key sequence
         State.isVisible := true ; Return to main grid visibility state
-        ToolTip() ; Clear sub-grid tooltip
+
+        SetTimer(CleanupStraySubGrids, 500) ; Re-enable stray cleanup timer
     }
 }
 
@@ -637,10 +815,38 @@ GetCellAtPosition(x, y) {
     return "" ; No cell found at this position
 }
 
-; Update HandleKey to implement cell magnetization
+; Add this function before HandleKey function
+IsReadyForKeyInput() {
+    ; Check if we're ready to process another key input
+    currentTime := A_TickCount
+    if (keyProcessingInProgress) {
+        ; Another key is already being processed
+        return false
+    }
+
+    ; Check debounce time
+    if (currentTime - lastKeyPressTime < keyDebounceTime) {
+        ; Too soon after last key press
+        return false
+    }
+
+    return true
+}
+
+; Modify the HandleKey function to include debounce
 HandleKey(key, activateSubGrid := false) {
+    ; Input validation check - ensure we're ready to process input
+    if (!IsReadyForKeyInput()) {
+        return
+    }
+
+    ; Set processing lock
+    keyProcessingInProgress := true
+    lastKeyPressTime := A_TickCount
+
     ; Called only when State.isVisible is true and State.subGridActive is false
-    if (!IsObject(State.currentOverlay)) {
+    if (!State.isVisible || State.subGridActive || !IsObject(State.currentOverlay)) {
+        keyProcessingInProgress := false
         return
     }
 
@@ -652,6 +858,7 @@ HandleKey(key, activateSubGrid := false) {
         ; If the pressed key matches either the column or row of the current cell, do nothing
         if (key = currentColKey || key = currentRowKey) {
             ; Completely ignore this keypress - do absolutely nothing
+            keyProcessingInProgress := false
             return
         }
     }
@@ -725,18 +932,30 @@ HandleKey(key, activateSubGrid := false) {
                 }
             }
 
-            ; If we have a valid last row, always activate sub-grid immediately
-            ; regardless of activateSubGrid parameter
-            if (State.lastSelectedRowIndex > 0) {
-                ; Clear existing sub-grid if any
-                if (IsObject(State.subGridOverlay)) {
-                    State.subGridOverlay.Destroy()
-                    State.subGridOverlay := ""
-                }
+            ; If we found a valid row, use it when switching columns
+            if (currentRowIndex > 0) {
+                State.currentRowIndex := currentRowIndex
+                State.lastSelectedRowIndex := currentRowIndex
 
-                ; Create and show sub-grid for this cell - even if the cell hasn't changed
-                boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
+                ; Create the new target cell key with new column but same row
+                targetCellKey := key . currentRowKey
+
+                ; Get the boundaries for this target cell
+                boundaries := State.currentOverlay.GetCellBoundaries(targetCellKey)
+
                 if (IsObject(boundaries)) {
+                    ; Highlight the cell
+                    HighlightCell(targetCellKey, boundaries)
+
+                    ; Move cursor to center of the target cell
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(targetX, targetY, 0)
+
+                    ; Show sub-grid immediately for the target cell
+                    ; Complete cleanup of ALL sub-grids before creating new one
+                    CleanupAllSubGrids()
+
                     State.subGridOverlay := SubGridOverlay(
                         boundaries.x, boundaries.y,
                         boundaries.w, boundaries.h
@@ -745,14 +964,15 @@ HandleKey(key, activateSubGrid := false) {
 
                     ; Update state
                     State.subGridActive := true
-                    State.activeCellKey := firstCellInColKey
+                    State.activeCellKey := targetCellKey
                     State.firstKey := "" ; Reset for next potential sequence
-                    ToolTip("Cell '" . firstCellInColKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+                    ToolTip("Cell '" . targetCellKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
                     return
                 }
             }
 
             ToolTip("First key: " . key . ". Select second key (row).")
+            keyProcessingInProgress := false
             return ; Return early, waiting for row key
         } else {
             ; Invalid key
@@ -760,6 +980,7 @@ HandleKey(key, activateSubGrid := false) {
             Sleep 1000
             ToolTip()
             CleanupHighlight()
+            keyProcessingInProgress := false
             return
         }
     }
@@ -806,10 +1027,8 @@ HandleKey(key, activateSubGrid := false) {
                     MouseMove(targetX, targetY, 0)
 
                     ; Show sub-grid immediately for the target cell
-                    if (IsObject(State.subGridOverlay)) {
-                        State.subGridOverlay.Destroy()
-                        State.subGridOverlay := ""
-                    }
+                    ; Complete cleanup of ALL sub-grids before creating new one
+                    CleanupAllSubGrids()
 
                     State.subGridOverlay := SubGridOverlay(
                         boundaries.x, boundaries.y,
@@ -858,10 +1077,8 @@ HandleKey(key, activateSubGrid := false) {
                     MouseMove(targetX, targetY, 0)
 
                     ; Show sub-grid immediately
-                    if (IsObject(State.subGridOverlay)) {
-                        State.subGridOverlay.Destroy()
-                        State.subGridOverlay := ""
-                    }
+                    ; Complete cleanup of ALL sub-grids before creating new one
+                    CleanupAllSubGrids()
 
                     State.subGridOverlay := SubGridOverlay(
                         boundaries.x, boundaries.y,
@@ -912,13 +1129,16 @@ HandleKey(key, activateSubGrid := false) {
         if (State.lastSelectedRowIndex > 0) {
             ; Clear existing sub-grid if any
             if (IsObject(State.subGridOverlay)) {
-                State.subGridOverlay.Destroy()
-                State.subGridOverlay := ""
+                try State.subGridOverlay.Destroy()
+                catch ; Ignore errors
+                    State.subGridOverlay := ""
             }
 
             ; Create and show sub-grid for this cell - even if the cell hasn't changed
             boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
             if (IsObject(boundaries)) {
+                ; Complete cleanup of ALL sub-grids before creating new one
+                CleanupAllSubGrids()
                 State.subGridOverlay := SubGridOverlay(
                     boundaries.x, boundaries.y,
                     boundaries.w, boundaries.h
@@ -941,6 +1161,7 @@ HandleKey(key, activateSubGrid := false) {
 
         State.firstKey := key
         ToolTip("First key: " . key . ". Select second key (row).")
+        keyProcessingInProgress := false
         return ; Return early, waiting for row key
     }
     else if (isValidRowKey) {
@@ -985,10 +1206,8 @@ HandleKey(key, activateSubGrid := false) {
                     MouseMove(targetX, targetY, 0)
 
                     ; Show sub-grid immediately for the target cell
-                    if (IsObject(State.subGridOverlay)) {
-                        State.subGridOverlay.Destroy()
-                        State.subGridOverlay := ""
-                    }
+                    ; Complete cleanup of ALL sub-grids before creating new one
+                    CleanupAllSubGrids()
 
                     State.subGridOverlay := SubGridOverlay(
                         boundaries.x, boundaries.y,
@@ -1036,10 +1255,8 @@ HandleKey(key, activateSubGrid := false) {
                     MouseMove(targetX, targetY, 0)
 
                     ; Show sub-grid immediately
-                    if (IsObject(State.subGridOverlay)) {
-                        State.subGridOverlay.Destroy()
-                        State.subGridOverlay := ""
-                    }
+                    ; Complete cleanup of ALL sub-grids before creating new one
+                    CleanupAllSubGrids()
 
                     State.subGridOverlay := SubGridOverlay(
                         boundaries.x, boundaries.y,
@@ -1078,6 +1295,7 @@ HandleKey(key, activateSubGrid := false) {
         Sleep 1000
         ToolTip()
         CleanupHighlight() ; Ensure no partial highlight remains on error
+        keyProcessingInProgress := false
         return
     }
 
@@ -1093,12 +1311,10 @@ HandleKey(key, activateSubGrid := false) {
         centerY := boundaries.y + (boundaries.h // 2)
         MouseMove(centerX, centerY, 0)
 
-        ; Create and show a new separate SubGridOverlay window
-        ; Destroy any old one first
-        if (IsObject(State.subGridOverlay)) {
-            State.subGridOverlay.Destroy()
-            State.subGridOverlay := ""
-        }
+        ; Show sub-grid immediately for the target cell
+        ; Complete cleanup of ALL sub-grids before creating new one
+        CleanupAllSubGrids()
+
         State.subGridOverlay := SubGridOverlay(
             boundaries.x, boundaries.y,
             boundaries.w, boundaries.h
@@ -1108,6 +1324,9 @@ HandleKey(key, activateSubGrid := false) {
         State.subGridActive := true
         State.activeCellKey := cellKey
         State.firstKey := "" ; Reset for next potential sequence
+
+        SetTimer(CleanupStraySubGrids, 0) ; Disable stray cleanup timer while subgrid active
+
         ToolTip("Cell '" . cellKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
     } else {
         ToolTip("Error getting boundaries for cell: " . cellKey)
@@ -1115,12 +1334,25 @@ HandleKey(key, activateSubGrid := false) {
         ToolTip()
         State.firstKey := "" ; Reset on error
         CleanupHighlight() ; Ensure no partial highlight remains on error
+        SetTimer(CleanupStraySubGrids, 500) ; Ensure stray cleanup is active if we error out here
     }
+
+    keyProcessingInProgress := false
 }
 
 HandleSubGridKey(subKey) {
+    ; Input validation check
+    if (!IsReadyForKeyInput()) {
+        return
+    }
+
+    ; Set processing lock
+    keyProcessingInProgress := true
+    lastKeyPressTime := A_TickCount
+
     ; Called only when State.subGridActive is true
     if (!State.subGridActive || !State.activeCellKey || !IsObject(State.subGridOverlay)) {
+        keyProcessingInProgress := false
         return
     }
 
@@ -1130,6 +1362,7 @@ HandleSubGridKey(subKey) {
         ToolTip("Invalid sub-grid key: " . subKey)
         Sleep 1000
         ToolTip()
+        keyProcessingInProgress := false
         return
     }
 
@@ -1137,12 +1370,23 @@ HandleSubGridKey(subKey) {
     MouseMove(targetCoords.x, targetCoords.y, 0)
     State.activeSubCellKey := subKey
     ToolTip("Moved to sub-cell " . StrReplace(subKey, "Numpad", "") . " within " . State.activeCellKey)
-    ; --- DO NOT CALL Cleanup() HERE ---
+    keyProcessingInProgress := false
 }
 
+; Modify StartNewSelection to include debounce
 StartNewSelection(key) {
+    ; Input validation check
+    if (!IsReadyForKeyInput()) {
+        return
+    }
+
+    ; Set processing lock
+    keyProcessingInProgress := true
+    lastKeyPressTime := A_TickCount
+
     ; Called only when State.subGridActive is true and a key is pressed
     if (!State.subGridActive || !IsObject(State.currentOverlay)) {
+        keyProcessingInProgress := false
         return
     }
 
@@ -1154,6 +1398,7 @@ StartNewSelection(key) {
         ; If the pressed key matches either the column or row of the current cell, do nothing
         if (key = currentColKey || key = currentRowKey) {
             ; Completely ignore this keypress - do absolutely nothing
+            keyProcessingInProgress := false
             return
         }
     }
@@ -1181,23 +1426,43 @@ StartNewSelection(key) {
         ToolTip("'" . key . "' is not a valid key for this layout.")
         Sleep 1000
         ToolTip()
+        keyProcessingInProgress := false
         return
     }
 
     ; Add explicit cleanup of highlights before canceling sub-grid mode
     CleanupHighlight()
-    CancelSubGridMode() ; Clear old sub-grid targets & reset state
+
+    ; Ensure comprehensive cleanup of ALL sub-grids
+    CleanupAllSubGrids()
+
+    State.subGridActive := false
+    State.activeCellKey := ""
+    State.activeSubCellKey := ""
+    State.firstKey := "" ; Reset key sequence
+    State.isVisible := true ; Return to main grid visibility state
+
+    ; Re-enable stray cleanup timer BEFORE starting new selection
+    SetTimer(CleanupStraySubGrids, 500)
 
     ; Start the new selection process with the pressed key
     HandleKey(key) ; This will handle both column and row keys correctly
+
+    keyProcessingInProgress := false
 }
 
 TrackCursor() {
-    if (!State.isVisible || State.subGridActive) { ; Don't track if sub-grid is active
+    ; Add explicit global declarations at the beginning of the function
+    global lastTrackedCell, lastCursorMoveTime, State
+
+    if (!State.isVisible) {
         return
     }
 
     MouseGetPos(&x, &y)
+
+    ; First check if we need to switch monitors
+    local foundMonitor := false
     for overlay in State.overlays {
         if (overlay.ContainsPoint(x, y)) {
             if (State.currentOverlay !== overlay) {
@@ -1208,7 +1473,94 @@ TrackCursor() {
                     ToolTip(, , , 2)
                 }
             }
-            return
+            foundMonitor := true
+            break
+        }
+    }
+
+    ; If no monitor contains this point, do nothing more
+    if (!foundMonitor) {
+        return
+    }
+
+    ; Now check which cell the cursor is in
+    local currentCellKey := GetCellAtPosition(x, y)
+
+    ; If cursor is not in any cell, do nothing
+    if (currentCellKey == "") {
+        return
+    }
+
+    ; Skip if it's the same cell we've already processed
+    if (currentCellKey == lastTrackedCell && IsObject(State.subGridOverlay)) {
+        return
+    }
+
+    ; Update the last tracked cell and cursor move time
+    lastTrackedCell := currentCellKey
+    currentTime := A_TickCount
+    lastCursorMoveTime := currentTime
+
+    ; If we're already in sub-grid mode, clean it up first unless it's for the same cell
+    if (State.subGridActive && State.activeCellKey != currentCellKey) {
+        ; Clean up previous sub-grid and highlight
+        if (IsObject(State.subGridOverlay)) {
+            try State.subGridOverlay.Destroy()
+            catch ; Ignore errors
+                State.subGridOverlay := ""
+        }
+        CleanupHighlight()
+
+        ; Reset sub-grid state without fully cancelling (don't show main grid again)
+        State.subGridActive := false
+        State.activeCellKey := ""
+        State.activeSubCellKey := ""
+    }
+
+    ; Get boundaries for the cell under cursor
+    boundaries := State.currentOverlay.GetCellBoundaries(currentCellKey)
+    if (!IsObject(boundaries)) {
+        return
+    }
+
+    ; Highlight the cell
+    HighlightCell(currentCellKey, boundaries)
+
+    ; Show sub-grid for this cell if we're not already in sub-grid mode for this cell
+    if (!State.subGridActive || State.activeCellKey != currentCellKey) {
+        ; Complete cleanup of ALL sub-grids before creating new one
+        CleanupAllSubGrids()
+
+        State.subGridOverlay := SubGridOverlay(
+            boundaries.x, boundaries.y,
+            boundaries.w, boundaries.h
+        )
+        State.subGridOverlay.Show()
+
+        ; Update state
+        State.subGridActive := true
+        State.activeCellKey := currentCellKey
+
+        ; Disable stray cleanup timer while subgrid active
+        SetTimer(CleanupStraySubGrids, 0)
+
+        ; Extract and store column and row indices
+        colKey := SubStr(currentCellKey, 1, 1)
+        rowKey := SubStr(currentCellKey, 2, 1)
+
+        for i, key in State.activeColKeys {
+            if (key == colKey) {
+                State.currentColIndex := i
+                break
+            }
+        }
+
+        for i, key in State.activeRowKeys {
+            if (key == rowKey) {
+                State.currentRowIndex := i
+                State.lastSelectedRowIndex := i
+                break
+            }
         }
     }
 }
@@ -1224,14 +1576,13 @@ CapsLock & q:: {
     }
 
     currentConfig := layoutConfigs[selectedLayout]
+
     if (!IsObject(currentConfig)) {
         ToolTip("Error: Invalid selectedLayout (" . selectedLayout . ")", , , 4)
         Sleep 2000
         ToolTip(, , , 4)
         return
     }
-
-    ; We're not using the status bar anymore
 
     State.activeColKeys := currentConfig["colKeys"]
     State.activeRowKeys := currentConfig["rowKeys"]
@@ -1294,6 +1645,12 @@ CapsLock & q:: {
 
     if (foundMonitor) {
         State.isVisible := true
+
+        ; Reset tracking variables
+        lastTrackedCell := ""
+        lastCursorMoveTime := 0
+
+        ; Start tracking frequently for better responsiveness
         SetTimer(TrackCursor, 50)
     } else {
         ToolTip("Error: No monitor detected (" . startX . ", " . startY . ").", 100, 100)
@@ -1590,3 +1947,25 @@ Right:: {
     MouseClick "WheelRight", , , 3  ; Scroll right 3 clicks
 }
 #HotIf
+
+; Modify CleanupStraySubGrids to be more aggressive
+CleanupStraySubGrids() {
+    ; Check for orphaned subgrids even when we think we're in subgrid mode
+    if (State.subGridActive && !IsObject(State.subGridOverlay)) {
+        ; We think we're in subgrid mode, but don't have a valid overlay - fix state
+        State.subGridActive := false
+        State.activeCellKey := ""
+        State.activeSubCellKey := ""
+    }
+
+    ; Clean up sub-grids if they're not supposed to be active or if we have stray ones
+    if ((!State.subGridActive && allSubGridOverlays.Length > 0) ||
+    (allSubGridOverlays.Length > 1)) { ; We should never have more than 1 active subgrid
+        CleanupAllSubGrids()
+    }
+
+    ; Check if we have a highlight with no visible grid
+    if (!State.isVisible && !State.subGridActive && IsObject(State.currentHighlight)) {
+        CleanupHighlight()
+    }
+}
