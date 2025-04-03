@@ -136,7 +136,7 @@ class OverlayGUI {
                 ; --- Add Main Cell Text Label FIRST ---
                 this.gui.Add("Text",
                     "x" cellX " y" cellY " w" this.cellWidth " h" this.cellHeight
-                    " Center BackgroundTrans c" borderColor,
+                    " Center +0x200 BackgroundTrans c" borderColor,  ; +0x200 is SS_CENTERIMAGE style for vertical centering
                     monitorIndex ":" cellKey)
 
                 ; --- Add Inner Cell Borders AFTER Text ---
@@ -566,6 +566,37 @@ SwitchMonitor(monitorNum) {
     }
 }
 
+; Function to determine which cell contains a specific screen position
+GetCellAtPosition(x, y) {
+    if (!IsObject(State.currentOverlay)) {
+        return ""
+    }
+
+    ; Check if position is within the overlay
+    if (!State.currentOverlay.ContainsPoint(x, y)) {
+        return ""
+    }
+
+    ; Check each cell in the overlay
+    for colKey in State.activeColKeys {
+        for rowKey in State.activeRowKeys {
+            cellKey := colKey . rowKey
+            boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+
+            if (IsObject(boundaries)) {
+                ; Check if position is within this cell
+                if (x >= boundaries.x && x < boundaries.x + boundaries.w &&
+                    y >= boundaries.y && y < boundaries.y + boundaries.h) {
+                    return cellKey
+                }
+            }
+        }
+    }
+
+    return "" ; No cell found at this position
+}
+
+; Update HandleKey to implement cell magnetization
 HandleKey(key, activateSubGrid := false) {
     ; Called only when State.isVisible is true and State.subGridActive is false
     if (!IsObject(State.currentOverlay)) {
@@ -696,6 +727,119 @@ HandleKey(key, activateSubGrid := false) {
         ; Process as first key (column)
         State.currentColIndex := colIndex
 
+        ; Check if cursor is already in a cell and get its position
+        MouseGetPos(&cursorX, &cursorY)
+        cursorCellKey := GetCellAtPosition(cursorX, cursorY)
+
+        ; If cursor is in a valid cell, extract the current row
+        if (cursorCellKey != "") {
+            currentRowKey := SubStr(cursorCellKey, 2, 1)
+
+            ; Find the row index for the current cell
+            currentRowIndex := 0
+            for i, rKey in State.activeRowKeys {
+                if (rKey = currentRowKey) {
+                    currentRowIndex := i
+                    break
+                }
+            }
+
+            ; If we found a valid row, use it when switching columns
+            if (currentRowIndex > 0) {
+                State.currentRowIndex := currentRowIndex
+                State.lastSelectedRowIndex := currentRowIndex
+
+                ; Create the new target cell key with new column but same row
+                targetCellKey := key . currentRowKey
+
+                ; Get the boundaries for this target cell
+                boundaries := State.currentOverlay.GetCellBoundaries(targetCellKey)
+
+                if (IsObject(boundaries)) {
+                    ; Highlight the cell
+                    HighlightCell(targetCellKey, boundaries)
+
+                    ; Move cursor to center of the target cell
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(targetX, targetY, 0)
+
+                    ; Show sub-grid immediately for the target cell
+                    if (IsObject(State.subGridOverlay)) {
+                        State.subGridOverlay.Destroy()
+                        State.subGridOverlay := ""
+                    }
+
+                    State.subGridOverlay := SubGridOverlay(
+                        boundaries.x, boundaries.y,
+                        boundaries.w, boundaries.h
+                    )
+                    State.subGridOverlay.Show()
+
+                    ; Update state
+                    State.subGridActive := true
+                    State.activeCellKey := targetCellKey
+                    State.firstKey := "" ; Reset for next potential sequence
+                    ToolTip("Cell '" . targetCellKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+                    return
+                }
+            }
+        }
+
+        ; === OLD MAGNETIZATION FEATURE (ONLY WITHIN SAME COLUMN) ===
+        ; Check if cursor is already in a cell of this column
+        if (cursorCellKey != "" && SubStr(cursorCellKey, 1, 1) = key) {
+            ; Extract the row key from the detected cell
+            rowKey := SubStr(cursorCellKey, 2, 1)
+
+            ; Find the row index
+            for i, rKey in State.activeRowKeys {
+                if (rKey = rowKey) {
+                    rowIndex := i
+                    break
+                }
+            }
+
+            ; Set this as the last selected row
+            if (rowIndex > 0) {
+                State.currentRowIndex := rowIndex
+                State.lastSelectedRowIndex := rowIndex
+
+                ; Get cell boundaries
+                boundaries := State.currentOverlay.GetCellBoundaries(cursorCellKey)
+                if (IsObject(boundaries)) {
+                    ; Highlight the cell
+                    HighlightCell(cursorCellKey, boundaries)
+
+                    ; Move cursor to center of the cell
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(targetX, targetY, 0)
+
+                    ; Show sub-grid immediately
+                    if (IsObject(State.subGridOverlay)) {
+                        State.subGridOverlay.Destroy()
+                        State.subGridOverlay := ""
+                    }
+
+                    State.subGridOverlay := SubGridOverlay(
+                        boundaries.x, boundaries.y,
+                        boundaries.w, boundaries.h
+                    )
+                    State.subGridOverlay.Show()
+
+                    ; Update state
+                    State.subGridActive := true
+                    State.activeCellKey := cursorCellKey
+                    State.firstKey := "" ; Reset for next potential sequence
+                    ToolTip("Cell '" . cursorCellKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+                    return
+                }
+            }
+        }
+        ; === END OLD FEATURE ===
+
+        ; If magnetization didn't happen, continue with normal behavior
         ; Determine which row to target - use last selected row if available
         targetRowIndex := (State.lastSelectedRowIndex > 0) ? State.lastSelectedRowIndex : 1
         rowKey := State.activeRowKeys[targetRowIndex]
@@ -762,6 +906,116 @@ HandleKey(key, activateSubGrid := false) {
         ; Process as direct row key - use the middle column as default
         State.currentRowIndex := rowIndex
         State.lastSelectedRowIndex := rowIndex ; Remember this row for future column switches
+
+        ; Check if cursor is already in a cell and get its position
+        MouseGetPos(&cursorX, &cursorY)
+        cursorCellKey := GetCellAtPosition(cursorX, cursorY)
+
+        ; If cursor is in a valid cell, extract the current column
+        if (cursorCellKey != "") {
+            currentColKey := SubStr(cursorCellKey, 1, 1)
+
+            ; Find the column index for the current cell
+            currentColIndex := 0
+            for i, cKey in State.activeColKeys {
+                if (cKey = currentColKey) {
+                    currentColIndex := i
+                    break
+                }
+            }
+
+            ; If we found a valid column, use it with the new row key
+            if (currentColIndex > 0) {
+                State.currentColIndex := currentColIndex
+
+                ; Create the new target cell key with same column but new row
+                targetCellKey := currentColKey . key
+
+                ; Get the boundaries for this target cell
+                boundaries := State.currentOverlay.GetCellBoundaries(targetCellKey)
+
+                if (IsObject(boundaries)) {
+                    ; Highlight the cell
+                    HighlightCell(targetCellKey, boundaries)
+
+                    ; Move cursor to center of the target cell
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(targetX, targetY, 0)
+
+                    ; Show sub-grid immediately for the target cell
+                    if (IsObject(State.subGridOverlay)) {
+                        State.subGridOverlay.Destroy()
+                        State.subGridOverlay := ""
+                    }
+
+                    State.subGridOverlay := SubGridOverlay(
+                        boundaries.x, boundaries.y,
+                        boundaries.w, boundaries.h
+                    )
+                    State.subGridOverlay.Show()
+
+                    ; Update state
+                    State.subGridActive := true
+                    State.activeCellKey := targetCellKey
+                    State.firstKey := "" ; Reset for next potential sequence
+                    ToolTip("Cell '" . targetCellKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+                    return
+                }
+            }
+        }
+
+        ; === OLD ROW MAGNETIZATION FEATURE ===
+        ; Check if cursor is already in a cell of this row
+        if (cursorCellKey != "" && SubStr(cursorCellKey, 2, 1) = key) {
+            ; Extract the column key from the detected cell
+            colKey := SubStr(cursorCellKey, 1, 1)
+
+            ; Find the column index
+            for i, cKey in State.activeColKeys {
+                if (cKey = colKey) {
+                    colIndex := i
+                    break
+                }
+            }
+
+            ; Set this as the current column
+            if (colIndex > 0) {
+                State.currentColIndex := colIndex
+
+                ; Get cell boundaries
+                boundaries := State.currentOverlay.GetCellBoundaries(cursorCellKey)
+                if (IsObject(boundaries)) {
+                    ; Highlight the cell
+                    HighlightCell(cursorCellKey, boundaries)
+
+                    ; Move cursor to center of the cell
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(targetX, targetY, 0)
+
+                    ; Show sub-grid immediately
+                    if (IsObject(State.subGridOverlay)) {
+                        State.subGridOverlay.Destroy()
+                        State.subGridOverlay := ""
+                    }
+
+                    State.subGridOverlay := SubGridOverlay(
+                        boundaries.x, boundaries.y,
+                        boundaries.w, boundaries.h
+                    )
+                    State.subGridOverlay.Show()
+
+                    ; Update state
+                    State.subGridActive := true
+                    State.activeCellKey := cursorCellKey
+                    State.firstKey := "" ; Reset for next potential sequence
+                    ToolTip("Cell '" . cursorCellKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+                    return
+                }
+            }
+        }
+        ; === END OLD ROW FEATURE ===
 
         ; Use the middle column or the last used column if available
         if (State.currentColIndex > 0 && State.currentColIndex <= State.activeColKeys.Length) {
