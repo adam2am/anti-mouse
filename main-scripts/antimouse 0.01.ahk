@@ -1,4 +1,5 @@
 ; instead of destroying - hide+show, and other stuff
+; actually 0.012 - improved flow
 
 #Requires AutoHotkey v2.0
 SetCapsLockState("AlwaysOff")
@@ -486,7 +487,21 @@ GetCellAtPosition(x, y) {
 
 HandleKey(key) {
     global currentState, highlight, subGrid
+
+    ; IMPROVEMENT: Explicit hiding at the beginning
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+
+    ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference
+    SetTimer(TrackCursor, 0)
+
     if (currentState != "GRID_VISIBLE" || !IsObject(State.currentOverlay)) {
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
         return
     }
 
@@ -512,6 +527,8 @@ HandleKey(key) {
         ToolTip("Invalid key: " key)
         Sleep 1000
         ToolTip()
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
         return
     }
 
@@ -540,9 +557,13 @@ HandleKey(key) {
 
                 ; Move the cursor to the center of the highlighted cell
                 MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+                ; IMPROVEMENT: Small sleep after MouseMove
+                Sleep(10)
 
                 ToolTip("First key: " key ". Select row.")
             }
+            ; Re-enable TrackCursor before returning
+            SetTimer(TrackCursor, 50)
             return
         }
         else if (isRowKey) {
@@ -575,7 +596,8 @@ HandleKey(key) {
         State.firstKey := ""  ; Reset first key after completing selection
     }
     else {
-        ; Changed column in middle of selection
+        ; IMPROVEMENT: Simplified column switching logic
+        ; Changed column in middle of selection - immediately update firstKey and highlight
         State.firstKey := key
         for i, k in State.activeColKeys {
             if (k = key) {
@@ -588,6 +610,19 @@ HandleKey(key) {
         rowIndex := State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1
         rowIndex := ValidateIndex(rowIndex, State.activeRowKeys.Length)
         cellKey := key . State.activeRowKeys[rowIndex]
+
+        ; Immediately highlight the new column's cell
+        boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+        if (IsObject(boundaries)) {
+            highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+            ; IMPROVEMENT: Small sleep after MouseMove
+            Sleep(10)
+            ToolTip("Column changed to: " key ". Select row.")
+        }
+        ; Re-enable TrackCursor and return
+        SetTimer(TrackCursor, 50)
+        return
     }
 
     ; Process the final cell selection
@@ -596,10 +631,15 @@ HandleKey(key) {
         highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
         subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
         MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+        ; IMPROVEMENT: Small sleep after MouseMove
+        Sleep(10)
         State.activeCellKey := cellKey
         currentState := "SUBGRID_ACTIVE"
         ToolTip("Cell '" cellKey "' targeted. Use 1-9.")
     }
+
+    ; Re-enable TrackCursor
+    SetTimer(TrackCursor, 50)
 }
 
 HandleSubGridKey(subKey) {
@@ -621,13 +661,24 @@ HandleSubGridKey(subKey) {
 
 StartNewSelection(key) {
     global currentState, subGrid, highlight
+
+    ; IMPROVEMENT: Temporarily disable TrackCursor
+    SetTimer(TrackCursor, 0)
+
     if (currentState != "SUBGRID_ACTIVE") {
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
         return
     }
 
     ; Hide the subgrid first
     if (IsObject(subGrid)) {
         subGrid.Hide()
+    }
+
+    ; Hide highlight as well
+    if (IsObject(highlight)) {
+        highlight.Hide()
     }
 
     ; Reset state before handling the new key
@@ -641,6 +692,8 @@ StartNewSelection(key) {
 
     ; Call HandleKey to process the key press
     HandleKey(key)
+
+    ; TrackCursor re-enabled in HandleKey
 }
 
 TrackCursor() {
@@ -782,6 +835,18 @@ CapsLock & q:: {
 
     ; Try to initialize
     try {
+        ; IMPROVEMENT: Explicitly reset all state variables
+        State.firstKey := ""
+        State.currentOverlay := ""
+        State.activeColKeys := []
+        State.activeRowKeys := []
+        State.activeCellKey := ""
+        State.activeSubCellKey := ""
+        State.currentColIndex := 0
+        State.currentRowIndex := 0
+        State.lastSelectedRowIndex := 0
+        State.overlays := []
+
         ; Get configured layout
         currentConfig := layoutConfigs[selectedLayout]
         if (!IsObject(currentConfig)) {
@@ -794,7 +859,6 @@ CapsLock & q:: {
         ; Set up state
         State.activeColKeys := currentConfig["colKeys"]
         State.activeRowKeys := currentConfig["rowKeys"]
-        State.overlays := []
 
         ; Get current mouse position
         MouseGetPos(&startX, &startY)
