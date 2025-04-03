@@ -422,6 +422,7 @@ class State {
     static subGridOverlay := "" ; Reference to the current SubGridOverlay object
     static dragActive := false ; Flag for drag-and-drop operation
     static currentHighlight := "" ; Reference to the current highlight overlay
+    static highlightedCellKey := "" ; Key of the currently highlighted cell (to prevent flickering)
     static statusBar := "" ; Reference to the status bar
     static currentColIndex := 0 ; Current column index for direct navigation
     static currentRowIndex := 0 ; Current row index for direct navigation
@@ -441,12 +442,18 @@ CleanupHighlight() {
             ; Silently ignore destruction errors
         }
         State.currentHighlight := ""
+        State.highlightedCellKey := "" ; Also reset the tracked cell
     }
 }
 
-; HighlightCell rewritten to use the new HighlightOverlay class
+; Modified HighlightCell to check if we're already highlighting the same cell
 HighlightCell(cellKey, boundaries) {
     if (!IsObject(boundaries)) {
+        return
+    }
+
+    ; If the cell is already highlighted, don't recreate the highlight
+    if (cellKey = State.highlightedCellKey && IsObject(State.currentHighlight)) {
         return
     }
 
@@ -460,12 +467,14 @@ HighlightCell(cellKey, boundaries) {
             boundaries.w, boundaries.h
         )
         State.currentHighlight.Show()
+        State.highlightedCellKey := cellKey ; Remember which cell we're highlighting
     } catch as e {
         if (showcaseDebug) {
             ToolTip("Highlight error: " . e.Message)
             Sleep 1500
             ToolTip()
         }
+        State.highlightedCellKey := "" ; Clear the tracked cell on error
     }
 }
 
@@ -563,8 +572,8 @@ HandleKey(key, activateSubGrid := false) {
         return
     }
 
-    ; Always ensure any previous highlight is gone
-    CleanupHighlight()
+    ; Only clean up highlights if we're moving to a different cell
+    ; We'll check this in each specific case below instead of doing it globally
 
     ; Check if the key is a valid column key
     isValidColKey := false
@@ -611,33 +620,39 @@ HandleKey(key, activateSubGrid := false) {
             rowKey := State.activeRowKeys[targetRowIndex]
             firstCellInColKey := key . rowKey
 
-            boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
-            if (IsObject(boundaries)) {
-                ; If using last selected row, move cursor to that cell's center
-                if (State.lastSelectedRowIndex > 0) {
-                    targetX := boundaries.x + (boundaries.w // 2)
-                    targetY := boundaries.y + (boundaries.h // 2)
-                    MouseMove(targetX, targetY, 0)
-                } else {
-                    ; Just move horizontally if no row was selected yet
-                    MouseGetPos(, &currentY)
-                    targetX := boundaries.x + (boundaries.w // 2)
-                    MouseMove(targetX, currentY, 0)
-                }
-
-                ; Highlight the cell at the target row in the new column
-                HighlightCell(firstCellInColKey, boundaries)
-
-                ; If we have a valid last row, always activate sub-grid immediately
-                ; regardless of activateSubGrid parameter
-                if (State.lastSelectedRowIndex > 0) {
-                    ; Clear existing sub-grid if any
-                    if (IsObject(State.subGridOverlay)) {
-                        State.subGridOverlay.Destroy()
-                        State.subGridOverlay := ""
+            ; Check if we're already highlighting this exact cell - if not, update it
+            if (firstCellInColKey != State.highlightedCellKey) {
+                boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
+                if (IsObject(boundaries)) {
+                    ; If using last selected row, move cursor to that cell's center
+                    if (State.lastSelectedRowIndex > 0) {
+                        targetX := boundaries.x + (boundaries.w // 2)
+                        targetY := boundaries.y + (boundaries.h // 2)
+                        MouseMove(targetX, targetY, 0)
+                    } else {
+                        ; Just move horizontally if no row was selected yet
+                        MouseGetPos(, &currentY)
+                        targetX := boundaries.x + (boundaries.w // 2)
+                        MouseMove(targetX, currentY, 0)
                     }
 
-                    ; Create and show sub-grid for this cell
+                    ; Highlight the cell at the target row in the new column
+                    HighlightCell(firstCellInColKey, boundaries)
+                }
+            }
+
+            ; If we have a valid last row, always activate sub-grid immediately
+            ; regardless of activateSubGrid parameter
+            if (State.lastSelectedRowIndex > 0) {
+                ; Clear existing sub-grid if any
+                if (IsObject(State.subGridOverlay)) {
+                    State.subGridOverlay.Destroy()
+                    State.subGridOverlay := ""
+                }
+
+                ; Create and show sub-grid for this cell - even if the cell hasn't changed
+                boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
+                if (IsObject(boundaries)) {
                     State.subGridOverlay := SubGridOverlay(
                         boundaries.x, boundaries.y,
                         boundaries.w, boundaries.h
@@ -674,33 +689,39 @@ HandleKey(key, activateSubGrid := false) {
         rowKey := State.activeRowKeys[targetRowIndex]
         firstCellInColKey := key . rowKey
 
-        boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
-        if (IsObject(boundaries)) {
-            ; If using last selected row, move cursor to that cell's center
-            if (State.lastSelectedRowIndex > 0) {
-                targetX := boundaries.x + (boundaries.w // 2)
-                targetY := boundaries.y + (boundaries.h // 2)
-                MouseMove(targetX, targetY, 0)
-            } else {
-                ; Just move horizontally if no row was selected yet
-                MouseGetPos(, &currentY)
-                targetX := boundaries.x + (boundaries.w // 2)
-                MouseMove(targetX, currentY, 0)
-            }
-
-            ; Highlight the cell at the target row in the column
-            HighlightCell(firstCellInColKey, boundaries)
-
-            ; If we have a valid last row, always activate sub-grid immediately
-            ; regardless of activateSubGrid parameter
-            if (State.lastSelectedRowIndex > 0) {
-                ; Clear existing sub-grid if any
-                if (IsObject(State.subGridOverlay)) {
-                    State.subGridOverlay.Destroy()
-                    State.subGridOverlay := ""
+        ; Check if we're already highlighting this exact cell - if not, update it
+        if (firstCellInColKey != State.highlightedCellKey) {
+            boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
+            if (IsObject(boundaries)) {
+                ; If using last selected row, move cursor to that cell's center
+                if (State.lastSelectedRowIndex > 0) {
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(targetX, targetY, 0)
+                } else {
+                    ; Just move horizontally if no row was selected yet
+                    MouseGetPos(, &currentY)
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    MouseMove(targetX, currentY, 0)
                 }
 
-                ; Create and show sub-grid for this cell
+                ; Highlight the cell at the target row in the column
+                HighlightCell(firstCellInColKey, boundaries)
+            }
+        }
+
+        ; If we have a valid last row, always activate sub-grid immediately
+        ; regardless of activateSubGrid parameter
+        if (State.lastSelectedRowIndex > 0) {
+            ; Clear existing sub-grid if any
+            if (IsObject(State.subGridOverlay)) {
+                State.subGridOverlay.Destroy()
+                State.subGridOverlay := ""
+            }
+
+            ; Create and show sub-grid for this cell - even if the cell hasn't changed
+            boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
+            if (IsObject(boundaries)) {
                 State.subGridOverlay := SubGridOverlay(
                     boundaries.x, boundaries.y,
                     boundaries.w, boundaries.h
