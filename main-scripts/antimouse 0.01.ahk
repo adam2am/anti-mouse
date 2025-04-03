@@ -851,6 +851,18 @@ StartNewSelection(key) {
         return
     }
 
+    ; Check if we're clicking a key of the cell we're already in
+    if (State.activeCellKey != "") {
+        currentColKey := SubStr(State.activeCellKey, 1, 1)
+        currentRowKey := SubStr(State.activeCellKey, 2, 1)
+
+        ; If the pressed key matches either the column or row of the current cell, do nothing
+        if (key = currentColKey || key = currentRowKey) {
+            ; Completely ignore this keypress - do absolutely nothing
+            return
+        }
+    }
+
     ; Check if the key is a valid column key
     isValidColKey := false
     for _, colKey in State.activeColKeys {
