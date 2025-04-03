@@ -8,32 +8,6 @@ global defaultTransparency := 180 ; Default transparency level (0-255, where 255
 global highlightColor := "33AAFF" ; Color for highlighting selected cells
 global directNavEnabled := true ; Enable direct navigation between cells using arrow keys
 
-; Function to clean up highlights
-CleanupHighlight() {
-    if (IsObject(State.currentHighlight)) {
-        if (Type(State.currentHighlight) = "Array") {
-            ; It's an array of border controls
-            for _, border in State.currentHighlight {
-                try {
-                    if (IsObject(border) && border.HasProp("Destroy")) {
-                        border.Destroy()
-                    }
-                } catch {
-                }
-            }
-        } else {
-            ; For backward compatibility
-            try {
-                if (IsObject(State.currentHighlight) && State.currentHighlight.HasProp("Destroy")) {
-                    State.currentHighlight.Destroy()
-                }
-            } catch {
-            }
-        }
-        State.currentHighlight := ""
-    }
-}
-
 ; Define Layout Configurations
 global layoutConfigs := Map(
     1, Map( ; User's 10x10 QWERTY/ASDF layout
@@ -64,6 +38,47 @@ global subGridKeys := [
 ]
 global subGridRows := 3
 global subGridCols := 3
+
+; ==============================================================================
+; Highlight Overlay Class (Separate Window)
+; ==============================================================================
+class HighlightOverlay {
+    __New(cellX, cellY, cellWidth, cellHeight) {
+        ; Create a new separate window for the highlight
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
+        this.gui.BackColor := highlightColor ; Use the global highlight color
+        this.width := cellWidth
+        this.height := cellHeight
+        this.x := cellX
+        this.y := cellY
+
+        ; Make the interior transparent (just show a border)
+        borderSize := 3
+        interiorColor := "000000" ; Black interior that we'll make transparent
+
+        ; Create interior rectangle that we'll make transparent
+        this.gui.Add("Progress",
+            "x" . borderSize . " y" . borderSize .
+            " w" . (this.width - borderSize * 2) .
+            " h" . (this.height - borderSize * 2) .
+            " Background" . interiorColor)
+
+        ; Make the center transparent, leaving just the border visible
+        WinSetTransColor(interiorColor . " 255", this.gui)
+    }
+
+    Show() {
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+    }
+
+    Hide() {
+        this.gui.Hide()
+    }
+
+    Destroy() {
+        this.gui.Destroy()
+    }
+}
 
 ; ==============================================================================
 ; Main Grid Overlay Class
@@ -406,7 +421,7 @@ class State {
     static activeSubCellKey := "" ; Numpad key of the last selected sub-cell
     static subGridOverlay := "" ; Reference to the current SubGridOverlay object
     static dragActive := false ; Flag for drag-and-drop operation
-    static currentHighlight := "" ; Reference to the current highlighted cell control
+    static currentHighlight := "" ; Reference to the current highlight overlay
     static statusBar := "" ; Reference to the status bar
     static currentColIndex := 0 ; Current column index for direct navigation
     static currentRowIndex := 0 ; Current row index for direct navigation
@@ -417,52 +432,40 @@ class State {
 ; Global Helper Functions (Defined before use in hotkeys)
 ; ==============================================================================
 
-; --- New Helper Function for Highlighting ---
+; Function to clean up highlights - completely rewritten to use the new HighlightOverlay
+CleanupHighlight() {
+    if (IsObject(State.currentHighlight)) {
+        try {
+            State.currentHighlight.Destroy()
+        } catch {
+            ; Silently ignore destruction errors
+        }
+        State.currentHighlight := ""
+    }
+}
+
+; HighlightCell rewritten to use the new HighlightOverlay class
 HighlightCell(cellKey, boundaries) {
-    if (!IsObject(boundaries) || !IsObject(State.currentOverlay)) {
+    if (!IsObject(boundaries)) {
         return
     }
 
-    ; Ensure previous highlight is gone FIRST
+    ; Always ensure previous highlight is gone FIRST
     CleanupHighlight()
 
-    ; Create a semi-transparent highlight for the selected cell using borders
-    borderSize := 3 ; Size of the border in pixels
-
-    ; Create four thin rectangles relative to the overlay GUI
-    guiX := boundaries.x - State.currentOverlay.Left
-    guiY := boundaries.y - State.currentOverlay.Top
-
-    try { ; Wrap in try-catch in case GUI is destroyed unexpectedly
-        ; Top border
-        topBorder := State.currentOverlay.gui.Add("Progress",
-            "x" . guiX . " y" . guiY . " w" . boundaries.w . " h" . borderSize .
-            " Background" . highlightColor)
-
-        ; Bottom border
-        bottomBorder := State.currentOverlay.gui.Add("Progress",
-            "x" . guiX . " y" . (guiY + boundaries.h - borderSize) .
-            " w" . boundaries.w . " h" . borderSize .
-            " Background" . highlightColor)
-
-        ; Left border
-        leftBorder := State.currentOverlay.gui.Add("Progress",
-            "x" . guiX . " y" . guiY . " w" . borderSize . " h" . boundaries.h .
-            " Background" . highlightColor)
-
-        ; Right border
-        rightBorder := State.currentOverlay.gui.Add("Progress",
-            "x" . (guiX + boundaries.w - borderSize) . " y" . guiY .
-            " w" . borderSize . " h" . boundaries.h .
-            " Background" . highlightColor)
-
-        ; Store all borders in an array
-        State.currentHighlight := [topBorder, bottomBorder, leftBorder, rightBorder]
+    ; Create a new highlight overlay for this cell
+    try {
+        State.currentHighlight := HighlightOverlay(
+            boundaries.x, boundaries.y,
+            boundaries.w, boundaries.h
+        )
+        State.currentHighlight.Show()
     } catch as e {
-        ToolTip("Error creating highlight: " . e.Message)
-        Sleep 1500
-        ToolTip()
-        State.currentHighlight := "" ; Ensure state is clean on error
+        if (showcaseDebug) {
+            ToolTip("Highlight error: " . e.Message)
+            Sleep 1500
+            ToolTip()
+        }
     }
 }
 
@@ -472,7 +475,7 @@ Cleanup() {
         State.subGridOverlay := ""
     }
 
-    ; Clean up highlight borders if they exist
+    ; Clean up highlight if it exists
     CleanupHighlight()
 
     for overlay in State.overlays {
@@ -559,6 +562,9 @@ HandleKey(key, activateSubGrid := false) {
     if (!IsObject(State.currentOverlay)) {
         return
     }
+
+    ; Always ensure any previous highlight is gone
+    CleanupHighlight()
 
     ; Check if the key is a valid column key
     isValidColKey := false
@@ -838,6 +844,8 @@ StartNewSelection(key) {
         return
     }
 
+    ; Add explicit cleanup of highlights before canceling sub-grid mode
+    CleanupHighlight()
     CancelSubGridMode() ; Clear old sub-grid targets & reset state
 
     ; Start the new selection process with the pressed key
@@ -1101,7 +1109,7 @@ Escape:: {
 Up:: {
     ; Navigate to the cell above the current one
     if (State.currentColIndex > 0 && State.currentRowIndex > 1) { ; Ensure a column is active
-        ; --- Cleanup potential existing highlight before navigating ---
+        ; --- Cleanup highlight before navigating ---
         CleanupHighlight()
 
         ; Move up one row
@@ -1125,7 +1133,7 @@ Up:: {
 Down:: {
     ; Navigate to the cell below the current one
     if (State.currentColIndex > 0 && State.currentRowIndex < State.activeRowKeys.Length) { ; Ensure a column is active
-        ; --- Cleanup potential existing highlight before navigating ---
+        ; --- Cleanup highlight before navigating ---
         CleanupHighlight()
 
         ; Move down one row
@@ -1145,6 +1153,9 @@ Down:: {
 Left:: {
     ; Navigate to the cell to the left of the current one
     if (State.currentColIndex > 1) {
+        ; --- Cleanup highlight before navigating ---
+        CleanupHighlight()
+
         ; Move left one column
         newColIndex := State.currentColIndex - 1
         colKey := State.activeColKeys[newColIndex]
@@ -1161,6 +1172,9 @@ Left:: {
 Right:: {
     ; Navigate to the cell to the right of the current one
     if (State.currentColIndex < State.activeColKeys.Length) {
+        ; --- Cleanup highlight before navigating ---
+        CleanupHighlight()
+
         ; Move right one column
         newColIndex := State.currentColIndex + 1
         colKey := State.activeColKeys[newColIndex]
