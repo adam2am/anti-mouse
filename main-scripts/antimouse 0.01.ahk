@@ -4,6 +4,35 @@ CoordMode "Mouse", "Screen" ; Ensure mouse coordinates are relative to the virtu
 
 global showcaseDebug := false ; Set to true to enable debug tooltips, delays, and border colors
 global selectedLayout := 1 ; 1: User QWERTY/ASDF, 2: Home Row ASDF/JKL;, 3: WASD/QWER
+global defaultTransparency := 180 ; Default transparency level (0-255, where 255 is opaque)
+global highlightColor := "33AAFF" ; Color for highlighting selected cells
+global directNavEnabled := true ; Enable direct navigation between cells using arrow keys
+
+; Function to clean up highlights
+CleanupHighlight() {
+    if (IsObject(State.currentHighlight)) {
+        if (Type(State.currentHighlight) = "Array") {
+            ; It's an array of border controls
+            for _, border in State.currentHighlight {
+                try {
+                    if (IsObject(border) && border.HasProp("Destroy")) {
+                        border.Destroy()
+                    }
+                } catch {
+                }
+            }
+        } else {
+            ; For backward compatibility
+            try {
+                if (IsObject(State.currentHighlight) && State.currentHighlight.HasProp("Destroy")) {
+                    State.currentHighlight.Destroy()
+                }
+            } catch {
+            }
+        }
+        State.currentHighlight := ""
+    }
+}
 
 ; Define Layout Configurations
 global layoutConfigs := Map(
@@ -44,6 +73,9 @@ class OverlayGUI {
         this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
         this.gui.BackColor := "000000"
         this.gui.Opt("+E0x20")
+
+        ; Add transparency setting
+        this.transparency := defaultTransparency
 
         this.width := Right - Left
         this.height := Bottom - Top
@@ -104,7 +136,7 @@ class OverlayGUI {
             }
         }
 
-        WinSetTransColor("000000 200", this.gui)
+        WinSetTransColor("000000 " this.transparency, this.gui)
         this.x := Left
         this.y := Top
 
@@ -318,7 +350,8 @@ class SubGridOverlay {
         }
 
         ; Make the window semi-transparent
-        WinSetTransColor("222222 220", this.gui)
+        this.transparency := defaultTransparency + 20 ; Slightly more opaque than main grid
+        WinSetTransColor("222222 " this.transparency, this.gui)
     }
 
     Show() {
@@ -372,19 +405,84 @@ class State {
     static activeCellKey := "" ; Key of the cell where sub-grid is active (e.g., "es")
     static activeSubCellKey := "" ; Numpad key of the last selected sub-cell
     static subGridOverlay := "" ; Reference to the current SubGridOverlay object
+    static dragActive := false ; Flag for drag-and-drop operation
+    static currentHighlight := "" ; Reference to the current highlighted cell control
+    static statusBar := "" ; Reference to the status bar
+    static currentColIndex := 0 ; Current column index for direct navigation
+    static currentRowIndex := 0 ; Current row index for direct navigation
+    static lastSelectedRowIndex := 0 ; Last successfully selected row index
 }
 
 ; ==============================================================================
 ; Global Helper Functions (Defined before use in hotkeys)
 ; ==============================================================================
+
+; --- New Helper Function for Highlighting ---
+HighlightCell(cellKey, boundaries) {
+    if (!IsObject(boundaries) || !IsObject(State.currentOverlay)) {
+        return
+    }
+
+    ; Ensure previous highlight is gone FIRST
+    CleanupHighlight()
+
+    ; Create a semi-transparent highlight for the selected cell using borders
+    borderSize := 3 ; Size of the border in pixels
+
+    ; Create four thin rectangles relative to the overlay GUI
+    guiX := boundaries.x - State.currentOverlay.Left
+    guiY := boundaries.y - State.currentOverlay.Top
+
+    try { ; Wrap in try-catch in case GUI is destroyed unexpectedly
+        ; Top border
+        topBorder := State.currentOverlay.gui.Add("Progress",
+            "x" . guiX . " y" . guiY . " w" . boundaries.w . " h" . borderSize .
+            " Background" . highlightColor)
+
+        ; Bottom border
+        bottomBorder := State.currentOverlay.gui.Add("Progress",
+            "x" . guiX . " y" . (guiY + boundaries.h - borderSize) .
+            " w" . boundaries.w . " h" . borderSize .
+            " Background" . highlightColor)
+
+        ; Left border
+        leftBorder := State.currentOverlay.gui.Add("Progress",
+            "x" . guiX . " y" . guiY . " w" . borderSize . " h" . boundaries.h .
+            " Background" . highlightColor)
+
+        ; Right border
+        rightBorder := State.currentOverlay.gui.Add("Progress",
+            "x" . (guiX + boundaries.w - borderSize) . " y" . guiY .
+            " w" . borderSize . " h" . boundaries.h .
+            " Background" . highlightColor)
+
+        ; Store all borders in an array
+        State.currentHighlight := [topBorder, bottomBorder, leftBorder, rightBorder]
+    } catch as e {
+        ToolTip("Error creating highlight: " . e.Message)
+        Sleep 1500
+        ToolTip()
+        State.currentHighlight := "" ; Ensure state is clean on error
+    }
+}
+
 Cleanup() {
     if (IsObject(State.subGridOverlay)) {
         State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window if it exists
         State.subGridOverlay := ""
     }
 
+    ; Clean up highlight borders if they exist
+    CleanupHighlight()
+
     for overlay in State.overlays {
         overlay.Hide() ; Hides GUI and sub-grid targets via its Hide method
+    }
+
+    ; Remove status bar - we're not using it anymore
+    if (IsObject(State.statusBar)) {
+        State.statusBar.Hide()
+        State.statusBar := ""
     }
 
     State.isVisible := false
@@ -395,6 +493,10 @@ Cleanup() {
     State.activeRowKeys := []
     State.activeCellKey := ""
     State.activeSubCellKey := ""
+    State.dragActive := false
+    State.currentColIndex := 0
+    State.currentRowIndex := 0
+    State.lastSelectedRowIndex := 0 ; Reset the last selected row index
 
     ToolTip() ; Clear tooltip
     SetTimer(TrackCursor, 0)
@@ -406,6 +508,10 @@ CancelSubGridMode() {
             State.subGridOverlay.Destroy() ; Destroy the separate sub-grid window
             State.subGridOverlay := ""
         }
+
+        ; Clean up highlight borders if they exist
+        CleanupHighlight()
+
         State.subGridActive := false
         State.activeCellKey := ""
         State.activeSubCellKey := ""
@@ -448,95 +554,233 @@ SwitchMonitor(monitorNum) {
     }
 }
 
-HandleKey(key) {
+HandleKey(key, activateSubGrid := false) {
     ; Called only when State.isVisible is true and State.subGridActive is false
     if (!IsObject(State.currentOverlay)) {
         return
     }
 
-    if (State.firstKey = "") {
-        ; --- First Key Input ---
-        isValidFirstKey := false
-        for _, colKey in State.activeColKeys {
-            if (key = colKey) {
-                isValidFirstKey := true
-                break
-            }
+    ; Check if the key is a valid column key
+    isValidColKey := false
+    colIndex := 0
+    for i, colKey in State.activeColKeys {
+        if (key = colKey) {
+            isValidColKey := true
+            colIndex := i
+            break
         }
-        if (isValidFirstKey) {
-            ; --- MOUSE MOVE ON FIRST KEY START ---
-            firstRowKey := State.activeRowKeys[1] ; Get the first key defined for rows
-            firstCellInColKey := key . firstRowKey
-            boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
-            if (IsObject(boundaries)) {
-                MouseGetPos(, &currentY) ; Get current mouse Y
-                targetX := boundaries.x + (boundaries.w // 2) ; Center of the first cell in the column
-                MouseMove(targetX, currentY, 0) ; Move instantly horizontally
-            }
-            ; --- MOUSE MOVE ON FIRST KEY END ---
+    }
 
-            ; Clear any previous sub-grid if it exists (logic moved slightly)
-            if (State.subGridActive) {
-                State.currentOverlay.HideSubGrid()
-                State.subGridActive := false
-                State.activeCellKey := ""
-            }
+    ; Check if the key is a valid row key
+    isValidRowKey := false
+    rowIndex := 0
+    for i, rowKey in State.activeRowKeys {
+        if (key = rowKey) {
+            isValidRowKey := true
+            rowIndex := i
+            break
+        }
+    }
 
-            State.firstKey := key
-            ToolTip("First key: " . key . ". Select second key (row).")
-        } else {
-            ToolTip("Invalid first key: '" . key . "' for current layout.")
-            Sleep 1000
-            ToolTip()
-        }
-    } else {
-        ; --- Second Key Input ---
-        isValidSecondKey := false
-        for _, rowKey in State.activeRowKeys {
-            if (key = rowKey) {
-                isValidSecondKey := true
-                break
-            }
-        }
-        if (isValidSecondKey) {
+    ; Determine cell to select based on input
+    cellKey := ""
+    boundaries := ""
+
+    ; If we have a first key already, check what kind of key was pressed
+    if (State.firstKey != "") {
+        if (isValidRowKey) {
+            ; Process as second key (row)
+            State.currentRowIndex := rowIndex
+            State.lastSelectedRowIndex := rowIndex ; Remember this row for future column switches
             cellKey := State.firstKey . key
             boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+            ; Highlight creation happens below in common code
+        } else if (isValidColKey) {
+            ; User pressed another column key - switch to the new column
+            State.currentColIndex := colIndex
+            State.firstKey := key
 
+            ; Determine which row to target - use last selected row if available
+            targetRowIndex := (State.lastSelectedRowIndex > 0) ? State.lastSelectedRowIndex : 1
+            rowKey := State.activeRowKeys[targetRowIndex]
+            firstCellInColKey := key . rowKey
+
+            boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
             if (IsObject(boundaries)) {
-                ; Clear any existing sub-grid first
-                if (State.subGridActive && IsObject(State.subGridOverlay)) {
+                ; If using last selected row, move cursor to that cell's center
+                if (State.lastSelectedRowIndex > 0) {
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(targetX, targetY, 0)
+                } else {
+                    ; Just move horizontally if no row was selected yet
+                    MouseGetPos(, &currentY)
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    MouseMove(targetX, currentY, 0)
+                }
+
+                ; Highlight the cell at the target row in the new column
+                HighlightCell(firstCellInColKey, boundaries)
+
+                ; If we have a valid last row, always activate sub-grid immediately
+                ; regardless of activateSubGrid parameter
+                if (State.lastSelectedRowIndex > 0) {
+                    ; Clear existing sub-grid if any
+                    if (IsObject(State.subGridOverlay)) {
+                        State.subGridOverlay.Destroy()
+                        State.subGridOverlay := ""
+                    }
+
+                    ; Create and show sub-grid for this cell
+                    State.subGridOverlay := SubGridOverlay(
+                        boundaries.x, boundaries.y,
+                        boundaries.w, boundaries.h
+                    )
+                    State.subGridOverlay.Show()
+
+                    ; Update state
+                    State.subGridActive := true
+                    State.activeCellKey := firstCellInColKey
+                    State.firstKey := "" ; Reset for next potential sequence
+                    ToolTip("Cell '" . firstCellInColKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+                    return
+                }
+            }
+
+            ToolTip("First key: " . key . ". Select second key (row).")
+            return ; Return early, waiting for row key
+        } else {
+            ; Invalid key
+            ToolTip("Invalid key: '" . key . "' for current layout.")
+            Sleep 1000
+            ToolTip()
+            CleanupHighlight()
+            return
+        }
+    }
+    ; No first key yet - could be either a column or row key
+    else if (isValidColKey) {
+        ; Process as first key (column)
+        State.currentColIndex := colIndex
+
+        ; Determine which row to target - use last selected row if available
+        targetRowIndex := (State.lastSelectedRowIndex > 0) ? State.lastSelectedRowIndex : 1
+        rowKey := State.activeRowKeys[targetRowIndex]
+        firstCellInColKey := key . rowKey
+
+        boundaries := State.currentOverlay.GetCellBoundaries(firstCellInColKey)
+        if (IsObject(boundaries)) {
+            ; If using last selected row, move cursor to that cell's center
+            if (State.lastSelectedRowIndex > 0) {
+                targetX := boundaries.x + (boundaries.w // 2)
+                targetY := boundaries.y + (boundaries.h // 2)
+                MouseMove(targetX, targetY, 0)
+            } else {
+                ; Just move horizontally if no row was selected yet
+                MouseGetPos(, &currentY)
+                targetX := boundaries.x + (boundaries.w // 2)
+                MouseMove(targetX, currentY, 0)
+            }
+
+            ; Highlight the cell at the target row in the column
+            HighlightCell(firstCellInColKey, boundaries)
+
+            ; If we have a valid last row, always activate sub-grid immediately
+            ; regardless of activateSubGrid parameter
+            if (State.lastSelectedRowIndex > 0) {
+                ; Clear existing sub-grid if any
+                if (IsObject(State.subGridOverlay)) {
                     State.subGridOverlay.Destroy()
                     State.subGridOverlay := ""
                 }
 
-                ; Move mouse to center
-                centerX := boundaries.x + (boundaries.w // 2)
-                centerY := boundaries.y + (boundaries.h // 2)
-                MouseMove(centerX, centerY, 0)
-
-                ; Create and show a new separate SubGridOverlay window
+                ; Create and show sub-grid for this cell
                 State.subGridOverlay := SubGridOverlay(
                     boundaries.x, boundaries.y,
                     boundaries.w, boundaries.h
                 )
                 State.subGridOverlay.Show()
 
+                ; Update state
                 State.subGridActive := true
-                State.activeCellKey := cellKey
+                State.activeCellKey := firstCellInColKey
                 State.firstKey := "" ; Reset for next potential sequence
-                ToolTip("Cell '" . cellKey . "' targeted. Use Numpad 1-9 for sub-cell, or select new cell.")
-            } else {
-                ToolTip("Error getting boundaries for cell: " . cellKey)
-                Sleep 1000
-                ToolTip()
-                State.firstKey := "" ; Reset on error
+                ToolTip("Cell '" . firstCellInColKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+                return
             }
-        } else {
-            ToolTip("Invalid second key: '" . key . "' for first key '" . State.firstKey . "'.")
-            Sleep 1000
-            ToolTip()
-            ; Don't reset firstKey, allow user to try a different second key
         }
+
+        ; Clear any previous sub-grid (should not be active here, but good practice)
+        if (State.subGridActive) {
+            CancelSubGridMode()
+        }
+
+        State.firstKey := key
+        ToolTip("First key: " . key . ". Select second key (row).")
+        return ; Return early, waiting for row key
+    }
+    else if (isValidRowKey) {
+        ; Process as direct row key - use the middle column as default
+        State.currentRowIndex := rowIndex
+        State.lastSelectedRowIndex := rowIndex ; Remember this row for future column switches
+
+        ; Use the middle column or the last used column if available
+        if (State.currentColIndex > 0 && State.currentColIndex <= State.activeColKeys.Length) {
+            colKey := State.activeColKeys[State.currentColIndex]
+        } else {
+            ; Use the middle column as default
+            middleColIndex := Ceil(State.activeColKeys.Length / 2)
+            colKey := State.activeColKeys[middleColIndex]
+            State.currentColIndex := middleColIndex
+        }
+
+        cellKey := colKey . key
+        boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+        ; Highlight creation happens below in common code
+    }
+    else {
+        ; Neither a valid column nor row key
+        ToolTip("Invalid key: '" . key . "' for current layout.")
+        Sleep 1000
+        ToolTip()
+        CleanupHighlight() ; Ensure no partial highlight remains on error
+        return
+    }
+
+    ; ================================================================
+    ; Common code for FINAL cell selection (after second key OR direct row key)
+    ; ================================================================
+    if (IsObject(boundaries)) {
+        ; Highlight the final selected cell
+        HighlightCell(cellKey, boundaries)
+
+        ; Move mouse to center
+        centerX := boundaries.x + (boundaries.w // 2)
+        centerY := boundaries.y + (boundaries.h // 2)
+        MouseMove(centerX, centerY, 0)
+
+        ; Create and show a new separate SubGridOverlay window
+        ; Destroy any old one first
+        if (IsObject(State.subGridOverlay)) {
+            State.subGridOverlay.Destroy()
+            State.subGridOverlay := ""
+        }
+        State.subGridOverlay := SubGridOverlay(
+            boundaries.x, boundaries.y,
+            boundaries.w, boundaries.h
+        )
+        State.subGridOverlay.Show()
+
+        State.subGridActive := true
+        State.activeCellKey := cellKey
+        State.firstKey := "" ; Reset for next potential sequence
+        ToolTip("Cell '" . cellKey . "' targeted. Use 1-9 for sub-cell, or select new cell.")
+    } else {
+        ToolTip("Error getting boundaries for cell: " . cellKey)
+        Sleep 1000
+        ToolTip()
+        State.firstKey := "" ; Reset on error
+        CleanupHighlight() ; Ensure no partial highlight remains on error
     }
 }
 
@@ -562,31 +806,42 @@ HandleSubGridKey(subKey) {
     ; --- DO NOT CALL Cleanup() HERE ---
 }
 
-StartNewSelection(firstKey) {
-    ; Called only when State.subGridActive is true and a valid first key is pressed
+StartNewSelection(key) {
+    ; Called only when State.subGridActive is true and a key is pressed
     if (!State.subGridActive || !IsObject(State.currentOverlay)) {
         return
     }
 
-    ; Check if the pressed key is actually a valid *first* key for the current layout
-    isValid := false
+    ; Check if the key is a valid column key
+    isValidColKey := false
     for _, colKey in State.activeColKeys {
-        if (firstKey = colKey) {
-            isValid := true
+        if (key = colKey) {
+            isValidColKey := true
             break
         }
     }
-    if (!isValid) {
-        ToolTip("'" . firstKey . "' is not a valid first key for this layout.")
+
+    ; Check if the key is a valid row key
+    isValidRowKey := false
+    for _, rowKey in State.activeRowKeys {
+        if (key = rowKey) {
+            isValidRowKey := true
+            break
+        }
+    }
+
+    ; If it's neither a valid column nor row key, show an error
+    if (!isValidColKey && !isValidRowKey) {
+        ToolTip("'" . key . "' is not a valid key for this layout.")
         Sleep 1000
         ToolTip()
-        return ; Ignore if not a valid first key
+        return
     }
 
     CancelSubGridMode() ; Clear old sub-grid targets & reset state
 
-    ; Start the new selection process
-    HandleKey(firstKey) ; Process the pressed key as the first key of a new sequence
+    ; Start the new selection process with the pressed key
+    HandleKey(key) ; This will handle both column and row keys correctly
 }
 
 TrackCursor() {
@@ -613,6 +868,7 @@ TrackCursor() {
 ; ==============================================================================
 ; Main Activation Hotkey (Global Scope)
 ; ==============================================================================
+
 CapsLock & q:: {
     if (State.isVisible || State.subGridActive) {
         Cleanup()
@@ -626,6 +882,8 @@ CapsLock & q:: {
         ToolTip(, , , 4)
         return
     }
+
+    ; We're not using the status bar anymore
 
     State.activeColKeys := currentConfig["colKeys"]
     State.activeRowKeys := currentConfig["rowKeys"]
@@ -769,7 +1027,7 @@ l:: StartNewSelection("l")
 #HotIf
 
 ; --- Hotkeys active during EITHER main grid OR sub-grid targeting ---
-#HotIf State.isVisible || State.subGridActive ; <--- ADD THIS CONDITION
+#HotIf State.isVisible || State.subGridActive
 Space:: {
     Click ; Clicks at current mouse position
     Cleanup()
@@ -778,8 +1036,159 @@ RButton:: {
     Click "Right"
     Cleanup()
 }
+MButton:: {
+    Click "Middle"  ; Middle-click at current position
+    Cleanup()
+}
+d:: {
+    Click 2  ; Double-click at current position
+    Cleanup()
+}
+
+; Drag and drop operations
+v:: {
+    if (!State.dragActive) {
+        Click "Down"  ; Press and hold left mouse button
+        State.dragActive := true
+        ToolTip("Drag started. Navigate to destination and press 'b' to release.")
+    }
+}
+b:: {
+    if (State.dragActive) {
+        Click "Up"  ; Release left mouse button
+        State.dragActive := false
+        Cleanup()
+    }
+}
+
+; Transparency control
+[:: {
+    ; Decrease transparency (make more transparent)
+    if (IsObject(State.currentOverlay) && State.currentOverlay.transparency > 50) {
+        State.currentOverlay.transparency -= 20
+        WinSetTransColor("000000 " State.currentOverlay.transparency, State.currentOverlay.gui)
+        if (IsObject(State.subGridOverlay)) {
+            State.subGridOverlay.transparency -= 20
+            WinSetTransColor("222222 " State.subGridOverlay.transparency, State.subGridOverlay.gui)
+        }
+        ToolTip("Transparency: " . Round((State.currentOverlay.transparency / 255) * 100) . "%")
+        Sleep 500
+        ToolTip()
+    }
+}
+]:: {
+    ; Increase transparency (make more opaque)
+    if (IsObject(State.currentOverlay) && State.currentOverlay.transparency < 235) {
+        State.currentOverlay.transparency += 20
+        WinSetTransColor("000000 " State.currentOverlay.transparency, State.currentOverlay.gui)
+        if (IsObject(State.subGridOverlay)) {
+            State.subGridOverlay.transparency += 20
+            WinSetTransColor("222222 " State.subGridOverlay.transparency, State.subGridOverlay.gui)
+        }
+        ToolTip("Transparency: " . Round((State.currentOverlay.transparency / 255) * 100) . "%")
+        Sleep 500
+        ToolTip()
+    }
+}
+
 Escape:: {
     Cleanup()
 }
-#HotIf ; <--- ADD THIS TO CLOSE THE NEW CONDITION
-#HotIf ; This one closes the outer context if needed, or does nothing if already closed.
+#HotIf
+
+; --- Direct navigation between cells using arrow keys (when not in sub-grid mode) ---
+#HotIf State.isVisible && !State.subGridActive && directNavEnabled
+Up:: {
+    ; Navigate to the cell above the current one
+    if (State.currentColIndex > 0 && State.currentRowIndex > 1) { ; Ensure a column is active
+        ; --- Cleanup potential existing highlight before navigating ---
+        CleanupHighlight()
+
+        ; Move up one row
+        newRowIndex := State.currentRowIndex - 1
+        colKey := State.activeColKeys[State.currentColIndex]
+        rowKey := State.activeRowKeys[newRowIndex]
+
+        ; Simulate pressing the keys
+        if (State.firstKey != "") {
+            ; If a column was already selected (via key press or previous Left/Right nav),
+            ; just select the new row in that column.
+            HandleKey(rowKey)
+        } else {
+            ; If no column key was pressed yet (e.g., just activated),
+            ; select the current column first, then the new row.
+            HandleKey(colKey) ; This will now highlight the cell in current column at last used row
+            HandleKey(rowKey) ; This will cleanup first highlight and highlight final cell + show subgrid
+        }
+    }
+}
+Down:: {
+    ; Navigate to the cell below the current one
+    if (State.currentColIndex > 0 && State.currentRowIndex < State.activeRowKeys.Length) { ; Ensure a column is active
+        ; --- Cleanup potential existing highlight before navigating ---
+        CleanupHighlight()
+
+        ; Move down one row
+        newRowIndex := State.currentRowIndex + 1
+        colKey := State.activeColKeys[State.currentColIndex]
+        rowKey := State.activeRowKeys[newRowIndex]
+
+        ; Simulate pressing the keys
+        if (State.firstKey != "") {
+            HandleKey(rowKey)
+        } else {
+            HandleKey(colKey) ; This will now highlight the cell in current column at last used row
+            HandleKey(rowKey)
+        }
+    }
+}
+Left:: {
+    ; Navigate to the cell to the left of the current one
+    if (State.currentColIndex > 1) {
+        ; Move left one column
+        newColIndex := State.currentColIndex - 1
+        colKey := State.activeColKeys[newColIndex]
+
+        ; Cancel subgrid if active (shouldn't be in this context, but safe)
+        if (State.subGridActive) {
+            CancelSubGridMode() ; This also calls CleanupHighlight
+        }
+
+        ; Start a new selection with the new column key and activate sub-grid if we have a lastSelectedRowIndex
+        HandleKey(colKey, State.lastSelectedRowIndex > 0)
+    }
+}
+Right:: {
+    ; Navigate to the cell to the right of the current one
+    if (State.currentColIndex < State.activeColKeys.Length) {
+        ; Move right one column
+        newColIndex := State.currentColIndex + 1
+        colKey := State.activeColKeys[newColIndex]
+
+        ; Cancel subgrid if active (shouldn't be in this context, but safe)
+        if (State.subGridActive) {
+            CancelSubGridMode()
+        }
+
+        ; Start a new selection with the new column key and activate sub-grid if we have a lastSelectedRowIndex
+        HandleKey(colKey, State.lastSelectedRowIndex > 0)
+    }
+}
+#HotIf
+
+; --- Hotkeys active only during sub-grid targeting for scrolling ---
+#HotIf State.subGridActive
+; Scroll up/down/left/right
+Up:: {
+    MouseClick "WheelUp", , , 3  ; Scroll up 3 clicks
+}
+Down:: {
+    MouseClick "WheelDown", , , 3  ; Scroll down 3 clicks
+}
+Left:: {
+    MouseClick "WheelLeft", , , 3  ; Scroll left 3 clicks
+}
+Right:: {
+    MouseClick "WheelRight", , , 3  ; Scroll right 3 clicks
+}
+#HotIf
