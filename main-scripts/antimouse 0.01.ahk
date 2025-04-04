@@ -299,8 +299,12 @@ class GridOverlay {
                 cellY := (rowIndex - 1) * this.cellHeight
                 this.cells[cellKey] := { x: cellX, y: cellY, w: this.cellWidth, h: this.cellHeight, absX: this.x +
                     cellX, absY: this.y + cellY }
+
+                ; Reverse display text only for "a" column in ergonomic mode (layout 2)
+                displayText := (selectedLayout == 2 && colKey == "a") ? rowKey . colKey : cellKey
+
                 this.gui.Add("Text", "x" cellX " y" cellY " w" this.cellWidth " h" this.cellHeight " +0x200 Center BackgroundTrans c" this
-                    .textColor, cellKey)
+                    .textColor, displayText)
             }
         }
         this.gui.Add("Progress", "x0 y0 w" this.width " h" borderThickness " Background" this.borderColor)
@@ -1374,6 +1378,7 @@ SC033:: {  ; Comma key scan code
         StartNewSelection(",")
     }
 }
+
 SC034:: {  ; Period key scan code
     if (currentState == "GRID_VISIBLE") {
         HandleKey(".")
@@ -1381,6 +1386,7 @@ SC034:: {  ; Period key scan code
         StartNewSelection(".")
     }
 }
+
 SC035:: {  ; Slash key scan code
     if (currentState == "GRID_VISIBLE") {
         HandleKey("/")
@@ -1388,11 +1394,40 @@ SC035:: {  ; Slash key scan code
         StartNewSelection("/")
     }
 }
+
 SC032:: {  ; M key scan code
     if (currentState == "GRID_VISIBLE") {
         HandleKey("m")
     } else {
         StartNewSelection("m")
+    }
+}
+
+SC027:: {  ; Semicolon key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(";")
+    } else {
+        StartNewSelection(";")
+    }
+}
+
+SC022:: {  ; G key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("g")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        HandleSubGridKey("g")
+    } else {
+        StartNewSelection("g")
+    }
+}
+
+SC023:: {  ; H key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("h")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        HandleSubGridKey("h")
+    } else {
+        StartNewSelection("h")
     }
 }
 #HotIf

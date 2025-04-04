@@ -3,12 +3,20 @@ nice question about an overkill -
 == probably:
 
 
+
+## currently:
+
 - 1 - regular grid feels soo much nicer when different hands (ql / is etc),
 but when the same hand (qa, es), feels not smooth at all     
 // angle: to make it more differentiated by hand 
 /         = 1 letter for a left one, 2nd for a right one
 
 
+
+
+
+
+## further:
 - 2 - better shortcuts + way of handling within a cell... how?
 because its, well, conflicting with 1/2 numbers (multi-monitor), 
 and also not covering full range being lil bit not precise within the cell, what are the pottential options here?
