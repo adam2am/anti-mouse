@@ -14,6 +14,8 @@ global showcaseDebug := false       ; Enable debug tooltips and delays
 global selectedLayout := 2            ; Layout options: 1=User QWERTY/ASDF, 2=ergonomics for diff hands, 3=WASD/QWER
 global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
 global highlightColor := "33AAFF"   ; Highlight color for selected cells
+global monitorMapping := [2, 1, 3, 4] ; Map physical monitor index to logical: [physical1, physical2, physical3, physical4]
+global cellMemoryFile := "cell_memory.txt" ; File to store cell-subcell selections
 
 ; Finite State Machine state
 global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
@@ -25,6 +27,9 @@ global doubleCapsThreshold := 400   ; Time in ms for double CapsLock detection
 ; GUI instances for reuse
 global highlight := ""              ; Single HighlightOverlay xcinstance (initialized later)
 global subGrid := ""                ; Single SubGridOverlay instance (initialized later)
+
+; Cell memory for remembering subgrid positions
+global cellMemory := Map()          ; Maps cell keys to subcell keys
 
 ; Layout configurations
 global layoutConfigs := Map(
@@ -561,10 +566,76 @@ Cleanup() {
     State.lastSelectedRowIndex := 0
 }
 
-SwitchMonitor(monitorNum) {
-    global currentState, highlight, subGrid
+; Helper function to load cell memory from file
+LoadCellMemory() {
+    global cellMemory, cellMemoryFile
 
-    if (monitorNum > State.overlays.Length || currentState == "IDLE") {
+    try {
+        if (FileExist(cellMemoryFile)) {
+            fileContent := FileRead(cellMemoryFile)
+            lines := StrSplit(fileContent, "`n", "`r")
+
+            for line in lines {
+                if (line = "") {
+                    continue
+                }
+
+                parts := StrSplit(line, "=")
+                if (parts.Length >= 2) {
+                    cellKey := parts[1]
+                    subCellKey := parts[2]
+                    cellMemory[cellKey] := subCellKey
+                }
+            }
+
+            if (showcaseDebug) {
+                ToolTip("Loaded " cellMemory.Count " cell memories")
+                Sleep(1000)
+                ToolTip()
+            }
+        }
+    } catch as e {
+        if (showcaseDebug) {
+            ToolTip("Error loading cell memory: " e.Message)
+            Sleep(1000)
+            ToolTip()
+        }
+    }
+}
+
+; Helper function to save cell memory to file
+SaveCellMemory() {
+    global cellMemory, cellMemoryFile
+
+    try {
+        fileContent := ""
+        for cellKey, subCellKey in cellMemory {
+            fileContent .= cellKey "=" subCellKey "`n"
+        }
+
+        FileDelete(cellMemoryFile)
+        FileAppend(fileContent, cellMemoryFile)
+
+        if (showcaseDebug) {
+            ToolTip("Saved " cellMemory.Count " cell memories")
+            Sleep(1000)
+            ToolTip()
+        }
+    } catch as e {
+        if (showcaseDebug) {
+            ToolTip("Error saving cell memory: " e.Message)
+            Sleep(1000)
+            ToolTip()
+        }
+    }
+}
+
+SwitchMonitor(monitorNum) {
+    global currentState, highlight, subGrid, monitorMapping
+
+    ; Apply monitor mapping
+    mappedMonitor := monitorMapping[monitorNum]
+    if (mappedMonitor > State.overlays.Length || currentState == "IDLE") {
         return
     }
 
@@ -572,7 +643,7 @@ SwitchMonitor(monitorNum) {
     SetTimer(TrackCursor, 0)
 
     ; Get the new overlay
-    newOverlay := State.overlays[monitorNum]
+    newOverlay := State.overlays[mappedMonitor]
     if (!newOverlay) {
         ; Re-enable tracking if no valid overlay
         SetTimer(TrackCursor, 50)
@@ -631,6 +702,13 @@ SwitchMonitor(monitorNum) {
                 subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
                 ; Force state to SUBGRID_ACTIVE to ensure proper rendering
                 currentState := "SUBGRID_ACTIVE"
+
+                ; Check if we have a remembered subcell for this cell
+                if (cellMemory.Has(cellKey)) {
+                    rememberedSubCell := cellMemory[cellKey]
+                    ; Move to remembered subcell position
+                    HandleSubGridKey(rememberedSubCell)
+                }
             }
         } else {
             ; If can't get boundaries, just move to center of monitor
@@ -646,7 +724,7 @@ SwitchMonitor(monitorNum) {
     }
 
     if (showcaseDebug) {
-        ToolTip("Switched to Monitor " monitorNum)
+        ToolTip("Switched to Monitor " mappedMonitor " (physical: " monitorNum ")")
         Sleep(1000)
         ToolTip()
     }
@@ -781,7 +859,7 @@ GetCellAtPosition(x, y) {
 }
 
 HandleKey(key) {
-    global currentState, highlight, subGrid
+    global currentState, highlight, subGrid, cellMemory
 
     ; IMPROVEMENT: Explicit hiding at the beginning
     if (IsObject(highlight)) {
@@ -958,6 +1036,13 @@ HandleKey(key) {
         } catch {
         }
 
+        ; Check if we have a remembered subcell for this cell
+        if (cellMemory.Has(cellKey)) {
+            rememberedSubCell := cellMemory[cellKey]
+            ; Move to remembered subcell position
+            HandleSubGridKey(rememberedSubCell)
+        }
+
         if (showcaseDebug) {
             ToolTip("Cell '" cellKey "' targeted. Use b-h.")
         }
@@ -968,7 +1053,7 @@ HandleKey(key) {
 }
 
 HandleSubGridKey(subKey) {
-    global currentState, subGrid
+    global currentState, subGrid, cellMemory
     if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
         return
     }
@@ -976,6 +1061,14 @@ HandleSubGridKey(subKey) {
     if (IsObject(targetCoords)) {
         MouseMove(targetCoords.x, targetCoords.y, 0)
         State.activeSubCellKey := subKey
+
+        ; Remember this subcell for the current cell
+        if (State.activeCellKey != "") {
+            cellMemory[State.activeCellKey] := subKey
+            ; Save to file
+            SaveCellMemory()
+        }
+
         if (showcaseDebug) {
             ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey)
         }
@@ -1654,7 +1747,7 @@ CapsLock & q:: {
 
 ; Helper function to reuse the CapsLock & q code
 CapsLock_Q() {
-    global currentState, highlight, subGrid
+    global currentState, highlight, subGrid, cellMemory
 
     ; If already active, clean up and exit
     if (currentState != "IDLE") {
@@ -1675,6 +1768,9 @@ CapsLock_Q() {
         State.currentRowIndex := 0
         State.lastSelectedRowIndex := 0
         State.overlays := []
+
+        ; Load cell memory from file
+        LoadCellMemory()
 
         ; Get configured layout
         currentConfig := layoutConfigs[selectedLayout]
