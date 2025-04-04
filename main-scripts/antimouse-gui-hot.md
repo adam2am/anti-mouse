@@ -6,13 +6,13 @@ nice question about an overkill -
 
 ## currently:
 
-- 1 - regular grid feels soo much nicer when different hands (ql / is etc),
-but when the same hand (qa, es), feels not smooth at all     
-// angle: to make it more differentiated by hand 
-/         = 1 letter for a left one, 2nd for a right one
+// refining, i dont like the "," as a target option, just gonn delete it? to see whats up
+potentially => setup ;settings == opening up the textbox with all the manual settings, current map etc
 
 
-
+--- angle, potentially storing the position of the subcell for each monitor as an extra option
+        if monitor 1 - EBN, monitor 2 could be just EB
+        it has to detect the positon of current cursor (which monitor)
 
 
 
@@ -42,9 +42,14 @@ and also not covering full range being lil bit not precise within the cell, what
 
 
 
-ok, imma keep those:
+# ok, imma keep those:
+- 1 - regular grid feels soo much nicer when different hands (ql / is etc),
+but when the same hand (qa, es), feels not smooth at all     
+// angle: to make it more differentiated by hand 
+/         = 1 letter for a left one, 2nd for a right one
+
 - /caps1/caps2 potential nicer more intuitive shortcuts between monitors
 
 
-checked, not really working:
+# checked, not really working:
 - 1 - caps+q to caps+tab => reverse, annoying shortcut
