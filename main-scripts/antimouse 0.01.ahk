@@ -11,7 +11,7 @@ CoordMode "Mouse", "Screen" ; Mouse coordinates relative to the virtual screen
 
 ; Global configuration
 global showcaseDebug := false       ; Enable debug tooltips and delays
-global selectedLayout := 2            ; Layout options: 1=User QWERTY/ASDF, 2=Home Row ASDF/JKL;, 3=WASD/QWER
+global selectedLayout := 3            ; Layout options: 1=User QWERTY/ASDF, 2=Home Row ASDF/JKL;, 3=WASD/QWER
 global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
 global highlightColor := "33AAFF"   ; Highlight color for selected cells
 
@@ -19,7 +19,7 @@ global highlightColor := "33AAFF"   ; Highlight color for selected cells
 global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
 
 ; GUI instances for reuse
-global highlight := ""              ; Single HighlightOverlay instance (initialized later)
+global highlight := ""              ; Single HighlightOverlay xcinstance (initialized later)
 global subGrid := ""                ; Single SubGridOverlay instance (initialized later)
 
 ; Layout configurations
@@ -828,7 +828,7 @@ TrackCursor() {
 
 ; This section includes a simplified Cleanup function, monitor switching, cell position checking, and key handling functions updated for FSM and GUI reuse. Yes, implemented.
 
-CapsLock & Tab:: {
+CapsLock & q:: {
     global currentState, highlight, subGrid
 
     ; If already active, clean up and exit
@@ -1209,7 +1209,7 @@ CapsLock & 1:: {
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
-        CapsLock_Tab()  ; Call the grid activation function
+        CapsLock_Q()  ; Call the grid activation function
         Sleep(100)  ; Short delay to ensure grid is initialized
     }
 
@@ -1222,7 +1222,7 @@ CapsLock & 2:: {
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
-        CapsLock_Tab()  ; Call the grid activation function
+        CapsLock_Q()  ; Call the grid activation function
         Sleep(100)  ; Short delay to ensure grid is initialized
     }
 
@@ -1235,7 +1235,7 @@ CapsLock & 3:: {
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
-        CapsLock_Tab()  ; Call the grid activation function
+        CapsLock_Q()  ; Call the grid activation function
         Sleep(100)  ; Short delay to ensure grid is initialized
     }
 
@@ -1248,7 +1248,7 @@ CapsLock & 4:: {
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
-        CapsLock_Tab()  ; Call the grid activation function
+        CapsLock_Q()  ; Call the grid activation function
         Sleep(100)  ; Short delay to ensure grid is initialized
     }
 
@@ -1256,8 +1256,8 @@ CapsLock & 4:: {
     SwitchMonitor(4)
 }
 
-; Helper function to reuse the CapsLock & Tab code
-CapsLock_Tab() {
+; Helper function to reuse the CapsLock & q code
+CapsLock_Q() {
     global currentState, highlight, subGrid
 
     ; If already active, clean up and exit
