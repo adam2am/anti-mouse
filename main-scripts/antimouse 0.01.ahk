@@ -63,7 +63,13 @@ class HighlightOverlay {
     }
 
     Hide() {
-        this.gui.Hide()
+        try {
+            if (IsObject(this.gui) && WinExist("ahk_id " this.gui.Hwnd)) {
+                this.gui.Hide()
+            }
+        } catch {
+            ; Silently ignore errors
+        }
     }
 
     Destroy() {
@@ -183,7 +189,13 @@ class SubGridOverlay {
     }
 
     Hide() {
-        this.gui.Hide()
+        try {
+            if (IsObject(this.gui) && WinExist("ahk_id " this.gui.Hwnd)) {
+                this.gui.Hide()
+            }
+        } catch {
+            ; Silently ignore errors
+        }
     }
 
     Destroy() {
@@ -294,7 +306,13 @@ class GridOverlay {
     }
 
     Hide() {
-        this.gui.Hide()
+        try {
+            if (IsObject(this.gui) && WinExist("ahk_id " this.gui.Hwnd)) {
+                this.gui.Hide()
+            }
+        } catch {
+            ; Silently ignore errors
+        }
     }
 
     Destroy() {
@@ -400,9 +418,26 @@ ForceCloseAllGuis() {
     ; Force close any stray GUIs that might be left
     try {
         DetectHiddenWindows(true)
+
+        ; Try to close by class name
         WinClose("ahk_class AutoHotkeyGUI")
         Sleep(30)
+
+        ; Try more forceful closing if any remain
         WinClose("ahk_class AutoHotkeyGUI")
+        Sleep(10)
+
+        ; Final aggressive attempt - kill any remaining windows
+        WinClose("SubGrid ahk_class AutoHotkeyGUI")
+
+        ; Force kill as last resort
+        try {
+            WinKill("ahk_class AutoHotkeyGUI")
+        } catch {
+        }
+
+        ; Reset detection setting
+        DetectHiddenWindows(false)
     } catch {
         ; Silently ignore errors
     }
@@ -411,44 +446,79 @@ ForceCloseAllGuis() {
 Cleanup() {
     global currentState, highlight, subGrid
 
+    ; If already cleaned up, don't attempt again
+    if (currentState == "IDLE") {
+        return
+    }
+
     ; First stop the cursor tracking to prevent recreation
     SetTimer(TrackCursor, 0)
 
-    ; Hide elements before destroying them
-    if (IsObject(highlight)) {
-        highlight.Hide()
+    ; Clear any tooltips
+    ToolTip()
+
+    ; Set state to IDLE immediately to prevent re-entry
+    currentState := "IDLE"
+
+    ; Hide elements before destroying them - with error checking
+    try {
+        if (IsObject(highlight)) {
+            highlight.Hide()
+        }
+    } catch {
     }
 
-    if (IsObject(subGrid)) {
-        subGrid.Hide()
+    try {
+        if (IsObject(subGrid)) {
+            subGrid.Hide()
+        }
+    } catch {
     }
 
-    for overlay in State.overlays {
-        overlay.Hide()
+    try {
+        for overlay in State.overlays {
+            if (IsObject(overlay)) {
+                overlay.Hide()
+            }
+        }
+    } catch {
     }
 
     ; Small delay to ensure GUIs have time to hide
     Sleep(20)
 
-    ; Now destroy GUIs
-    if (IsObject(highlight)) {
-        highlight.Destroy()
-    }
-
-    if (IsObject(subGrid)) {
-        subGrid.Destroy()
-    }
-
-    for overlay in State.overlays {
-        try {
-            overlay.Destroy()
-        } catch {
-            ; Silently ignore errors
+    ; Now destroy GUIs - with individual try/catch blocks
+    try {
+        if (IsObject(highlight)) {
+            highlight.Destroy()
+            highlight := ""
         }
+    } catch {
+    }
+
+    try {
+        if (IsObject(subGrid)) {
+            subGrid.Destroy()
+            subGrid := ""
+        }
+    } catch {
+    }
+
+    try {
+        for i, overlay in State.overlays {
+            if (IsObject(overlay)) {
+                overlay.Destroy()
+            }
+        }
+        State.overlays := []
+    } catch {
     }
 
     ; Forcefully close any remaining GUIs
-    ForceCloseAllGuis()
+    try {
+        ForceCloseAllGuis()
+    } catch {
+    }
 
     ; Reset state variables
     State.firstKey := ""
@@ -460,12 +530,6 @@ Cleanup() {
     State.currentColIndex := 0
     State.currentRowIndex := 0
     State.lastSelectedRowIndex := 0
-
-    ; Reset the FSM state to IDLE
-    currentState := "IDLE"
-
-    ; Clear tooltips
-    ToolTip()
 }
 
 SwitchMonitor(monitorNum) {
@@ -1310,7 +1374,31 @@ Space:: {
     }
 }
 
-Escape:: Cleanup()
+Escape:: {
+    ; Safely call Cleanup with additional try/catch
+    try {
+        Cleanup()
+    } catch as e {
+        ; If cleanup failed, force critical cleanup
+        try {
+            ; Force state to IDLE
+            currentState := "IDLE"
+
+            ; Kill any leftover GUIs
+            ForceCloseAllGuis()
+
+            ; Reset objects
+            highlight := ""
+            subGrid := ""
+            State.overlays := []
+            State.currentOverlay := ""
+
+            ; Clear tooltips
+            ToolTip()
+        } catch {
+        }
+    }
+}
 
 ; Add Tab key to cycle through monitors
 Tab:: {
