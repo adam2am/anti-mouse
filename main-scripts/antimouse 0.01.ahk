@@ -102,16 +102,28 @@ class SubGridOverlay {
         this.subCellWidth := 0
         this.subCellHeight := 0
         this.borderControls := []
+        this.cellBorders := []
         this.textControls := []
-        ; Add border controls
-        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Top
-        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Bottom
-        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Left
-        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background444444")) ; Right
-        ; Add text controls for sub-cells
+
+        ; Add outer border controls (thicker)
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background777777")) ; Top
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background777777")) ; Bottom
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background777777")) ; Left
+        this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background777777")) ; Right
+
+        ; Add cell border controls
+        ; Horizontal internal borders
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Horizontal 1
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Horizontal 2
+
+        ; Vertical internal borders
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Vertical 1
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Vertical 2
+
+        ; Add text controls for sub-cells - use Center and 0x200 for better vertical centering
         loop 9 {
-            this.textControls.Push(this.gui.Add("Text", "x0 y0 w0 h0 Center BackgroundTrans cFFFF00", subGridKeys[
-                A_Index]))
+            this.textControls.Push(this.gui.Add("Text", "x0 y0 w0 h0 Center +0x200 BackgroundTrans cFFFF00",
+                subGridKeys[A_Index]))
         }
         this.transparency := defaultTransparency + 20
         WinSetTransColor("222222 " this.transparency, this.gui)
@@ -124,14 +136,30 @@ class SubGridOverlay {
         this.height := h
         this.subCellWidth := w // 3
         this.subCellHeight := h // 3
-        fontSize := Max(4, Min(this.subCellWidth, this.subCellHeight) // 3)
-        this.gui.SetFont("s" fontSize, "Arial")
-        ; Update borders
-        this.borderControls[1].Move(0, 0, w, 1)         ; Top
-        this.borderControls[2].Move(0, h - 1, w, 1)    ; Bottom
-        this.borderControls[3].Move(0, 0, 1, h)        ; Left
-        this.borderControls[4].Move(w - 1, 0, 1, h)    ; Right
-        ; Update text controls
+
+        borderThickness := 1  ; Change from 2px to 1px
+        fontSize := Max(16, Min(this.subCellWidth, this.subCellHeight) // 3)
+        this.gui.SetFont("s" fontSize " bold", "Arial")
+
+        ; Update outer borders (thicker)
+        this.borderControls[1].Move(0, 0, w, borderThickness)                   ; Top
+        this.borderControls[2].Move(0, h - borderThickness, w, borderThickness) ; Bottom
+        this.borderControls[3].Move(0, 0, borderThickness, h)                   ; Left
+        this.borderControls[4].Move(w - borderThickness, 0, borderThickness, h) ; Right
+
+        ; Update internal cell borders
+        cellHeight := h // 3
+        cellWidth := w // 3
+
+        ; Horizontal internal borders
+        this.cellBorders[1].Move(0, cellHeight, w, borderThickness)                      ; Horizontal 1
+        this.cellBorders[2].Move(0, cellHeight * 2, w, borderThickness)                  ; Horizontal 2
+
+        ; Vertical internal borders
+        this.cellBorders[3].Move(cellWidth, 0, borderThickness, h)                       ; Vertical 1
+        this.cellBorders[4].Move(cellWidth * 2, 0, borderThickness, h)                   ; Vertical 2
+
+        ; Update text controls - centered in each cell with proper numbering layout (7-8-9/4-5-6/1-2-3)
         index := 1
         loop 3 {
             row := A_Index - 1
@@ -139,10 +167,18 @@ class SubGridOverlay {
                 col := A_Index - 1
                 subX := col * this.subCellWidth
                 subY := row * this.subCellHeight
-                this.textControls[index].Move(subX, subY, this.subCellWidth, this.subCellHeight)
+
+                ; Use full cell dimensions for better vertical centering with the +0x200 style
+                this.textControls[index].Move(
+                    subX,
+                    subY,
+                    this.subCellWidth,
+                    this.subCellHeight
+                )
                 index += 1
             }
         }
+
         this.gui.Show(Format("x{} y{} w{} h{} NoActivate", x, y, w, h))
     }
 
