@@ -16,6 +16,7 @@ global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
 global highlightColor := "33AAFF"   ; Highlight color for selected cells
 global monitorMapping := [2, 1, 3, 4] ; Map physical monitor index to logical: [physical1, physical2, physical3, physical4]
 global cellMemoryFile := "cell_memory.txt" ; File to store cell-subcell selections
+global storePerMonitor := true      ; Store subcell positions per monitor
 
 ; Finite State Machine state
 global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
@@ -37,9 +38,9 @@ global cellMemory := Map()          ; Maps cell keys to subcell keys
 global layoutConfigs := Map(
     1, Map("cols", 8, "rows", 10, "colKeys", ["q", "w", "e", "r", "u", "i", "o", "p"], "rowKeys", ["a", "s",
         "d", "f", "g", "h", "j", "k", "l", ";"]),
-    2, Map("cols", 12, "rows", 12, "colKeys", ["q", "w", "e", "r", "a", "s", "d", "f", "z", "x", "c", "v",
+    2, Map("cols", 12, "rows", 11, "colKeys", ["q", "w", "e", "r", "a", "s", "d", "f", "z", "x", "c", "v",
     ],
-    "rowKeys", ["u", "i", "o", "p", "j", "k", "l", ";", "m", ",", ".", "/"]),
+    "rowKeys", ["u", "i", "o", "p", "j", "k", "l", ";", "m", ".", "/"]),
     3, Map("cols", 4, "rows", 4, "colKeys", ["a", "s", "d", "f"], "rowKeys", ["j", "k", "lq", ";"]),
     4, Map("cols", 4, "rows", 4, "colKeys", ["q", "w", "e", "r"], "rowKeys", ["a", "s", "d", "f"])
 )
@@ -633,7 +634,7 @@ SaveCellMemory() {
 }
 
 SwitchMonitor(monitorNum) {
-    global currentState, highlight, subGrid, monitorMapping
+    global currentState, highlight, subGrid, monitorMapping, storePerMonitor
 
     ; Apply monitor mapping
     mappedMonitor := monitorMapping[monitorNum]
@@ -705,8 +706,19 @@ SwitchMonitor(monitorNum) {
                 ; Force state to SUBGRID_ACTIVE to ensure proper rendering
                 currentState := "SUBGRID_ACTIVE"
 
-                ; Check if we have a remembered subcell for this cell
-                if (cellMemory.Has(cellKey)) {
+                ; Check if we have a remembered subcell for this cell and monitor
+                if (storePerMonitor) {
+                    monitorCellKey := mappedMonitor . "_" . cellKey
+                    if (cellMemory.Has(monitorCellKey)) {
+                        rememberedSubCell := cellMemory[monitorCellKey]
+                        ; Move to remembered subcell position
+                        HandleSubGridKey(rememberedSubCell)
+                    } else if (cellMemory.Has(cellKey)) {
+                        ; Fall back to general cell memory if no monitor-specific memory exists
+                        rememberedSubCell := cellMemory[cellKey]
+                        HandleSubGridKey(rememberedSubCell)
+                    }
+                } else if (cellMemory.Has(cellKey)) {
                     rememberedSubCell := cellMemory[cellKey]
                     ; Move to remembered subcell position
                     HandleSubGridKey(rememberedSubCell)
@@ -737,7 +749,7 @@ SwitchMonitor(monitorNum) {
 
 ; New function to cycle through monitors
 CycleToNextMonitor() {
-    global currentState, highlight, subGrid
+    global currentState, highlight, subGrid, storePerMonitor
 
     if (currentState == "IDLE" || State.overlays.Length <= 1) {
         return
@@ -810,6 +822,24 @@ CycleToNextMonitor() {
                 subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
                 ; Force state to SUBGRID_ACTIVE to ensure proper rendering
                 currentState := "SUBGRID_ACTIVE"
+
+                ; Check if we have a remembered subcell for this cell and monitor
+                if (storePerMonitor) {
+                    monitorCellKey := nextMonitorIndex . "_" . cellKey
+                    if (cellMemory.Has(monitorCellKey)) {
+                        rememberedSubCell := cellMemory[monitorCellKey]
+                        ; Move to remembered subcell position
+                        HandleSubGridKey(rememberedSubCell)
+                    } else if (cellMemory.Has(cellKey)) {
+                        ; Fall back to general cell memory if no monitor-specific memory exists
+                        rememberedSubCell := cellMemory[cellKey]
+                        HandleSubGridKey(rememberedSubCell)
+                    }
+                } else if (cellMemory.Has(cellKey)) {
+                    rememberedSubCell := cellMemory[cellKey]
+                    ; Move to remembered subcell position
+                    HandleSubGridKey(rememberedSubCell)
+                }
             }
         } else {
             ; If can't get boundaries, just move to center of monitor
@@ -1089,7 +1119,7 @@ HandleKey(key) {
 }
 
 HandleSubGridKey(subKey) {
-    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay
+    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor
 
     if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
         return
@@ -1108,13 +1138,24 @@ HandleSubGridKey(subKey) {
 
         ; Remember this subcell for the current cell
         if (State.activeCellKey != "") {
+            ; Use a monitor-specific key if storePerMonitor is enabled
+            if (storePerMonitor && IsObject(State.currentOverlay)) {
+                monitorCellKey := State.currentOverlay.monitorIndex . "_" . State.activeCellKey
+                cellMemory[monitorCellKey] := subKey
+            }
+            ; Always store a general one too as fallback
             cellMemory[State.activeCellKey] := subKey
             ; Save to file
             SaveCellMemory()
         }
 
         if (showcaseDebug) {
-            ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey)
+            if (storePerMonitor && IsObject(State.currentOverlay)) {
+                ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey " on monitor " State.currentOverlay.monitorIndex
+                )
+            } else {
+                ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey)
+            }
         }
     } else {
         if (showcaseDebug) {
