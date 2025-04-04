@@ -1,13 +1,17 @@
 ; instead of destroying - hide+show, and other stuff
 ; actually 0.012 - improved flow
 
+; broke clicking a lil bit tho
+; also when pressed space then quickly pressing escape > its showing no gui to hide
+; > angle to improve the tracking and not act if no gui to hide
+
 #Requires AutoHotkey v2.0
 SetCapsLockState("AlwaysOff")
 CoordMode "Mouse", "Screen" ; Mouse coordinates relative to the virtual screen
 
 ; Global configuration
 global showcaseDebug := false       ; Enable debug tooltips and delays
-global selectedLayout := 1          ; Layout options: 1=User QWERTY/ASDF, 2=Home Row ASDF/JKL;, 3=WASD/QWER
+global selectedLayout := 2            ; Layout options: 1=User QWERTY/ASDF, 2=Home Row ASDF/JKL;, 3=WASD/QWER
 global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
 global highlightColor := "33AAFF"   ; Highlight color for selected cells
 
@@ -22,7 +26,7 @@ global subGrid := ""                ; Single SubGridOverlay instance (initialize
 global layoutConfigs := Map(
     1, Map("cols", 10, "rows", 10, "colKeys", ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"], "rowKeys", ["a", "s",
         "d", "f", "g", "h", "j", "k", "l", ";"]),
-    2, Map("cols", 4, "rows", 4, "colKeys", ["a", "s", "d", "f"], "rowKeys", ["j", "k", "l", ";"]),
+    2, Map("cols", 4, "rows", 4, "colKeys", ["a", "s", "d", "f"], "rowKeys", ["j", "k", "lq", ";"]),
     3, Map("cols", 4, "rows", 4, "colKeys", ["q", "w", "e", "r"], "rowKeys", ["a", "s", "d", "f"])
 )
 
@@ -824,7 +828,7 @@ TrackCursor() {
 
 ; This section includes a simplified Cleanup function, monitor switching, cell position checking, and key handling functions updated for FSM and GUI reuse. Yes, implemented.
 
-CapsLock & q:: {
+CapsLock & Tab:: {
     global currentState, highlight, subGrid
 
     ; If already active, clean up and exit
@@ -1198,5 +1202,159 @@ b:: {
 
 Escape:: Cleanup()
 #HotIf
+
+; Monitor switching hotkeys that work regardless of grid state
+CapsLock & 1:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Tab()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to ensure grid is initialized
+    }
+
+    ; Now switch to monitor 1
+    SwitchMonitor(1)
+}
+
+CapsLock & 2:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Tab()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to ensure grid is initialized
+    }
+
+    ; Now switch to monitor 2
+    SwitchMonitor(2)
+}
+
+CapsLock & 3:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Tab()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to ensure grid is initialized
+    }
+
+    ; Now switch to monitor 3
+    SwitchMonitor(3)
+}
+
+CapsLock & 4:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Tab()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to ensure grid is initialized
+    }
+
+    ; Now switch to monitor 4
+    SwitchMonitor(4)
+}
+
+; Helper function to reuse the CapsLock & Tab code
+CapsLock_Tab() {
+    global currentState, highlight, subGrid
+
+    ; If already active, clean up and exit
+    if (currentState != "IDLE") {
+        Cleanup()
+        return
+    }
+
+    ; Try to initialize
+    try {
+        ; IMPROVEMENT: Explicitly reset all state variables
+        State.firstKey := ""
+        State.currentOverlay := ""
+        State.activeColKeys := []
+        State.activeRowKeys := []
+        State.activeCellKey := ""
+        State.activeSubCellKey := ""
+        State.currentColIndex := 0
+        State.currentRowIndex := 0
+        State.lastSelectedRowIndex := 0
+        State.overlays := []
+
+        ; Get configured layout
+        currentConfig := layoutConfigs[selectedLayout]
+        if (!IsObject(currentConfig)) {
+            ToolTip("Invalid layout: " selectedLayout)
+            Sleep(2000)
+            ToolTip()
+            return
+        }
+
+        ; Set up state
+        State.activeColKeys := currentConfig["colKeys"]
+        State.activeRowKeys := currentConfig["rowKeys"]
+
+        ; Get current mouse position
+        MouseGetPos(&startX, &startY)
+        foundMonitor := false
+
+        ; Initialize reusable GUI elements
+        try {
+            highlight := HighlightOverlay()
+            subGrid := SubGridOverlay()
+        } catch as e {
+            ToolTip("Error initializing GUI: " e.Message)
+            Sleep(2000)
+            ToolTip()
+            return
+        }
+
+        ; Create overlay for each monitor
+        loop MonitorGetCount() {
+            try {
+                MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+                overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, State.activeColKeys, State.activeRowKeys)
+                overlay.Show()
+                State.overlays.Push(overlay)
+
+                if (overlay.ContainsPoint(startX, startY)) {
+                    State.currentOverlay := overlay
+                    foundMonitor := true
+                }
+            } catch as e {
+                if (showcaseDebug) {
+                    ToolTip("Error creating overlay for monitor " A_Index ": " e.Message)
+                    Sleep(2000)
+                    ToolTip()
+                }
+                ; Continue with next monitor
+            }
+        }
+
+        ; If no monitor found for current position, use first overlay
+        if (!foundMonitor && State.overlays.Length > 0) {
+            State.currentOverlay := State.overlays[1]
+        }
+
+        ; Only continue if overlay creation was successful
+        if (State.overlays.Length > 0 && IsObject(State.currentOverlay)) {
+            currentState := "GRID_VISIBLE"
+            SetTimer(TrackCursor, 50)
+        } else {
+            ; Clean up and show error if unsuccessful
+            Cleanup()
+            ToolTip("Failed to create grid overlays")
+            Sleep(2000)
+            ToolTip()
+        }
+    } catch as e {
+        ; Handle any uncaught errors
+        Cleanup()
+        if (showcaseDebug) {
+            ToolTip("Error initializing: " e.Message)
+            Sleep(2000)
+            ToolTip()
+        }
+    }
+}
 
 ; This section consolidates hotkey definitions using FSM states, initializing GUI instances on activation. Yes, implemented.
