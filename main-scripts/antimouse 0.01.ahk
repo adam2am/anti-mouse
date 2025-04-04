@@ -61,7 +61,7 @@ global layoutConfigs := Map(
 )
 
 ; Sub-grid configuration
-global subGridKeys := ["b", "n", "g", "h"]
+global subGridKeys := ["g", "h", "b", "n"]
 global subGridRows := 2
 global subGridCols := 2
 
@@ -571,36 +571,49 @@ Cleanup() {
 
 ; Helper function to load cell memory from file
 LoadCellMemory() {
-    global cellMemory, cellMemoryFile
+    global cellMemory, cellMemoryFile, showcaseDebug
+
+    ; Clear existing memory first
+    cellMemory := Map()
 
     try {
         if (FileExist(cellMemoryFile)) {
             fileContent := FileRead(cellMemoryFile)
             lines := StrSplit(fileContent, "`n", "`r")
 
+            loadedCount := 0
             for line in lines {
-                if (line = "") {
+                if (Trim(line) = "") {
                     continue
                 }
 
                 parts := StrSplit(line, "=")
                 if (parts.Length >= 2) {
-                    cellKey := parts[1]
-                    subCellKey := parts[2]
-                    cellMemory[cellKey] := subCellKey
+                    cellKey := Trim(parts[1])
+                    subCellKey := Trim(parts[2])
+                    if (cellKey != "" && subCellKey != "") {
+                        cellMemory[cellKey] := subCellKey
+                        loadedCount += 1
+                    }
                 }
             }
 
             if (showcaseDebug) {
-                ToolTip("Loaded " cellMemory.Count " cell memories")
-                Sleep(1000)
+                ToolTip("Loaded " loadedCount " cell memories from " cellMemoryFile)
+                Sleep(1500)
+                ToolTip()
+            }
+        } else {
+            if (showcaseDebug) {
+                ToolTip("Cell memory file not found: " cellMemoryFile)
+                Sleep(1500)
                 ToolTip()
             }
         }
     } catch as e {
         if (showcaseDebug) {
             ToolTip("Error loading cell memory: " e.Message)
-            Sleep(1000)
+            Sleep(1500)
             ToolTip()
         }
     }
@@ -608,12 +621,16 @@ LoadCellMemory() {
 
 ; Helper function to save cell memory to file
 SaveCellMemory() {
-    global cellMemory, cellMemoryFile
+    global cellMemory, cellMemoryFile, showcaseDebug
 
     try {
         fileContent := ""
+        savedCount := 0
         for cellKey, subCellKey in cellMemory {
-            fileContent .= cellKey "=" subCellKey "`n"
+            if (cellKey != "" && subCellKey != "") { ; Ensure we don't save empty keys/values
+                fileContent .= cellKey "=" subCellKey "`n"
+                savedCount += 1
+            }
         }
 
         ; Ensure directory exists
@@ -622,18 +639,24 @@ SaveCellMemory() {
             DirCreate(fileDir)
         }
 
-        FileDelete(cellMemoryFile)
-        FileAppend(fileContent, cellMemoryFile)
+        ; Write the file
+        file := FileOpen(cellMemoryFile, "w", "UTF-8")
+        if (!IsObject(file)) {
+            throw Error("Failed to open file for writing: " cellMemoryFile)
+        }
+        file.Write(fileContent)
+        file.Close()
 
         if (showcaseDebug) {
-            ToolTip("Saved " cellMemory.Count " cell memories")
-            Sleep(1000)
+            ToolTip("Saved " savedCount " cell memories to " cellMemoryFile)
+            Sleep(1500)
             ToolTip()
         }
     } catch as e {
+        MsgBox("Error saving cell memory: " e.Message, "Save Error", "IconError")
         if (showcaseDebug) {
             ToolTip("Error saving cell memory: " e.Message)
-            Sleep(1000)
+            Sleep(2000)
             ToolTip()
         }
     }
@@ -976,9 +999,11 @@ GetCellAtPosition(x, y) {
     if (!StateMap['currentOverlay'].ContainsPoint(x, y)) { ; Use StateMap
         return ""
     }
+
+    ; Use a consistent order (column, then row) when checking cells
     for colKey in StateMap['activeColKeys'] { ; Use StateMap
         for rowKey in StateMap['activeRowKeys'] { ; Use StateMap
-            cellKey := colKey . rowKey
+            cellKey := colKey . rowKey ; Always column then row
             boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
             if (IsObject(boundaries) && x >= boundaries.x && x < boundaries.x + boundaries.w && y >= boundaries.y && y <
             boundaries.y + boundaries.h) {
@@ -990,7 +1015,8 @@ GetCellAtPosition(x, y) {
 }
 
 HandleKey(key) {
-    global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap
+    global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap,
+        storePerMonitor, showcaseDebug
 
     ; IMPROVEMENT: Explicit hiding at the beginning
     if (IsObject(highlight)) {
@@ -1103,7 +1129,7 @@ HandleKey(key) {
 
         if (firstKeyWasCol && isRowKey) {
             ; Expected: Col -> Row
-            cellKey := StateMap['firstKey'] . key ; Use StateMap
+            cellKey := StateMap['firstKey'] . key ; Use StateMap - column first, then row
             StateMap['currentRowIndex'] := rowIndex ; Use StateMap
             StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
             proceedToSubgrid := true
@@ -1111,7 +1137,8 @@ HandleKey(key) {
         }
         else if (firstKeyWasRow && isColKey) {
             ; Expected: Row -> Col
-            cellKey := key . StateMap['firstKey'] ; Use StateMap
+            ; IMPORTANT: Always store cell keys as column+row for consistency
+            cellKey := key . StateMap['firstKey'] ; Use StateMap - column first, then row
             StateMap['currentColIndex'] := colIndex ; Use StateMap
             proceedToSubgrid := true
             StateMap['firstKey'] := "" ; Reset using StateMap
@@ -1206,9 +1233,38 @@ HandleKey(key) {
         }
 
         ; Check if we have a remembered subcell for this cell
-        if (cellMemory.Has(cellKey)) {
+        rememberedSubCell := ""
+        cellFound := false
+
+        ; First check monitor-specific key if enabled
+        if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
+            monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . cellKey
+            if (cellMemory.Has(monitorCellKey)) {
+                rememberedSubCell := cellMemory[monitorCellKey]
+                cellFound := true
+                if (showcaseDebug) {
+                    ToolTip("Found monitor-specific subcell: " monitorCellKey " -> " rememberedSubCell)
+                    Sleep(500)
+                }
+            }
+        }
+
+        ; Fall back to general cell key if no monitor-specific key found
+        if (!cellFound && cellMemory.Has(cellKey)) {
             rememberedSubCell := cellMemory[cellKey]
-            HandleSubGridKey(rememberedSubCell) ; Note: HandleSubGridKey has its own delay check now
+            cellFound := true
+            if (showcaseDebug) {
+                ToolTip("Found general subcell: " cellKey " -> " rememberedSubCell)
+                Sleep(500)
+            }
+        }
+
+        ; Move to the remembered subcell position if found
+        if (cellFound && rememberedSubCell != "") {
+            HandleSubGridKey(rememberedSubCell)
+        } else if (showcaseDebug) {
+            ToolTip("No saved subcell found for " cellKey)
+            Sleep(500)
         }
 
         if (showcaseDebug) {
@@ -1220,7 +1276,8 @@ HandleKey(key) {
 }
 
 HandleSubGridKey(subKey) {
-    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap
+    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap,
+        showcaseDebug
 
     if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
         return
@@ -1238,24 +1295,35 @@ HandleSubGridKey(subKey) {
         StateMap['activeSubCellKey'] := subKey ; Use StateMap
 
         ; Remember this subcell for the current cell
-        if (StateMap['activeCellKey'] != "") { ; Use StateMap
-            ; Use a monitor-specific key if storePerMonitor is enabled
+        activeCell := StateMap['activeCellKey']
+        if (activeCell != "") { ; Use StateMap
+            keyToSave := ""
+
+            ; Determine the key to use based on the storePerMonitor setting
             if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
-                monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . StateMap['activeCellKey'] ; Use StateMap
-                cellMemory[monitorCellKey] := subKey
+                keyToSave := StateMap['currentOverlay'].monitorIndex . "_" . activeCell
+            } else {
+                keyToSave := activeCell
             }
-            ; Always store a general one too as fallback
-            cellMemory[StateMap['activeCellKey']] := subKey ; Use StateMap
-            ; Save to file
-            SaveCellMemory()
+
+            ; Update the memory map
+            if (keyToSave != "") {
+                cellMemory[keyToSave] := subKey
+                if (showcaseDebug) {
+                    ToolTip("Memory updated: " keyToSave " -> " subKey)
+                    Sleep(500)
+                }
+                ; Save the entire map to file
+                SaveCellMemory()
+            }
         }
 
         if (showcaseDebug) {
             if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
-                ToolTip("Moved to sub-cell " subKey " in " StateMap['activeCellKey'] " on monitor " StateMap[
-                    'currentOverlay'].monitorIndex) ; Use StateMap
+                ToolTip("Moved to sub-cell " subKey " in " activeCell " on monitor " StateMap['currentOverlay'].monitorIndex
+                ) ; Use StateMap
             } else {
-                ToolTip("Moved to sub-cell " subKey " in " StateMap['activeCellKey']) ; Use StateMap
+                ToolTip("Moved to sub-cell " subKey " in " activeCell) ; Use StateMap
             }
         }
     } else {
