@@ -539,34 +539,91 @@ SwitchMonitor(monitorNum) {
         return
     }
 
-    newOverlay := State.overlays[monitorNum]
-    if (newOverlay && State.currentOverlay !== newOverlay) {
-        ; Update state
-        State.currentOverlay := newOverlay
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
 
-        ; Calculate center position
+    ; Get the new overlay
+    newOverlay := State.overlays[monitorNum]
+    if (!newOverlay) {
+        ; Re-enable tracking if no valid overlay
+        SetTimer(TrackCursor, 50)
+        return
+    }
+
+    ; Save current position state
+    rememberedColIndex := State.currentColIndex
+    rememberedRowIndex := State.currentRowIndex
+    wasInSubgrid := currentState == "SUBGRID_ACTIVE"
+
+    ; Hide UI elements during transition to prevent visual artifacts
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+
+    ; Small delay for UI cleanup
+    Sleep(20)
+
+    ; Update state
+    State.currentOverlay := newOverlay
+
+    ; Only attempt to position if we had a valid position
+    if (rememberedColIndex > 0 && rememberedRowIndex > 0) {
+        ; Ensure indices are valid for new overlay
+        colIndex := Min(rememberedColIndex, State.activeColKeys.Length)
+        rowIndex := Min(rememberedRowIndex, State.activeRowKeys.Length)
+
+        ; Get the cell key
+        colKey := State.activeColKeys[colIndex]
+        rowKey := State.activeRowKeys[rowIndex]
+        cellKey := colKey . rowKey
+
+        ; Get boundaries for that cell
+        boundaries := newOverlay.GetCellBoundaries(cellKey)
+
+        if (IsObject(boundaries)) {
+            ; Move to the center of the cell
+            centerX := boundaries.x + (boundaries.w // 2)
+            centerY := boundaries.y + (boundaries.h // 2)
+            MouseMove(centerX, centerY, 0)
+
+            ; Update state BEFORE updating UI
+            State.activeCellKey := cellKey
+
+            ; Update highlight
+            if (IsObject(highlight)) {
+                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            }
+
+            ; Update subgrid if we were in subgrid mode
+            if (wasInSubgrid && IsObject(subGrid)) {
+                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                ; Force state to SUBGRID_ACTIVE to ensure proper rendering
+                currentState := "SUBGRID_ACTIVE"
+            }
+        } else {
+            ; If can't get boundaries, just move to center of monitor
+            centerX := newOverlay.Left + (newOverlay.width // 2)
+            centerY := newOverlay.Top + (newOverlay.height // 2)
+            MouseMove(centerX, centerY, 0)
+        }
+    } else {
+        ; No valid position remembered, move to center
         centerX := newOverlay.Left + (newOverlay.width // 2)
         centerY := newOverlay.Top + (newOverlay.height // 2)
-
-        ; Move cursor to center of new monitor
         MouseMove(centerX, centerY, 0)
-
-        ; Reset any active cell highlighting
-        State.activeCellKey := ""
-
-        ; Update the TrackCursor once immediately to detect any cell at the new position
-        try {
-            TrackCursor()
-        } catch {
-            ; Ignore any errors during this initial tracking
-        }
-
-        if (showcaseDebug) {
-            ToolTip("Switched to Monitor " monitorNum)
-            Sleep(1000)
-            ToolTip()
-        }
     }
+
+    if (showcaseDebug) {
+        ToolTip("Switched to Monitor " monitorNum)
+        Sleep(1000)
+        ToolTip()
+    }
+
+    ; Re-enable tracking
+    SetTimer(TrackCursor, 50)
 }
 
 ; New function to cycle through monitors
@@ -943,8 +1000,9 @@ TrackCursor() {
                     State.currentOverlay := overlay
                     changedMonitor := true
 
-                    ; Clear any active cell when changing monitors to force recalculation
-                    State.activeCellKey := ""
+                    ; Don't clear active cell when changing monitors via hot keys
+                    ; This is done to preserve position when switching monitors
+                    ; State.activeCellKey := ""
 
                     if (showcaseDebug) {
                         ToolTip("Switched to Monitor " overlay.monitorIndex)
@@ -959,8 +1017,8 @@ TrackCursor() {
             }
         }
 
-        ; If monitor changed, hide subgrid until cell is determined
-        if (changedMonitor && IsObject(subGrid)) {
+        ; If monitor changed, hide subgrid until cell is determined ONLY if no active cell
+        if (changedMonitor && State.activeCellKey == "" && IsObject(subGrid)) {
             subGrid.Hide()
 
             ; Also hide highlight until new cell is determined
@@ -1431,6 +1489,9 @@ Tab:: {
 Tab & 1:: {
     global currentState
 
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
         CapsLock_Q()
@@ -1443,6 +1504,9 @@ Tab & 1:: {
 
 Tab & 2:: {
     global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
@@ -1457,6 +1521,9 @@ Tab & 2:: {
 Tab & 3:: {
     global currentState
 
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
         CapsLock_Q()
@@ -1469,6 +1536,9 @@ Tab & 3:: {
 
 Tab & 4:: {
     global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
@@ -1484,6 +1554,9 @@ Tab & 4:: {
 CapsLock & 1:: {
     global currentState
 
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
         CapsLock_Q()  ; Call the grid activation function
@@ -1496,6 +1569,9 @@ CapsLock & 1:: {
 
 CapsLock & 2:: {
     global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
@@ -1510,6 +1586,9 @@ CapsLock & 2:: {
 CapsLock & 3:: {
     global currentState
 
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
         CapsLock_Q()  ; Call the grid activation function
@@ -1522,6 +1601,9 @@ CapsLock & 3:: {
 
 CapsLock & 4:: {
     global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
 
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
