@@ -15,7 +15,8 @@ global selectedLayout := 2            ; Layout options: 1=User QWERTY/ASDF, 2=er
 global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
 global highlightColor := "33AAFF"   ; Highlight color for selected cells
 global monitorMapping := [2, 1, 3, 4] ; Map physical monitor index to logical: [physical1, physical2, physical3, physical4]
-global cellMemoryFile := "cell_memory.txt" ; File to store cell-subcell selections
+global cellMemoryFile := A_ScriptDir "\cell_memory.txt" ; File to store cell-subcell selections
+global settingsFile := A_ScriptDir "\antimouse_settings.ini" ; File to store settings
 global storePerMonitor := true      ; Store subcell positions per monitor
 
 ; Finite State Machine state
@@ -23,9 +24,23 @@ global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGR
 global stateTransitionTime := 0     ; Timestamp of the last state transition
 global stateTransitionDelay := 50   ; Minimum time (ms) between state transitions to prevent leakage
 
-; Double CapsLock variables
+; Double CapsLock variables - declare them globally here
 global capsLockPressedTime := 0
 global doubleCapsThreshold := 400   ; Time in ms for double CapsLock detection
+
+; Global State Map (replaces State class)
+global StateMap := Map(
+    "overlays", [],
+    "currentOverlay", "",
+    "activeColKeys", [],
+    "activeRowKeys", [],
+    "firstKey", "",
+    "activeCellKey", "",
+    "activeSubCellKey", "",
+    "currentColIndex", 0,
+    "currentRowIndex", 0,
+    "lastSelectedRowIndex", 0
+)
 
 ; GUI instances for reuse
 global highlight := ""              ; Single HighlightOverlay xcinstance (initialized later)
@@ -427,21 +442,6 @@ class OverlayGUI {
 
 ; This section defines classes with GUI reuse for HighlightOverlay and SubGridOverlay, keeping GridOverlay and OverlayGUI largely unchanged. Yes, implemented.
 
-class State {
-    static overlays := []           ; Array of OverlayGUI instances per monitor
-    static currentOverlay := ""     ; Current active OverlayGUI
-    static activeColKeys := []      ; Current layout column keys
-    static activeRowKeys := []      ; Current layout row keys
-    static firstKey := ""           ; First key in two-key cell selection
-    static activeCellKey := ""      ; Current selected cell key (e.g., "es")
-    static activeSubCellKey := ""   ; Current sub-cell key (e.g., "5")
-    static currentColIndex := 0     ; Current column index
-    static currentRowIndex := 0     ; Current row index
-    static lastSelectedRowIndex := 0 ; Last selected row index
-}
-
-; This section defines a simplified State class for managing application state within the FSM framework. Yes, implemented.
-
 ; Helper function to ensure index is within valid range
 ValidateIndex(index, arrayLength) {
     if (index < 1)
@@ -481,7 +481,7 @@ ForceCloseAllGuis() {
 }
 
 Cleanup() {
-    global currentState, highlight, subGrid
+    global currentState, highlight, subGrid, StateMap
 
     ; If already cleaned up, don't attempt again
     if (currentState == "IDLE") {
@@ -513,7 +513,7 @@ Cleanup() {
     }
 
     try {
-        for overlay in State.overlays {
+        for overlay in StateMap['overlays'] { ; Use StateMap
             if (IsObject(overlay)) {
                 overlay.Hide()
             }
@@ -542,12 +542,12 @@ Cleanup() {
     }
 
     try {
-        for i, overlay in State.overlays {
+        for i, overlay in StateMap['overlays'] { ; Use StateMap
             if (IsObject(overlay)) {
                 overlay.Destroy()
             }
         }
-        State.overlays := []
+        StateMap['overlays'] := [] ; Reset using StateMap
     } catch {
     }
 
@@ -557,16 +557,16 @@ Cleanup() {
     } catch {
     }
 
-    ; Reset state variables
-    State.firstKey := ""
-    State.currentOverlay := ""
-    State.activeColKeys := []
-    State.activeRowKeys := []
-    State.activeCellKey := ""
-    State.activeSubCellKey := ""
-    State.currentColIndex := 0
-    State.currentRowIndex := 0
-    State.lastSelectedRowIndex := 0
+    ; Reset state variables using StateMap
+    StateMap['firstKey'] := ""
+    StateMap['currentOverlay'] := ""
+    StateMap['activeColKeys'] := []
+    StateMap['activeRowKeys'] := []
+    StateMap['activeCellKey'] := ""
+    StateMap['activeSubCellKey'] := ""
+    StateMap['currentColIndex'] := 0
+    StateMap['currentRowIndex'] := 0
+    StateMap['lastSelectedRowIndex'] := 0
 }
 
 ; Helper function to load cell memory from file
@@ -616,6 +616,12 @@ SaveCellMemory() {
             fileContent .= cellKey "=" subCellKey "`n"
         }
 
+        ; Ensure directory exists
+        SplitPath(cellMemoryFile, &fileName, &fileDir)
+        if (!FileExist(fileDir) && fileDir != "") {
+            DirCreate(fileDir)
+        }
+
         FileDelete(cellMemoryFile)
         FileAppend(fileContent, cellMemoryFile)
 
@@ -633,12 +639,104 @@ SaveCellMemory() {
     }
 }
 
+; New function to load settings from INI file
+LoadSettings() {
+    global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
+    global defaultTransparency, highlightColor
+
+    try {
+        if (FileExist(settingsFile)) {
+            ; Load general settings
+            loadedLayout := IniRead(settingsFile, "General", "Layout", selectedLayout)
+            ; Make sure the loaded layout is a valid integer between 1 and 4
+            if (IsInteger(loadedLayout) && loadedLayout >= 1 && loadedLayout <= 4) {
+                selectedLayout := loadedLayout
+            }
+
+            storePerMonitor := IniRead(settingsFile, "General", "StorePerMonitor", storePerMonitor)
+            showcaseDebug := IniRead(settingsFile, "General", "Debug", showcaseDebug)
+
+            ; Load monitor mapping
+            for i, _ in monitorMapping {
+                monitorMapping[i] := IniRead(settingsFile, "MonitorMapping", "Monitor" i, monitorMapping[i])
+            }
+
+            ; Load appearance settings
+            loadedTransparency := IniRead(settingsFile, "Appearance", "Transparency", defaultTransparency)
+            if (IsInteger(loadedTransparency) && loadedTransparency >= 0 && loadedTransparency <= 255) {
+                defaultTransparency := loadedTransparency
+            }
+
+            highlightColor := IniRead(settingsFile, "Appearance", "HighlightColor", highlightColor)
+
+            if (showcaseDebug) {
+                ToolTip("Settings loaded from " settingsFile)
+                Sleep(1000)
+                ToolTip()
+            }
+        }
+    } catch as e {
+        MsgBox("Error loading settings: " e.Message)
+    }
+}
+
+; Helper function to check if a value is an integer
+IsInteger(value) {
+    return IsNumber(value) && Floor(value) = value
+}
+
+; Helper function that checks if a value is a number
+IsNumber(value) {
+    if value is number
+        return true
+    return false
+}
+
+; New function to save settings to INI file
+SaveSettings() {
+    global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
+    global defaultTransparency, highlightColor
+
+    try {
+        ; Ensure directory exists
+        SplitPath(settingsFile, &fileName, &fileDir)
+        if (!FileExist(fileDir) && fileDir != "") {
+            DirCreate(fileDir)
+        }
+
+        ; Save general settings
+        IniWrite(selectedLayout, settingsFile, "General", "Layout")
+        IniWrite(storePerMonitor, settingsFile, "General", "StorePerMonitor")
+        IniWrite(showcaseDebug, settingsFile, "General", "Debug")
+
+        ; Save monitor mapping
+        for i, mapping in monitorMapping {
+            IniWrite(mapping, settingsFile, "MonitorMapping", "Monitor" i)
+        }
+
+        ; Save appearance settings
+        IniWrite(defaultTransparency, settingsFile, "Appearance", "Transparency")
+        IniWrite(highlightColor, settingsFile, "Appearance", "HighlightColor")
+
+        if (showcaseDebug) {
+            ToolTip("Settings saved to " settingsFile)
+            Sleep(1000)
+            ToolTip()
+        }
+
+        return true
+    } catch as e {
+        MsgBox("Error saving settings: " e.Message)
+        return false
+    }
+}
+
 SwitchMonitor(monitorNum) {
-    global currentState, highlight, subGrid, monitorMapping, storePerMonitor
+    global currentState, highlight, subGrid, monitorMapping, storePerMonitor, StateMap
 
     ; Apply monitor mapping
     mappedMonitor := monitorMapping[monitorNum]
-    if (mappedMonitor > State.overlays.Length || currentState == "IDLE") {
+    if (mappedMonitor > StateMap['overlays'].Length || currentState == "IDLE") { ; Use StateMap
         return
     }
 
@@ -646,7 +744,7 @@ SwitchMonitor(monitorNum) {
     SetTimer(TrackCursor, 0)
 
     ; Get the new overlay
-    newOverlay := State.overlays[mappedMonitor]
+    newOverlay := StateMap['overlays'][mappedMonitor] ; Use StateMap
     if (!newOverlay) {
         ; Re-enable tracking if no valid overlay
         SetTimer(TrackCursor, 50)
@@ -654,8 +752,8 @@ SwitchMonitor(monitorNum) {
     }
 
     ; Save current position state
-    rememberedColIndex := State.currentColIndex
-    rememberedRowIndex := State.currentRowIndex
+    rememberedColIndex := StateMap['currentColIndex'] ; Use StateMap
+    rememberedRowIndex := StateMap['currentRowIndex'] ; Use StateMap
     wasInSubgrid := currentState == "SUBGRID_ACTIVE"
 
     ; Hide UI elements during transition to prevent visual artifacts
@@ -670,17 +768,17 @@ SwitchMonitor(monitorNum) {
     Sleep(20)
 
     ; Update state
-    State.currentOverlay := newOverlay
+    StateMap['currentOverlay'] := newOverlay ; Use StateMap
 
     ; Only attempt to position if we had a valid position
     if (rememberedColIndex > 0 && rememberedRowIndex > 0) {
         ; Ensure indices are valid for new overlay
-        colIndex := Min(rememberedColIndex, State.activeColKeys.Length)
-        rowIndex := Min(rememberedRowIndex, State.activeRowKeys.Length)
+        colIndex := Min(rememberedColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
+        rowIndex := Min(rememberedRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
 
         ; Get the cell key
-        colKey := State.activeColKeys[colIndex]
-        rowKey := State.activeRowKeys[rowIndex]
+        colKey := StateMap['activeColKeys'][colIndex] ; Use StateMap
+        rowKey := StateMap['activeRowKeys'][rowIndex] ; Use StateMap
         cellKey := colKey . rowKey
 
         ; Get boundaries for that cell
@@ -693,7 +791,7 @@ SwitchMonitor(monitorNum) {
             MouseMove(centerX, centerY, 0)
 
             ; Update state BEFORE updating UI
-            State.activeCellKey := cellKey
+            StateMap['activeCellKey'] := cellKey ; Use StateMap
 
             ; Update highlight
             if (IsObject(highlight)) {
@@ -749,9 +847,9 @@ SwitchMonitor(monitorNum) {
 
 ; New function to cycle through monitors
 CycleToNextMonitor() {
-    global currentState, highlight, subGrid, storePerMonitor
+    global currentState, highlight, subGrid, storePerMonitor, StateMap
 
-    if (currentState == "IDLE" || State.overlays.Length <= 1) {
+    if (currentState == "IDLE" || StateMap['overlays'].Length <= 1) { ; Use StateMap
         return
     }
 
@@ -760,26 +858,26 @@ CycleToNextMonitor() {
 
     ; Find current monitor index and cell position
     currentMonitorIndex := 0
-    for i, overlay in State.overlays {
-        if (overlay == State.currentOverlay) {
+    for i, overlay in StateMap['overlays'] { ; Use StateMap
+        if (overlay == StateMap['currentOverlay']) { ; Use StateMap
             currentMonitorIndex := i
             break
         }
     }
 
     ; Remember current position
-    rememberedColIndex := State.currentColIndex
-    rememberedRowIndex := State.currentRowIndex
+    rememberedColIndex := StateMap['currentColIndex'] ; Use StateMap
+    rememberedRowIndex := StateMap['currentRowIndex'] ; Use StateMap
     wasInSubgrid := currentState == "SUBGRID_ACTIVE"
 
     ; Calculate next monitor index with wrap-around
     nextMonitorIndex := currentMonitorIndex + 1
-    if (nextMonitorIndex > State.overlays.Length) {
+    if (nextMonitorIndex > StateMap['overlays'].Length) { ; Use StateMap
         nextMonitorIndex := 1
     }
 
     ; Get the new overlay
-    newOverlay := State.overlays[nextMonitorIndex]
+    newOverlay := StateMap['overlays'][nextMonitorIndex] ; Use StateMap
     if (!newOverlay) {
         ; Re-enable tracking if no valid overlay
         SetTimer(TrackCursor, 50)
@@ -787,17 +885,17 @@ CycleToNextMonitor() {
     }
 
     ; Update state
-    State.currentOverlay := newOverlay
+    StateMap['currentOverlay'] := newOverlay ; Use StateMap
 
     ; Only attempt to position if we had a valid position
     if (rememberedColIndex > 0 && rememberedRowIndex > 0) {
         ; Ensure indices are valid for new overlay
-        colIndex := Min(rememberedColIndex, State.activeColKeys.Length)
-        rowIndex := Min(rememberedRowIndex, State.activeRowKeys.Length)
+        colIndex := Min(rememberedColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
+        rowIndex := Min(rememberedRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
 
         ; Get the cell key
-        colKey := State.activeColKeys[colIndex]
-        rowKey := State.activeRowKeys[rowIndex]
+        colKey := StateMap['activeColKeys'][colIndex] ; Use StateMap
+        rowKey := StateMap['activeRowKeys'][rowIndex] ; Use StateMap
         cellKey := colKey . rowKey
 
         ; Get boundaries for that cell
@@ -810,7 +908,7 @@ CycleToNextMonitor() {
             MouseMove(centerX, centerY, 0)
 
             ; Update state BEFORE updating UI
-            State.activeCellKey := cellKey
+            StateMap['activeCellKey'] := cellKey ; Use StateMap
 
             ; Update highlight
             if (IsObject(highlight)) {
@@ -871,16 +969,17 @@ CycleToNextMonitor() {
 }
 
 GetCellAtPosition(x, y) {
-    if (!IsObject(State.currentOverlay)) {
+    global StateMap
+    if (!IsObject(StateMap['currentOverlay'])) { ; Use StateMap
         return ""
     }
-    if (!State.currentOverlay.ContainsPoint(x, y)) {
+    if (!StateMap['currentOverlay'].ContainsPoint(x, y)) { ; Use StateMap
         return ""
     }
-    for colKey in State.activeColKeys {
-        for rowKey in State.activeRowKeys {
+    for colKey in StateMap['activeColKeys'] { ; Use StateMap
+        for rowKey in StateMap['activeRowKeys'] { ; Use StateMap
             cellKey := colKey . rowKey
-            boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
             if (IsObject(boundaries) && x >= boundaries.x && x < boundaries.x + boundaries.w && y >= boundaries.y && y <
             boundaries.y + boundaries.h) {
                 return cellKey
@@ -891,7 +990,7 @@ GetCellAtPosition(x, y) {
 }
 
 HandleKey(key) {
-    global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay
+    global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap
 
     ; IMPROVEMENT: Explicit hiding at the beginning
     if (IsObject(highlight)) {
@@ -904,7 +1003,7 @@ HandleKey(key) {
     ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference
     SetTimer(TrackCursor, 0)
 
-    if (currentState != "GRID_VISIBLE" || !IsObject(State.currentOverlay)) {
+    if (currentState != "GRID_VISIBLE" || !IsObject(StateMap['currentOverlay'])) { ; Use StateMap
         ; Re-enable TrackCursor before returning
         SetTimer(TrackCursor, 50)
         return
@@ -913,7 +1012,7 @@ HandleKey(key) {
     ; Check if key is a valid column or row key
     isColKey := false
     colIndex := 0
-    for i, colKeyCheck in State.activeColKeys {
+    for i, colKeyCheck in StateMap['activeColKeys'] { ; Use StateMap
         if (colKeyCheck = key) {
             isColKey := true
             colIndex := i
@@ -923,7 +1022,7 @@ HandleKey(key) {
 
     isRowKey := false
     rowIndex := 0
-    for i, rowKeyCheck in State.activeRowKeys {
+    for i, rowKeyCheck in StateMap['activeRowKeys'] { ; Use StateMap
         if (rowKeyCheck = key) {
             isRowKey := true
             rowIndex := i
@@ -949,28 +1048,29 @@ HandleKey(key) {
     tooltipText := ""
     proceedToSubgrid := false
 
-    if (State.firstKey = "") {
+    if (StateMap['firstKey'] = "") { ; Use StateMap
         ; --- First Key Press ---
-        State.firstKey := key
+        StateMap['firstKey'] := key ; Use StateMap
 
         if (isColKey) {
             ; First key is COLUMN
-            State.currentColIndex := colIndex
-            targetRowIndex := State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1
-            targetRowIndex := ValidateIndex(targetRowIndex, State.activeRowKeys.Length)
-            cellKey := key . State.activeRowKeys[targetRowIndex]
+            StateMap['currentColIndex'] := colIndex ; Use StateMap
+            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1 ; Use StateMap
+            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
+            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; Use StateMap
             tooltipText := "First key: " key ". Select row."
         } else { ; isRowKey
             ; First key is ROW
-            State.currentRowIndex := rowIndex
-            State.lastSelectedRowIndex := rowIndex
-            targetColIndex := State.currentColIndex ? State.currentColIndex : Ceil(State.activeColKeys.Length / 2)
-            targetColIndex := ValidateIndex(targetColIndex, State.activeColKeys.Length)
-            cellKey := State.activeColKeys[targetColIndex] . key
+            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
+            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
+            targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'
+                ].Length / 2) ; Use StateMap
+            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
+            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Use StateMap
             tooltipText := "First key: " key ". Select column."
         }
 
-        boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+        boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
         if (IsObject(boundaries)) {
             targetCellX := boundaries.x
             targetCellY := boundaries.y
@@ -993,8 +1093,8 @@ HandleKey(key) {
     } else {
         ; --- Second Key Press ---
         firstKeyWasCol := false
-        for colKeyCheck in State.activeColKeys {
-            if (colKeyCheck = State.firstKey) {
+        for colKeyCheck in StateMap['activeColKeys'] { ; Use StateMap
+            if (colKeyCheck = StateMap['firstKey']) { ; Use StateMap
                 firstKeyWasCol := true
                 break
             }
@@ -1003,29 +1103,29 @@ HandleKey(key) {
 
         if (firstKeyWasCol && isRowKey) {
             ; Expected: Col -> Row
-            cellKey := State.firstKey . key
-            State.currentRowIndex := rowIndex
-            State.lastSelectedRowIndex := rowIndex
+            cellKey := StateMap['firstKey'] . key ; Use StateMap
+            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
+            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
             proceedToSubgrid := true
-            State.firstKey := "" ; Reset
+            StateMap['firstKey'] := "" ; Reset using StateMap
         }
         else if (firstKeyWasRow && isColKey) {
             ; Expected: Row -> Col
-            cellKey := key . State.firstKey
-            State.currentColIndex := colIndex
+            cellKey := key . StateMap['firstKey'] ; Use StateMap
+            StateMap['currentColIndex'] := colIndex ; Use StateMap
             proceedToSubgrid := true
-            State.firstKey := "" ; Reset
+            StateMap['firstKey'] := "" ; Reset using StateMap
         }
         else if (firstKeyWasCol && isColKey) {
             ; Unexpected: Col -> Col (Change column)
-            State.firstKey := key ; Update stored col key
-            State.currentColIndex := colIndex
-            targetRowIndex := State.lastSelectedRowIndex ? State.lastSelectedRowIndex : 1
-            targetRowIndex := ValidateIndex(targetRowIndex, State.activeRowKeys.Length)
-            cellKey := key . State.activeRowKeys[targetRowIndex]
+            StateMap['firstKey'] := key ; Update stored col key using StateMap
+            StateMap['currentColIndex'] := colIndex ; Use StateMap
+            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1 ; Use StateMap
+            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
+            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; Use StateMap
             tooltipText := "Column changed to: " key ". Select row."
 
-            boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
             if (IsObject(boundaries)) {
                 targetCellX := boundaries.x
                 targetCellY := boundaries.y
@@ -1035,15 +1135,16 @@ HandleKey(key) {
         }
         else if (firstKeyWasRow && isRowKey) {
             ; Unexpected: Row -> Row (Change row)
-            State.firstKey := key ; Update stored row key
-            State.currentRowIndex := rowIndex
-            State.lastSelectedRowIndex := rowIndex
-            targetColIndex := State.currentColIndex ? State.currentColIndex : Ceil(State.activeColKeys.Length / 2)
-            targetColIndex := ValidateIndex(targetColIndex, State.activeColKeys.Length)
-            cellKey := State.activeColKeys[targetColIndex] . key
+            StateMap['firstKey'] := key ; Update stored row key using StateMap
+            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
+            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
+            targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'
+                ].Length / 2) ; Use StateMap
+            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
+            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Use StateMap
             tooltipText := "Row changed to: " key ". Select column."
 
-            boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
             if (IsObject(boundaries)) {
                 targetCellX := boundaries.x
                 targetCellY := boundaries.y
@@ -1053,7 +1154,7 @@ HandleKey(key) {
         }
         else {
             ; Invalid sequence (e.g., firstKey wasn't found in either col/row keys somehow?)
-            State.firstKey := ""
+            StateMap['firstKey'] := "" ; Use StateMap
             SetTimer(TrackCursor, 50)
             return
         }
@@ -1075,14 +1176,14 @@ HandleKey(key) {
 
     ; --- Proceed to Subgrid State (if proceedToSubgrid is true) ---
     if (!proceedToSubgrid || cellKey = "") {
-        State.firstKey := "" ; Ensure reset if something went wrong
+        StateMap['firstKey'] := "" ; Ensure reset if something went wrong using StateMap
         SetTimer(TrackCursor, 50)
         return
     }
 
-    boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
+    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
     if (IsObject(boundaries)) {
-        State.activeCellKey := cellKey
+        StateMap['activeCellKey'] := cellKey ; Use StateMap
         stateTransitionTime := A_TickCount
         currentState := "SUBGRID_ACTIVE"
 
@@ -1119,7 +1220,7 @@ HandleKey(key) {
 }
 
 HandleSubGridKey(subKey) {
-    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor
+    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap
 
     if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
         return
@@ -1134,27 +1235,27 @@ HandleSubGridKey(subKey) {
     targetCoords := subGrid.GetTargetCoordinates(subKey)
     if (IsObject(targetCoords)) {
         MouseMove(targetCoords.x, targetCoords.y, 0)
-        State.activeSubCellKey := subKey
+        StateMap['activeSubCellKey'] := subKey ; Use StateMap
 
         ; Remember this subcell for the current cell
-        if (State.activeCellKey != "") {
+        if (StateMap['activeCellKey'] != "") { ; Use StateMap
             ; Use a monitor-specific key if storePerMonitor is enabled
-            if (storePerMonitor && IsObject(State.currentOverlay)) {
-                monitorCellKey := State.currentOverlay.monitorIndex . "_" . State.activeCellKey
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+                monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . StateMap['activeCellKey'] ; Use StateMap
                 cellMemory[monitorCellKey] := subKey
             }
             ; Always store a general one too as fallback
-            cellMemory[State.activeCellKey] := subKey
+            cellMemory[StateMap['activeCellKey']] := subKey ; Use StateMap
             ; Save to file
             SaveCellMemory()
         }
 
         if (showcaseDebug) {
-            if (storePerMonitor && IsObject(State.currentOverlay)) {
-                ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey " on monitor " State.currentOverlay.monitorIndex
-                )
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+                ToolTip("Moved to sub-cell " subKey " in " StateMap['activeCellKey'] " on monitor " StateMap[
+                    'currentOverlay'].monitorIndex) ; Use StateMap
             } else {
-                ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey)
+                ToolTip("Moved to sub-cell " subKey " in " StateMap['activeCellKey']) ; Use StateMap
             }
         }
     } else {
@@ -1167,7 +1268,7 @@ HandleSubGridKey(subKey) {
 }
 
 StartNewSelection(key) {
-    global currentState, subGrid, highlight
+    global currentState, subGrid, highlight, StateMap
 
     ; IMPROVEMENT: Temporarily disable TrackCursor
     SetTimer(TrackCursor, 0)
@@ -1188,10 +1289,10 @@ StartNewSelection(key) {
         highlight.Hide()
     }
 
-    ; Reset state before handling the new key
-    State.activeCellKey := ""
-    State.activeSubCellKey := ""
-    State.firstKey := ""
+    ; Reset state before handling the new key using StateMap
+    StateMap['activeCellKey'] := ""
+    StateMap['activeSubCellKey'] := ""
+    StateMap['firstKey'] := ""
     currentState := "GRID_VISIBLE"
 
     ; Force a small delay to ensure state transitions properly
@@ -1204,7 +1305,7 @@ StartNewSelection(key) {
 }
 
 TrackCursor() {
-    global currentState, highlight, subGrid
+    global currentState, highlight, subGrid, StateMap
 
     ; Ignore if we're in the IDLE state or dragging
     if (currentState == "IDLE" || currentState == "DRAGGING") {
@@ -1216,22 +1317,22 @@ TrackCursor() {
         MouseGetPos(&x, &y)
 
         ; Check if we moved to a different monitor
-        previousOverlay := State.currentOverlay
+        previousOverlay := StateMap['currentOverlay'] ; Use StateMap
         changedMonitor := false
 
-        for overlay in State.overlays {
+        for overlay in StateMap['overlays'] { ; Use StateMap
             if (!IsObject(overlay)) {
                 continue
             }
 
             try {
-                if (overlay.ContainsPoint(x, y) && State.currentOverlay !== overlay) {
-                    State.currentOverlay := overlay
+                if (overlay.ContainsPoint(x, y) && StateMap['currentOverlay'] !== overlay) { ; Use StateMap
+                    StateMap['currentOverlay'] := overlay ; Use StateMap
                     changedMonitor := true
 
                     ; Don't clear active cell when changing monitors via hot keys
                     ; This is done to preserve position when switching monitors
-                    ; State.activeCellKey := ""
+                    ; StateMap['activeCellKey'] := "" ; Use StateMap
 
                     if (showcaseDebug) {
                         ToolTip("Switched to Monitor " overlay.monitorIndex)
@@ -1247,7 +1348,7 @@ TrackCursor() {
         }
 
         ; If monitor changed, hide subgrid until cell is determined ONLY if no active cell
-        if (changedMonitor && State.activeCellKey == "" && IsObject(subGrid)) {
+        if (changedMonitor && StateMap['activeCellKey'] == "" && IsObject(subGrid)) { ; Use StateMap
             subGrid.Hide()
 
             ; Also hide highlight until new cell is determined
@@ -1257,7 +1358,7 @@ TrackCursor() {
         }
 
         ; Only proceed if we have a valid current overlay
-        if (!IsObject(State.currentOverlay)) {
+        if (!IsObject(StateMap['currentOverlay'])) { ; Use StateMap
             return
         }
 
@@ -1266,8 +1367,8 @@ TrackCursor() {
             currentCellKey := GetCellAtPosition(x, y)
 
             ; Only update if the cell changed and we have valid boundaries
-            if (currentCellKey && currentCellKey != State.activeCellKey) {
-                boundaries := State.currentOverlay.GetCellBoundaries(currentCellKey)
+            if (currentCellKey && currentCellKey != StateMap['activeCellKey']) { ; Use StateMap
+                boundaries := StateMap['currentOverlay'].GetCellBoundaries(currentCellKey) ; Use StateMap
 
                 if (IsObject(boundaries)) {
                     ; Get the cell center position
@@ -1285,7 +1386,7 @@ TrackCursor() {
                         }
 
                         ; Update the active cell
-                        State.activeCellKey := currentCellKey
+                        StateMap['activeCellKey'] := currentCellKey ; Use StateMap
 
                         ; If we're in the grid visible state, switch to subgrid active
                         if (currentState == "GRID_VISIBLE") {
@@ -1298,21 +1399,21 @@ TrackCursor() {
 
                         ; Update column index based on current cell
                         colIndex := 0
-                        for i, k in State.activeColKeys {
+                        for i, k in StateMap['activeColKeys'] { ; Use StateMap
                             if (colChar = k) {
                                 colIndex := i
-                                State.currentColIndex := i  ; Update the current column index
+                                StateMap['currentColIndex'] := i  ; Update the current column index ; Use StateMap
                                 break
                             }
                         }
 
                         ; Update row index based on current cell
                         rowIndex := 0
-                        for i, k in State.activeRowKeys {
+                        for i, k in StateMap['activeRowKeys'] { ; Use StateMap
                             if (rowChar = k) {
                                 rowIndex := i
-                                State.currentRowIndex := i
-                                State.lastSelectedRowIndex := i  ; Remember this row
+                                StateMap['currentRowIndex'] := i ; Use StateMap
+                                StateMap['lastSelectedRowIndex'] := i  ; Remember this row ; Use StateMap
                                 break
                             }
                         }
@@ -1679,7 +1780,7 @@ Space:: {
             subGrid.Hide()
 
         ; Hide all grid overlays to prevent visual artifacts
-        for overlay in State.overlays {
+        for overlay in StateMap['overlays'] {
             if (IsObject(overlay))
                 overlay.Hide()
         }
@@ -1725,8 +1826,8 @@ Escape:: {
             ; Reset objects
             highlight := ""
             subGrid := ""
-            State.overlays := []
-            State.currentOverlay := ""
+            StateMap['overlays'] := []
+            StateMap['currentOverlay'] := ""
 
             ; Clear tooltips
             ToolTip()
@@ -1856,7 +1957,8 @@ CapsLock & q:: {
 
 ; Helper function to reuse the CapsLock & q code
 CapsLock_Q() {
-    global currentState, highlight, subGrid, cellMemory
+    global currentState, highlight, subGrid, cellMemory, StateMap
+    global selectedLayout, layoutConfigs, showcaseDebug ; Also ensure these are global
 
     ; If already active, clean up and exit
     if (currentState != "IDLE") {
@@ -1866,17 +1968,17 @@ CapsLock_Q() {
 
     ; Try to initialize
     try {
-        ; IMPROVEMENT: Explicitly reset all state variables
-        State.firstKey := ""
-        State.currentOverlay := ""
-        State.activeColKeys := []
-        State.activeRowKeys := []
-        State.activeCellKey := ""
-        State.activeSubCellKey := ""
-        State.currentColIndex := 0
-        State.currentRowIndex := 0
-        State.lastSelectedRowIndex := 0
-        State.overlays := []
+        ; IMPROVEMENT: Explicitly reset all state variables using StateMap
+        StateMap['firstKey'] := ""
+        StateMap['currentOverlay'] := ""
+        StateMap['activeColKeys'] := []
+        StateMap['activeRowKeys'] := []
+        StateMap['activeCellKey'] := ""
+        StateMap['activeSubCellKey'] := ""
+        StateMap['currentColIndex'] := 0
+        StateMap['currentRowIndex'] := 0
+        StateMap['lastSelectedRowIndex'] := 0
+        StateMap['overlays'] := []
 
         ; Load cell memory from file
         LoadCellMemory()
@@ -1884,15 +1986,31 @@ CapsLock_Q() {
         ; Get configured layout
         currentConfig := layoutConfigs[selectedLayout]
         if (!IsObject(currentConfig)) {
-            ToolTip("Invalid layout: " selectedLayout)
-            Sleep(2000)
-            ToolTip()
-            return
+            ; Fall back to default layout if the selected one is invalid
+            selectedLayout := 2
+            currentConfig := layoutConfigs[2]
+            if (showcaseDebug) {
+                ToolTip("Invalid layout selected, falling back to layout 2")
+                Sleep(2000)
+                ToolTip()
+            }
         }
 
-        ; Set up state
-        State.activeColKeys := currentConfig["colKeys"]
-        State.activeRowKeys := currentConfig["rowKeys"]
+        ; Set up state - ensure we have valid data
+        if (IsObject(currentConfig) && currentConfig.Has("colKeys") && currentConfig.Has("rowKeys") &&
+        IsObject(currentConfig["colKeys"]) && IsObject(currentConfig["rowKeys"])) {
+            StateMap['activeColKeys'] := currentConfig["colKeys"] ; Use StateMap
+            StateMap['activeRowKeys'] := currentConfig["rowKeys"] ; Use StateMap
+        } else {
+            ; Fallback to a basic layout if config is invalid
+            StateMap['activeColKeys'] := ["q", "w", "e", "r"] ; Use StateMap
+            StateMap['activeRowKeys'] := ["a", "s", "d", "f"] ; Use StateMap
+            if (showcaseDebug) {
+                ToolTip("Invalid layout configuration, using fallback layout")
+                Sleep(2000)
+                ToolTip()
+            }
+        }
 
         ; Get current mouse position
         MouseGetPos(&startX, &startY)
@@ -1910,16 +2028,17 @@ CapsLock_Q() {
         }
 
         ; Create overlay for each monitor
-        loop MonitorGetCount() {
+        monitorCount := MonitorGetCount()
+        loop monitorCount {
             try {
                 MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
-                overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, State.activeColKeys, State.activeRowKeys
-                )
+                overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, StateMap['activeColKeys'], StateMap[
+                    'activeRowKeys']) ; Use StateMap
                 overlay.Show()
-                State.overlays.Push(overlay)
+                StateMap['overlays'].Push(overlay) ; Use StateMap
 
                 if (overlay.ContainsPoint(startX, startY)) {
-                    State.currentOverlay := overlay
+                    StateMap['currentOverlay'] := overlay ; Use StateMap
                     foundMonitor := true
                 }
             } catch as e {
@@ -1933,12 +2052,12 @@ CapsLock_Q() {
         }
 
         ; If no monitor found for current position, use first overlay
-        if (!foundMonitor && State.overlays.Length > 0) {
-            State.currentOverlay := State.overlays[1]
+        if (!foundMonitor && StateMap['overlays'].Length > 0) { ; Use StateMap
+            StateMap['currentOverlay'] := StateMap['overlays'][1] ; Use StateMap
         }
 
         ; Only continue if overlay creation was successful
-        if (State.overlays.Length > 0 && IsObject(State.currentOverlay)) {
+        if (StateMap['overlays'].Length > 0 && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
             currentState := "GRID_VISIBLE"
             SetTimer(TrackCursor, 50)
         } else {
@@ -2051,7 +2170,7 @@ ShowSettingsGUI() {
         highlightColor := highlightColorEdit.Value
 
         ; Apply changes immediately
-        for overlay in State.overlays {
+        for overlay in StateMap['overlays'] {
             if (IsObject(overlay) && IsObject(overlay.gridOverlay) && IsObject(overlay.gridOverlay.gui)) {
                 try {
                     ; Update transparency in active overlays
@@ -2071,7 +2190,10 @@ ShowSettingsGUI() {
             }
         }
 
-        MsgBox("Settings saved successfully!")
+        ; Save settings to INI file
+        if (SaveSettings()) {
+            MsgBox("Settings saved successfully!")
+        }
     }
 
     ResetDefaults(*) {
@@ -2108,3 +2230,7 @@ ShowSettingsGUI() {
     ; Show the settings GUI
     settingsGui.Show("w400 h380")
 }
+
+; Load settings at script startup
+LoadSettings()
+LoadCellMemory()
