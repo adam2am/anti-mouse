@@ -1959,4 +1959,152 @@ CapsLock_Q() {
     }
 }
 
-; This section consolidates hotkey definitions using FSM states, initializing GUI instances on activation. Yes, implemented.
+; Add settings hotstring - make sure it's enabled
+#Hotstring EndChars `t `n
+#Hotstring O
+:*:;settings::
+{
+    ShowSettingsGUI()
+    return
+}
+
+; Function to show settings GUI
+ShowSettingsGUI() {
+    global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
+    global defaultTransparency, highlightColor
+
+    ; Create settings GUI
+    settingsGui := Gui("+AlwaysOnTop +Resize", "Anti-Mouse Settings")
+    settingsGui.SetFont("s10", "Segoe UI")
+
+    ; General settings
+    settingsGui.Add("GroupBox", "x10 y10 w380 h100", "General Settings")
+
+    settingsGui.Add("Text", "x20 y30 w120 h20", "Layout:")
+    layoutDropdown := settingsGui.Add("DropDownList", "x150 y30 w230 h20",
+        ["1: User QWERTY/ASDF", "2: Ergonomics for diff hands", "3: WASD/QWER", "4: Custom"])
+    layoutDropdown.Choose(selectedLayout)
+
+    settingsGui.Add("Text", "x20 y60 w120 h20", "Store Per Monitor:")
+    storePerMonitorCheckbox := settingsGui.Add("Checkbox", "x150 y60 w230 h20",
+        "Remember subcell positions per monitor")
+    storePerMonitorCheckbox.Value := storePerMonitor
+
+    settingsGui.Add("Text", "x20 y80 w120 h20", "Debug Mode:")
+    debugCheckbox := settingsGui.Add("Checkbox", "x150 y80 w230 h20", "Show debug tooltips")
+    debugCheckbox.Value := showcaseDebug
+
+    ; Monitor mapping
+    settingsGui.Add("GroupBox", "x10 y120 w380 h120", "Monitor Mapping")
+
+    ; Create monitor input controls
+    mapInputs := []
+    for i, mapping in monitorMapping {
+        ; Calculate y position
+        y := 140 + (i - 1) * 25
+        settingsGui.Add("Text", "x20 y" y " w140 h20", "Physical Monitor " i ":")
+        mapInputs.Push(settingsGui.Add("Edit", "x170 y" y " w40 h20", mapping))
+        settingsGui.Add("UpDown", "Range1-4", mapping)
+    }
+
+    ; Appearance
+    settingsGui.Add("GroupBox", "x10 y250 w380 h80", "Appearance")
+
+    settingsGui.Add("Text", "x20 y270 w130 h20", "Transparency:")
+    transparencySlider := settingsGui.Add("Slider", "x150 y270 w230 h20 Range0-255 TickInterval20", defaultTransparency
+    )
+
+    transparencyText := settingsGui.Add("Text", "x150 y295 w50 h20", defaultTransparency)
+
+    ; Update transparency text when slider changes (using function defined first)
+    UpdateSliderText(*) {
+        transparencyText.Value := transparencySlider.Value
+    }
+    transparencySlider.OnEvent("Change", UpdateSliderText)
+
+    settingsGui.Add("Text", "x200 y295 w130 h20", "Highlight Color:")
+    highlightColorEdit := settingsGui.Add("Edit", "x340 y295 w50 h20", highlightColor)
+
+    ; Buttons
+    applyBtn := settingsGui.Add("Button", "x10 y340 w120 h30", "Apply")
+    resetBtn := settingsGui.Add("Button", "x140 y340 w120 h30", "Reset to Default")
+    closeBtn := settingsGui.Add("Button", "x270 y340 w120 h30", "Close")
+
+    ; Define button functions
+    ApplySettings(*) {
+        ; Need to access globals
+        global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
+        global defaultTransparency, highlightColor
+
+        ; Update general settings
+        selectedLayout := layoutDropdown.Value
+        storePerMonitor := storePerMonitorCheckbox.Value
+        showcaseDebug := debugCheckbox.Value
+
+        ; Update monitor mapping
+        for i, _ in monitorMapping {
+            monitorMapping[i] := mapInputs[i].Value
+        }
+
+        ; Update appearance
+        defaultTransparency := transparencySlider.Value
+        highlightColor := highlightColorEdit.Value
+
+        ; Apply changes immediately
+        for overlay in State.overlays {
+            if (IsObject(overlay) && IsObject(overlay.gridOverlay) && IsObject(overlay.gridOverlay.gui)) {
+                try {
+                    ; Update transparency in active overlays
+                    WinSetTransColor("000000 " defaultTransparency, overlay.gridOverlay.gui)
+                } catch {
+                    ; Silently ignore errors
+                }
+            }
+        }
+
+        ; Update highlight color if possible
+        if (IsObject(highlight) && IsObject(highlight.gui)) {
+            try {
+                highlight.gui.BackColor := highlightColor
+            } catch {
+                ; Silently ignore errors
+            }
+        }
+
+        MsgBox("Settings saved successfully!")
+    }
+
+    ResetDefaults(*) {
+        ; Reset dropdown and checkboxes
+        layoutDropdown.Choose(2)  ; Default layout
+        storePerMonitorCheckbox.Value := true
+        debugCheckbox.Value := false
+
+        ; Reset monitor mapping
+        if (mapInputs.Length >= 4) {
+            mapInputs[1].Value := 2
+            mapInputs[2].Value := 1
+            mapInputs[3].Value := 3
+            mapInputs[4].Value := 4
+        }
+
+        ; Reset appearance
+        transparencySlider.Value := 180
+        UpdateSliderText()
+        highlightColorEdit.Value := "33AAFF"
+    }
+
+    CloseSettings(*) {
+        settingsGui.Destroy()
+    }
+
+    ; Set event handlers
+    applyBtn.OnEvent("Click", ApplySettings)
+    resetBtn.OnEvent("Click", ResetDefaults)
+    closeBtn.OnEvent("Click", CloseSettings)
+    settingsGui.OnEvent("Close", CloseSettings)
+    settingsGui.OnEvent("Escape", CloseSettings)
+
+    ; Show the settings GUI
+    settingsGui.Show("w400 h380")
+}
