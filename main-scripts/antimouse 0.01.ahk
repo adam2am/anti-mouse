@@ -38,9 +38,9 @@ global layoutConfigs := Map(
 )
 
 ; Sub-grid configuration
-global subGridKeys := ["7", "8", "9", "4", "5", "6", "1", "2", "3"]
-global subGridRows := 3
-global subGridCols := 3
+global subGridKeys := ["b", "n", "g", "h"]
+global subGridRows := 2
+global subGridCols := 2
 
 ; This section defines global variables and configurations, initializing the FSM state and placeholders for GUI reuse. Yes, implemented.
 
@@ -134,7 +134,7 @@ class SubGridOverlay {
         this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Vertical 2
 
         ; Add text controls for sub-cells - use Center and 0x200 for better vertical centering
-        loop 9 {
+        loop 4 {
             this.textControls.Push(this.gui.Add("Text", "x0 y0 w0 h0 Center +0x200 BackgroundTrans cFFFF00",
                 subGridKeys[A_Index]))
         }
@@ -147,8 +147,8 @@ class SubGridOverlay {
         this.y := y
         this.width := w
         this.height := h
-        this.subCellWidth := w // 3
-        this.subCellHeight := h // 3
+        this.subCellWidth := w // 2
+        this.subCellHeight := h // 2
 
         borderThickness := 1  ; Change from 2px to 1px
         fontSize := Max(16, Min(this.subCellWidth, this.subCellHeight) // 3)
@@ -161,8 +161,8 @@ class SubGridOverlay {
         this.borderControls[4].Move(w - borderThickness, 0, borderThickness, h) ; Right
 
         ; Update internal cell borders
-        cellHeight := h // 3
-        cellWidth := w // 3
+        cellHeight := h // 2
+        cellWidth := w // 2
 
         ; Horizontal internal borders
         this.cellBorders[1].Move(0, cellHeight, w, borderThickness)                      ; Horizontal 1
@@ -172,11 +172,11 @@ class SubGridOverlay {
         this.cellBorders[3].Move(cellWidth, 0, borderThickness, h)                       ; Vertical 1
         this.cellBorders[4].Move(cellWidth * 2, 0, borderThickness, h)                   ; Vertical 2
 
-        ; Update text controls - centered in each cell with proper numbering layout (7-8-9/4-5-6/1-2-3)
+        ; Update text controls - centered in each cell with proper numbering layout (b-n/g-h)
         index := 1
-        loop 3 {
+        loop 2 {
             row := A_Index - 1
-            loop 3 {
+            loop 2 {
                 col := A_Index - 1
                 subX := col * this.subCellWidth
                 subY := row * this.subCellHeight
@@ -955,7 +955,7 @@ HandleKey(key) {
         }
 
         if (showcaseDebug) {
-            ToolTip("Cell '" cellKey "' targeted. Use 1-9.")
+            ToolTip("Cell '" cellKey "' targeted. Use b-h.")
         }
     }
 
@@ -1365,18 +1365,43 @@ m:: {
         StartNewSelection("m")
     }
 }
+
+; Add scan code versions of these keys for layout independence
+SC033:: {  ; Comma key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(",")
+    } else {
+        StartNewSelection(",")
+    }
+}
+SC034:: {  ; Period key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(".")
+    } else {
+        StartNewSelection(".")
+    }
+}
+SC035:: {  ; Slash key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("/")
+    } else {
+        StartNewSelection("/")
+    }
+}
+SC032:: {  ; M key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("m")
+    } else {
+        StartNewSelection("m")
+    }
+}
 #HotIf
 
 #HotIf currentState == "SUBGRID_ACTIVE"
-1:: HandleSubGridKey("1")
-2:: HandleSubGridKey("2")
-3:: HandleSubGridKey("3")
-4:: HandleSubGridKey("4")
-5:: HandleSubGridKey("5")
-6:: HandleSubGridKey("6")
-7:: HandleSubGridKey("7")
-8:: HandleSubGridKey("8")
-9:: HandleSubGridKey("9")
+b:: HandleSubGridKey("b")
+n:: HandleSubGridKey("n")
+g:: HandleSubGridKey("g")
+h:: HandleSubGridKey("h")
 #HotIf
 
 #HotIf currentState == "GRID_VISIBLE"
@@ -1487,71 +1512,6 @@ Tab:: {
     SetTimer(TrackCursor, 50)
 }
 #HotIf
-
-; Add Tab+number hotkeys for direct monitor switching
-Tab & 1:: {
-    global currentState
-
-    ; Temporarily disable tracking
-    SetTimer(TrackCursor, 0)
-
-    ; If grid not active, activate it first
-    if (currentState == "IDLE") {
-        CapsLock_Q()
-        Sleep(100)
-    }
-
-    ; Switch to monitor 1
-    SwitchMonitor(1)
-}
-
-Tab & 2:: {
-    global currentState
-
-    ; Temporarily disable tracking
-    SetTimer(TrackCursor, 0)
-
-    ; If grid not active, activate it first
-    if (currentState == "IDLE") {
-        CapsLock_Q()
-        Sleep(100)
-    }
-
-    ; Switch to monitor 2
-    SwitchMonitor(2)
-}
-
-Tab & 3:: {
-    global currentState
-
-    ; Temporarily disable tracking
-    SetTimer(TrackCursor, 0)
-
-    ; If grid not active, activate it first
-    if (currentState == "IDLE") {
-        CapsLock_Q()
-        Sleep(100)
-    }
-
-    ; Switch to monitor 3
-    SwitchMonitor(3)
-}
-
-Tab & 4:: {
-    global currentState
-
-    ; Temporarily disable tracking
-    SetTimer(TrackCursor, 0)
-
-    ; If grid not active, activate it first
-    if (currentState == "IDLE") {
-        CapsLock_Q()
-        Sleep(100)
-    }
-
-    ; Switch to monitor 4
-    SwitchMonitor(4)
-}
 
 ; Monitor switching hotkeys that work regardless of grid state
 CapsLock & 1:: {
