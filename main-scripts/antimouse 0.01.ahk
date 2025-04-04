@@ -24,7 +24,7 @@ global subGrid := ""                ; Single SubGridOverlay instance (initialize
 
 ; Layout configurations
 global layoutConfigs := Map(
-    1, Map("cols", 8, "rows", 8, "colKeys", ["q", "w", "e", "r", "u", "i", "o", "p"], "rowKeys", ["a", "s",
+    1, Map("cols", 8, "rows", 10, "colKeys", ["q", "w", "e", "r", "u", "i", "o", "p"], "rowKeys", ["a", "s",
         "d", "f", "g", "h", "j", "k", "l", ";"]),
     2, Map("cols", 4, "rows", 4, "colKeys", ["a", "s", "d", "f"], "rowKeys", ["j", "k", "lq", ";"]),
     3, Map("cols", 4, "rows", 4, "colKeys", ["q", "w", "e", "r"], "rowKeys", ["a", "s", "d", "f"])
@@ -1616,7 +1616,7 @@ CapsLock & 2:: {
     ; If grid not active, activate it first
     if (currentState == "IDLE") {
         CapsLock_Q()  ; Call the grid activation function
-        Sleep(100)  ; Short delay to ensure grid is initialized
+        Sleep(100)  ; Short delay to bensure grid is initialized
     }
 
     ; Now switch to monitor 2
