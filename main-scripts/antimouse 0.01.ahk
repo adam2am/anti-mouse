@@ -24,7 +24,7 @@ global subGrid := ""                ; Single SubGridOverlay instance (initialize
 
 ; Layout configurations
 global layoutConfigs := Map(
-    1, Map("cols", 10, "rows", 10, "colKeys", ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"], "rowKeys", ["a", "s",
+    1, Map("cols", 8, "rows", 8, "colKeys", ["q", "w", "e", "r", "u", "i", "o", "p"], "rowKeys", ["a", "s",
         "d", "f", "g", "h", "j", "k", "l", ";"]),
     2, Map("cols", 4, "rows", 4, "colKeys", ["a", "s", "d", "f"], "rowKeys", ["j", "k", "lq", ";"]),
     3, Map("cols", 4, "rows", 4, "colKeys", ["q", "w", "e", "r"], "rowKeys", ["a", "s", "d", "f"])
@@ -567,6 +567,9 @@ CycleToNextMonitor() {
             centerY := boundaries.y + (boundaries.h // 2)
             MouseMove(centerX, centerY, 0)
 
+            ; Update state BEFORE updating UI
+            State.activeCellKey := cellKey
+
             ; Update highlight
             if (IsObject(highlight)) {
                 highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
@@ -575,10 +578,9 @@ CycleToNextMonitor() {
             ; Update subgrid if we were in subgrid mode
             if (wasInSubgrid && IsObject(subGrid)) {
                 subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                ; Force state to SUBGRID_ACTIVE to ensure proper rendering
+                currentState := "SUBGRID_ACTIVE"
             }
-
-            ; Update state
-            State.activeCellKey := cellKey
         } else {
             ; If can't get boundaries, just move to center of monitor
             centerX := newOverlay.Left + (newOverlay.width // 2)
@@ -864,6 +866,9 @@ TrackCursor() {
         MouseGetPos(&x, &y)
 
         ; Check if we moved to a different monitor
+        previousOverlay := State.currentOverlay
+        changedMonitor := false
+
         for overlay in State.overlays {
             if (!IsObject(overlay)) {
                 continue
@@ -872,6 +877,11 @@ TrackCursor() {
             try {
                 if (overlay.ContainsPoint(x, y) && State.currentOverlay !== overlay) {
                     State.currentOverlay := overlay
+                    changedMonitor := true
+
+                    ; Clear any active cell when changing monitors to force recalculation
+                    State.activeCellKey := ""
+
                     if (showcaseDebug) {
                         ToolTip("Switched to Monitor " overlay.monitorIndex)
                         Sleep(1000)
@@ -882,6 +892,16 @@ TrackCursor() {
             } catch {
                 ; Skip this overlay if there's an error
                 continue
+            }
+        }
+
+        ; If monitor changed, hide subgrid until cell is determined
+        if (changedMonitor && IsObject(subGrid)) {
+            subGrid.Hide()
+
+            ; Also hide highlight until new cell is determined
+            if (IsObject(highlight)) {
+                highlight.Hide()
             }
         }
 
@@ -1259,8 +1279,14 @@ Space:: {
         if (IsObject(subGrid))
             subGrid.Hide()
 
+        ; Hide all grid overlays to prevent visual artifacts
+        for overlay in State.overlays {
+            if (IsObject(overlay))
+                overlay.Hide()
+        }
+
         ; Small delay to ensure UI elements are hidden
-        Sleep(20)
+        Sleep(30)
 
         ; Forcefully set state to prevent conflicts
         currentState := "IDLE"
@@ -1269,7 +1295,7 @@ Space:: {
         MouseClick("Left", mouseX, mouseY, 1, 0)
 
         ; Ensure cleanup happens after the click
-        Sleep(20)
+        Sleep(30)
 
         ; Clean up after the click
         Cleanup()
@@ -1287,7 +1313,30 @@ Space:: {
 Escape:: Cleanup()
 
 ; Add Tab key to cycle through monitors
-Tab:: CycleToNextMonitor()
+Tab:: {
+    ; Temporarily disable TrackCursor completely
+    SetTimer(TrackCursor, 0)
+
+    ; Hide subgrid and highlight before switching to prevent visual artifacts
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+
+    ; Small delay to ensure UI is hidden
+    Sleep(20)
+
+    ; Now cycle
+    CycleToNextMonitor()
+
+    ; Add a small delay before re-enabling cursor tracking
+    Sleep(30)
+
+    ; Re-enable cursor tracking
+    SetTimer(TrackCursor, 50)
+}
 #HotIf
 
 ; Add Tab+number hotkeys for direct monitor switching
