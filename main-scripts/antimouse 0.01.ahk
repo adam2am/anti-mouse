@@ -667,9 +667,11 @@ HandleKey(key) {
     }
 
     if (!isColKey && !isRowKey) {
-        ToolTip("Invalid key: " key)
-        Sleep 1000
-        ToolTip()
+        if (showcaseDebug) {
+            ToolTip("Invalid key: " key)
+            Sleep 1000
+            ToolTip()
+        }
         ; Re-enable TrackCursor before returning
         SetTimer(TrackCursor, 50)
         return
@@ -703,7 +705,9 @@ HandleKey(key) {
                 ; IMPROVEMENT: Small sleep after MouseMove
                 Sleep(10)
 
-                ToolTip("First key: " key ". Select row.")
+                if (showcaseDebug) {
+                    ToolTip("First key: " key ". Select row.")
+                }
             }
             ; Re-enable TrackCursor before returning
             SetTimer(TrackCursor, 50)
@@ -761,7 +765,9 @@ HandleKey(key) {
             MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
             ; IMPROVEMENT: Small sleep after MouseMove
             Sleep(10)
-            ToolTip("Column changed to: " key ". Select row.")
+            if (showcaseDebug) {
+                ToolTip("Column changed to: " key ". Select row.")
+            }
         }
         ; Re-enable TrackCursor and return
         SetTimer(TrackCursor, 50)
@@ -778,7 +784,9 @@ HandleKey(key) {
         Sleep(10)
         State.activeCellKey := cellKey
         currentState := "SUBGRID_ACTIVE"
-        ToolTip("Cell '" cellKey "' targeted. Use 1-9.")
+        if (showcaseDebug) {
+            ToolTip("Cell '" cellKey "' targeted. Use 1-9.")
+        }
     }
 
     ; Re-enable TrackCursor
@@ -794,11 +802,15 @@ HandleSubGridKey(subKey) {
     if (IsObject(targetCoords)) {
         MouseMove(targetCoords.x, targetCoords.y, 0)
         State.activeSubCellKey := subKey
-        ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey)
+        if (showcaseDebug) {
+            ToolTip("Moved to sub-cell " subKey " in " State.activeCellKey)
+        }
     } else {
-        ToolTip("Invalid sub-key: " subKey)
-        Sleep 1000
-        ToolTip()
+        if (showcaseDebug) {
+            ToolTip("Invalid sub-key: " subKey)
+            Sleep 1000
+            ToolTip()
+        }
     }
 }
 
@@ -1238,6 +1250,9 @@ Space:: {
         ; First stop tracking and change state to prevent issues
         SetTimer(TrackCursor, 0)
 
+        ; Explicitly remove tooltips
+        ToolTip()
+
         ; Hide elements immediately
         if (IsObject(highlight))
             highlight.Hide()
@@ -1245,10 +1260,16 @@ Space:: {
             subGrid.Hide()
 
         ; Small delay to ensure UI elements are hidden
-        Sleep(10)
+        Sleep(20)
 
-        ; Now perform the mouse click
+        ; Forcefully set state to prevent conflicts
+        currentState := "IDLE"
+
+        ; Now perform the mouse click - revert to the more reliable MouseClick
         MouseClick("Left", mouseX, mouseY, 1, 0)
+
+        ; Ensure cleanup happens after the click
+        Sleep(20)
 
         ; Clean up after the click
         Cleanup()
