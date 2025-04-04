@@ -11,7 +11,7 @@ CoordMode "Mouse", "Screen" ; Mouse coordinates relative to the virtual screen
 
 ; Global configuration
 global showcaseDebug := false       ; Enable debug tooltips and delays
-global selectedLayout := 3            ; Layout options: 1=User QWERTY/ASDF, 2=Home Row ASDF/JKL;, 3=WASD/QWER
+global selectedLayout := 1            ; Layout options: 1=User QWERTY/ASDF, 2=Home Row ASDF/JKL;, 3=WASD/QWER
 global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
 global highlightColor := "33AAFF"   ; Highlight color for selected cells
 
@@ -503,6 +503,109 @@ SwitchMonitor(monitorNum) {
             ToolTip()
         }
     }
+}
+
+; New function to cycle through monitors
+CycleToNextMonitor() {
+    global currentState, highlight, subGrid
+
+    if (currentState == "IDLE" || State.overlays.Length <= 1) {
+        return
+    }
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
+    ; Find current monitor index and cell position
+    currentMonitorIndex := 0
+    for i, overlay in State.overlays {
+        if (overlay == State.currentOverlay) {
+            currentMonitorIndex := i
+            break
+        }
+    }
+
+    ; Remember current position
+    rememberedColIndex := State.currentColIndex
+    rememberedRowIndex := State.currentRowIndex
+    wasInSubgrid := currentState == "SUBGRID_ACTIVE"
+
+    ; Calculate next monitor index with wrap-around
+    nextMonitorIndex := currentMonitorIndex + 1
+    if (nextMonitorIndex > State.overlays.Length) {
+        nextMonitorIndex := 1
+    }
+
+    ; Get the new overlay
+    newOverlay := State.overlays[nextMonitorIndex]
+    if (!newOverlay) {
+        ; Re-enable tracking if no valid overlay
+        SetTimer(TrackCursor, 50)
+        return
+    }
+
+    ; Update state
+    State.currentOverlay := newOverlay
+
+    ; Only attempt to position if we had a valid position
+    if (rememberedColIndex > 0 && rememberedRowIndex > 0) {
+        ; Ensure indices are valid for new overlay
+        colIndex := Min(rememberedColIndex, State.activeColKeys.Length)
+        rowIndex := Min(rememberedRowIndex, State.activeRowKeys.Length)
+
+        ; Get the cell key
+        colKey := State.activeColKeys[colIndex]
+        rowKey := State.activeRowKeys[rowIndex]
+        cellKey := colKey . rowKey
+
+        ; Get boundaries for that cell
+        boundaries := newOverlay.GetCellBoundaries(cellKey)
+
+        if (IsObject(boundaries)) {
+            ; Move to the center of the cell
+            centerX := boundaries.x + (boundaries.w // 2)
+            centerY := boundaries.y + (boundaries.h // 2)
+            MouseMove(centerX, centerY, 0)
+
+            ; Update highlight
+            if (IsObject(highlight)) {
+                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            }
+
+            ; Update subgrid if we were in subgrid mode
+            if (wasInSubgrid && IsObject(subGrid)) {
+                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            }
+
+            ; Update state
+            State.activeCellKey := cellKey
+        } else {
+            ; If can't get boundaries, just move to center of monitor
+            centerX := newOverlay.Left + (newOverlay.width // 2)
+            centerY := newOverlay.Top + (newOverlay.height // 2)
+            MouseMove(centerX, centerY, 0)
+
+            ; Hide UI elements
+            if (IsObject(highlight)) {
+                highlight.Hide()
+            }
+            if (IsObject(subGrid)) {
+                subGrid.Hide()
+            }
+        }
+    } else {
+        ; No valid position remembered, move to center
+        centerX := newOverlay.Left + (newOverlay.width // 2)
+        centerY := newOverlay.Top + (newOverlay.height // 2)
+        MouseMove(centerX, centerY, 0)
+    }
+
+    if (showcaseDebug) {
+        ToolTip("Switched to Monitor " nextMonitorIndex)
+    }
+
+    ; Re-enable tracking
+    SetTimer(TrackCursor, 50)
 }
 
 GetCellAtPosition(x, y) {
@@ -1160,84 +1263,64 @@ Space:: {
     }
 }
 
-RButton:: {
-    try {
-        ; Save position before cleanup
-        MouseGetPos(&mouseX, &mouseY)
-
-        ; Hide UI elements first
-        if (IsObject(highlight))
-            highlight.Hide()
-        if (IsObject(subGrid))
-            subGrid.Hide()
-
-        ; Short delay
-        Sleep(10)
-
-        ; Perform right click
-        MouseClick("Right", mouseX, mouseY, 1, 0)
-
-        ; Clean up
-        Cleanup()
-    } catch {
-        Cleanup()
-    }
-}
-
-MButton:: {
-    try {
-        ; Save position before cleanup
-        MouseGetPos(&mouseX, &mouseY)
-
-        ; Hide UI elements first
-        if (IsObject(highlight))
-            highlight.Hide()
-        if (IsObject(subGrid))
-            subGrid.Hide()
-
-        ; Short delay
-        Sleep(10)
-
-        ; Perform middle click
-        MouseClick("Middle", mouseX, mouseY, 1, 0)
-
-        ; Clean up
-        Cleanup()
-    } catch {
-        Cleanup()
-    }
-}
-
-v:: {
-    if (currentState != "DRAGGING") {
-        try {
-            Click("Down")
-            currentState := "DRAGGING"
-            ToolTip("Drag started. Press 'b' to release.")
-        } catch {
-            ; If click fails, reset state
-            currentState := "GRID_VISIBLE"
-            ToolTip("Failed to start dragging")
-            Sleep(1000)
-            ToolTip()
-        }
-    }
-}
-
-b:: {
-    if (currentState == "DRAGGING") {
-        try {
-            Click("Up")
-            Cleanup()
-        } catch {
-            ; If click fails, still try to cleanup
-            Cleanup()
-        }
-    }
-}
-
 Escape:: Cleanup()
+
+; Add Tab key to cycle through monitors
+Tab:: CycleToNextMonitor()
 #HotIf
+
+; Add Tab+number hotkeys for direct monitor switching
+Tab & 1:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()
+        Sleep(100)
+    }
+
+    ; Switch to monitor 1
+    SwitchMonitor(1)
+}
+
+Tab & 2:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()
+        Sleep(100)
+    }
+
+    ; Switch to monitor 2
+    SwitchMonitor(2)
+}
+
+Tab & 3:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()
+        Sleep(100)
+    }
+
+    ; Switch to monitor 3
+    SwitchMonitor(3)
+}
+
+Tab & 4:: {
+    global currentState
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()
+        Sleep(100)
+    }
+
+    ; Switch to monitor 4
+    SwitchMonitor(4)
+}
 
 ; Monitor switching hotkeys that work regardless of grid state
 CapsLock & 1:: {
