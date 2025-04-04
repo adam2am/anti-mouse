@@ -1430,6 +1430,12 @@ SC023:: {  ; H key scan code
         StartNewSelection("h")
     }
 }
+
+; Add number keys for monitor switching
+1:: SwitchMonitor(1)
+2:: SwitchMonitor(2)
+3:: SwitchMonitor(3)
+4:: SwitchMonitor(4)
 #HotIf
 
 #HotIf currentState == "SUBGRID_ACTIVE"
@@ -1437,6 +1443,12 @@ b:: HandleSubGridKey("b")
 n:: HandleSubGridKey("n")
 g:: HandleSubGridKey("g")
 h:: HandleSubGridKey("h")
+
+; Add number keys for monitor switching
+1:: SwitchMonitor(1)
+2:: SwitchMonitor(2)
+3:: SwitchMonitor(3)
+4:: SwitchMonitor(4)
 #HotIf
 
 #HotIf currentState == "GRID_VISIBLE"
