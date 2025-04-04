@@ -181,11 +181,29 @@ class SubGridOverlay {
                     this.subCellWidth,
                     this.subCellHeight
                 )
+
+                ; Force text to redraw with updated color
+                this.textControls[index].Opt("cFFFF00")
+                this.textControls[index].Text := subGridKeys[index]
+
                 index += 1
             }
         }
 
+        ; Ensure transparency is set correctly
+        WinSetTransColor("222222 " this.transparency, this.gui)
+
+        ; Show the window with updated parameters
         this.gui.Show(Format("x{} y{} w{} h{} NoActivate", x, y, w, h))
+
+        ; Force window to front to ensure visibility
+        try {
+            WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+        } catch {
+        }
+
+        ; Short delay to ensure rendering completes
+        Sleep(10)
     }
 
     Hide() {
@@ -900,13 +918,35 @@ HandleKey(key) {
     ; Process the final cell selection
     boundaries := State.currentOverlay.GetCellBoundaries(cellKey)
     if (IsObject(boundaries)) {
-        highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-        subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-        MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-        ; IMPROVEMENT: Small sleep after MouseMove
-        Sleep(10)
+        ; Update state BEFORE UI changes
         State.activeCellKey := cellKey
         currentState := "SUBGRID_ACTIVE"
+
+        ; First update highlight
+        highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+
+        ; Move the cursor to the center of the highlighted cell
+        MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+
+        ; Small delay to ensure UI updates properly
+        Sleep(20)
+
+        ; Now update subgrid after the highlight is shown and cursor moved
+        subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+
+        ; Ensure subgrid is visible - use a more compatible approach
+        try {
+            ; Force redraw by temporarily changing the window's style
+            if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                winHwnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                if (winHwnd) {
+                    ; Force window to redraw by sending a redraw message
+                    PostMessage(0x000F, 0, 0, , "ahk_id " winHwnd)  ; WM_PAINT message
+                }
+            }
+        } catch {
+        }
+
         if (showcaseDebug) {
             ToolTip("Cell '" cellKey "' targeted. Use 1-9.")
         }
