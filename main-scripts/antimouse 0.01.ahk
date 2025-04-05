@@ -1019,7 +1019,12 @@ GetCellAtPosition(x, y) {
 
 HandleKey(key) {
     global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap,
-        storePerMonitor, showcaseDebug
+        storePerMonitor, showcaseDebug, instaClickMode, g_ModifierState
+
+    ; Special handling for instaclick mode - always handle key events even when CapsLock is held
+    if (instaClickMode && g_ModifierState.inHoldMode) {
+        ; Process key normally, even though CapsLock is being held
+    }
 
     ; IMPROVEMENT: Explicit hiding at the beginning
     if (IsObject(highlight)) {
@@ -1280,7 +1285,12 @@ HandleKey(key) {
 
 HandleSubGridKey(subKey) {
     global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap,
-        showcaseDebug
+        showcaseDebug, instaClickMode, g_ModifierState
+
+    ; Special handling for instaclick mode - always handle key events even when CapsLock is held
+    if (instaClickMode && g_ModifierState.inHoldMode) {
+        ; Process key normally, even though CapsLock is being held
+    }
 
     if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
         return
@@ -1656,7 +1666,7 @@ l:: {
         StartNewSelection("l")
     }
 }
-`:: {
+`;:: {
     if (currentState == "GRID_VISIBLE") {
         HandleKey(";")
     } else {
@@ -1797,9 +1807,8 @@ b:: {
     }
 }
 n:: {
-    ; Add a guard to prevent key leakage during state transitions
-    timeSinceTransition := A_TickCount - stateTransitionTime
-    if (timeSinceTransition >= stateTransitionDelay) {
+    global currentState, stateTransitionTime, stateTransitionDelay
+    if (currentState == "SUBGRID_ACTIVE" && (A_TickCount - stateTransitionTime >= stateTransitionDelay)) {
         HandleSubGridKey("n")
     }
 }
@@ -1944,7 +1953,7 @@ global g_ModifierState := {
 }
 ; CapsLock handler for single tap + press activation
 CapsLock:: {
-    global g_ModifierState, doubleCapsThreshold, instaClickMode
+    global g_ModifierState, doubleCapsThreshold, instaClickMode, currentState
 
     ; Update CapsLock state
     g_ModifierState.caps := GetKeyState("CapsLock", "P")
@@ -1955,7 +1964,6 @@ CapsLock:: {
     if (g_ModifierState.capsPressedFirstTime == 0) {
         g_ModifierState.capsPressedFirstTime := currentTime
         g_ModifierState.inHoldMode := false  ; Reset hold mode on first press
-        instaClickMode := false  ; Reset instaclick mode
 
         if showcaseDebug {
             ToolTip("CapsLock first press detected")
@@ -1967,14 +1975,15 @@ CapsLock:: {
         if ((currentTime - g_ModifierState.capsPressedFirstTime) < doubleCapsThreshold) {
             g_ModifierState.capsPressedSecondTime := currentTime
             g_ModifierState.inHoldMode := true  ; Set hold mode on second press
-            instaClickMode := true  ; Enable instaclick mode
 
             if showcaseDebug {
                 ToolTip("CapsLock second press detected - hold mode active")
             }
 
             ; Activate grid immediately on second press
-            CapsLock_Q()
+            if (currentState == "IDLE") {
+                CapsLock_Q()
+            }
 
             ; Note: Do NOT reset state as we want to track the hold
             ; g_ModifierState.capsPressedFirstTime := 0
@@ -1984,7 +1993,6 @@ CapsLock:: {
             g_ModifierState.capsPressedFirstTime := currentTime
             g_ModifierState.capsPressedSecondTime := 0
             g_ModifierState.inHoldMode := false  ; Reset hold mode flag
-            instaClickMode := false  ; Reset instaclick mode
 
             if showcaseDebug {
                 ToolTip("CapsLock first press (reset)")
@@ -2013,7 +2021,7 @@ CapsLock Up:: {
     g_ModifierState.caps := false
 
     ; Handle instaclick mode - perform click when releasing CapsLock
-    if (instaClickMode && currentState != "IDLE") {
+    if (instaClickMode && currentState != "IDLE" && g_ModifierState.inHoldMode) {
         if showcaseDebug {
             ToolTip("InstaClick: Clicking at current position")
         }
@@ -2051,26 +2059,30 @@ CapsLock Up:: {
         ; Clean up after the click
         Cleanup()
 
-        ; Reset instaclick mode
-        instaClickMode := false
+        ; Reset instaclick mode flags
         g_ModifierState.inHoldMode := false
         g_ModifierState.capsPressedFirstTime := 0
         g_ModifierState.capsPressedSecondTime := 0
     } else {
-        ; Reset only the hold mode if we're not in instaclick mode
-        g_ModifierState.inHoldMode := false
+        ; IMPORTANT: Only clean up if it's a single tap (not in hold mode)
+        ; This allows the grid to stay visible when in hold mode
+        if (!g_ModifierState.inHoldMode && currentState != "IDLE") {
+            ; Normal CapsLock tap behavior - clean up the grid
+            Cleanup()
+        }
 
-        ; Full reset of first/second press times if too much time has elapsed
-        if ((currentTime - g_ModifierState.capsPressedFirstTime) > doubleCapsThreshold * 1.5) {
-            g_ModifierState.capsPressedFirstTime := 0
-            g_ModifierState.capsPressedSecondTime := 0
+        ; Reset hold mode only if it's a single press
+        if (!g_ModifierState.inHoldMode) {
+            ; Full reset of first/second press times if too much time has elapsed
+            if ((currentTime - g_ModifierState.capsPressedFirstTime) > doubleCapsThreshold * 1.5) {
+                g_ModifierState.capsPressedFirstTime := 0
+                g_ModifierState.capsPressedSecondTime := 0
+            }
         }
     }
 }
 
-; turned out autohotkey is making combo (caps&1) - prio, instead of just a single caps
-; ==> so I gave it a hotif physical caps > now holding singular key(caps) can be tracked
-#HotIf g_ModifierState.caps
+#HotIf g_ModifierState.caps && !instaClickMode
 ; Monitor switching hotkeys that work regardless of grid state
 CapsLock & 1:: {
     global currentState
@@ -2136,10 +2148,251 @@ CapsLock & 4:: {
     SwitchMonitor(4)
 }
 
-; Keep CapsLock & q (optional for backwards compatibility)
-CapsLock & q:: {
-    CapsLock_Q()
+; --- Add Navigation Hotkeys for CapsLock Held State ---
+CapsLock & w:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("w")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("w")
+    }
 }
+CapsLock & e:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("e")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("e")
+    }
+}
+CapsLock & r:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("r")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("r")
+    }
+}
+CapsLock & t:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("t")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("t")
+    }
+}
+CapsLock & y:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("y")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("y")
+    }
+}
+CapsLock & u:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("u")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("u")
+    }
+}
+CapsLock & i:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("i")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("i")
+    }
+}
+CapsLock & o:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("o")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("o")
+    }
+}
+CapsLock & p:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("p")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("p")
+    }
+}
+CapsLock & a:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("a")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("a")
+    }
+}
+CapsLock & s:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("s")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("s")
+    }
+}
+CapsLock & d:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("d")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("d")
+    }
+}
+CapsLock & f:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("f")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("f")
+    }
+}
+CapsLock & j:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("j")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("j")
+    }
+}
+CapsLock & k:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("k")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("k")
+    }
+}
+CapsLock & l:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("l")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("l")
+    }
+}
+CapsLock & z:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("z")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("z")
+    }
+}
+CapsLock & x:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("x")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("x")
+    }
+}
+CapsLock & c:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("c")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("c")
+    }
+}
+CapsLock & v:: {
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("v")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("v")
+    }
+}
+
+; Subgrid keys while CapsLock held
+CapsLock & b:: {
+    global currentState, stateTransitionTime, stateTransitionDelay
+    if (currentState == "SUBGRID_ACTIVE" && (A_TickCount - stateTransitionTime >= stateTransitionDelay)) {
+        HandleSubGridKey("b")
+    }
+}
+CapsLock & n:: {
+    global currentState, stateTransitionTime, stateTransitionDelay
+    if (currentState == "SUBGRID_ACTIVE" && (A_TickCount - stateTransitionTime >= stateTransitionDelay)) {
+        HandleSubGridKey("n")
+    }
+}
+
+; Keys used for both grid nav and subgrid nav
+CapsLock & g:: {
+    global currentState, stateTransitionTime, stateTransitionDelay
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("g")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        if (A_TickCount - stateTransitionTime >= stateTransitionDelay) {
+            HandleSubGridKey("g")
+        } else {
+            StartNewSelection("g") ; Allow starting new selection if delay not met
+        }
+    }
+}
+CapsLock & h:: {
+    global currentState, stateTransitionTime, stateTransitionDelay
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("h")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        if (A_TickCount - stateTransitionTime >= stateTransitionDelay) {
+            HandleSubGridKey("h")
+        } else {
+            StartNewSelection("h") ; Allow starting new selection if delay not met
+        }
+    }
+}
+
+; Scan code versions while CapsLock held
+CapsLock & SC033:: { ; Comma
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(",")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection(",")
+    }
+}
+CapsLock & SC034:: { ; Period
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(".")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection(".")
+    }
+}
+CapsLock & SC035:: { ; Slash
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("/")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("/")
+    }
+}
+CapsLock & SC032:: { ; M
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("m")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection("m")
+    }
+}
+CapsLock & SC027:: { ; Semicolon
+    global currentState
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(";")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        StartNewSelection(";")
+    }
+}
+; --- End CapsLock Held Navigation ---
+
 #HotIf
 
 ; Helper function to reuse the CapsLock & q code
@@ -2428,3 +2681,315 @@ ShowSettingsGUI() {
 ; Load settings at script startup
 LoadSettings()
 LoadCellMemory()
+
+#HotIf (currentState == "GRID_VISIBLE" || currentState == "SUBGRID_ACTIVE") && (!instaClickMode || !g_ModifierState.inHoldMode
+)
+q:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("q")
+    } else {
+        StartNewSelection("q")
+    }
+}
+
+; Add a new condition specifically for instaclick mode when CapsLock is held
+#HotIf (currentState == "GRID_VISIBLE" || currentState == "SUBGRID_ACTIVE") && instaClickMode && g_ModifierState.inHoldMode
+
+; We need to duplicate all these hotkeys for this condition but without the CapsLock prefix
+q:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("q")
+    } else {
+        StartNewSelection("q")
+    }
+}
+w:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("w")
+    } else {
+        StartNewSelection("w")
+    }
+}
+e:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("e")
+    } else {
+        StartNewSelection("e")
+    }
+}
+r:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("r")
+    } else {
+        StartNewSelection("r")
+    }
+}
+t:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("t")
+    } else {
+        StartNewSelection("t")
+    }
+}
+u:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("u")
+    } else {
+        StartNewSelection("u")
+    }
+}
+i:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("i")
+    } else {
+        StartNewSelection("i")
+    }
+}
+o:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("o")
+    } else {
+        StartNewSelection("o")
+    }
+}
+p:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("p")
+    } else {
+        StartNewSelection("p")
+    }
+}
+a:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("a")
+    } else {
+        StartNewSelection("a")
+    }
+}
+s:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("s")
+    } else {
+        StartNewSelection("s")
+    }
+}
+d:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("d")
+    } else {
+        StartNewSelection("d")
+    }
+}
+f:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("f")
+    } else {
+        StartNewSelection("f")
+    }
+}
+g:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("g")
+    } else {
+        StartNewSelection("g")
+    }
+}
+h:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("h")
+    } else {
+        StartNewSelection("h")
+    }
+}
+j:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("j")
+    } else {
+        StartNewSelection("j")
+    }
+}
+k:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("k")
+    } else {
+        StartNewSelection("k")
+    }
+}
+l:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("l")
+    } else {
+        StartNewSelection("l")
+    }
+}
+`;:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(";")
+    } else {
+        StartNewSelection(";")
+    }
+}
+z:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("z")
+    } else {
+        StartNewSelection("z")
+    }
+}
+x:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("x")
+    } else {
+        StartNewSelection("x")
+    }
+}
+c:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("c")
+    } else {
+        StartNewSelection("c")
+    }
+}
+v:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("v")
+    } else {
+        StartNewSelection("v")
+    }
+}
+,:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(",")
+    } else {
+        StartNewSelection(",")
+    }
+}
+.:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(".")
+    } else {
+        StartNewSelection(".")
+    }
+}
+/:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("/")
+    } else {
+        StartNewSelection("/")
+    }
+}
+m:: {
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("m")
+    } else {
+        StartNewSelection("m")
+    }
+}
+
+; Add scan code versions for layout independence
+SC033:: {  ; Comma key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(",")
+    } else {
+        StartNewSelection(",")
+    }
+}
+
+SC034:: {  ; Period key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(".")
+    } else {
+        StartNewSelection(".")
+    }
+}
+
+SC035:: {  ; Slash key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("/")
+    } else {
+        StartNewSelection("/")
+    }
+}
+
+SC032:: {  ; M key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("m")
+    } else {
+        StartNewSelection("m")
+    }
+}
+
+SC027:: {  ; Semicolon key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey(";")
+    } else {
+        StartNewSelection(";")
+    }
+}
+
+SC022:: {  ; G key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("g")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        HandleSubGridKey("g")
+    } else {
+        StartNewSelection("g")
+    }
+}
+
+SC023:: {  ; H key scan code
+    if (currentState == "GRID_VISIBLE") {
+        HandleKey("h")
+    } else if (currentState == "SUBGRID_ACTIVE") {
+        HandleSubGridKey("h")
+    } else {
+        StartNewSelection("h")
+    }
+}
+
+; Also need to handle number keys for monitor switching
+1:: SwitchMonitor(1)
+2:: SwitchMonitor(2)
+3:: SwitchMonitor(3)
+4:: SwitchMonitor(4)
+#HotIf
+
+; Update the #HotIf for SUBGRID_ACTIVE
+#HotIf currentState == "SUBGRID_ACTIVE" && (!instaClickMode || !g_ModifierState.inHoldMode)
+
+; Add a duplicate set for subgrid navigation during instaclick mode
+#HotIf currentState == "SUBGRID_ACTIVE" && instaClickMode && g_ModifierState.inHoldMode
+b:: {
+    ; Add a guard to prevent key leakage during state transitions
+    timeSinceTransition := A_TickCount - stateTransitionTime
+    if (timeSinceTransition >= stateTransitionDelay) {
+        HandleSubGridKey("b")
+    }
+}
+n:: {
+    global currentState, stateTransitionTime, stateTransitionDelay
+    if (currentState == "SUBGRID_ACTIVE" && (A_TickCount - stateTransitionTime >= stateTransitionDelay)) {
+        HandleSubGridKey("n")
+    }
+}
+g:: {
+    ; Add a guard to prevent key leakage during state transitions
+    timeSinceTransition := A_TickCount - stateTransitionTime
+    if (timeSinceTransition >= stateTransitionDelay) {
+        HandleSubGridKey("g")
+    }
+}
+h:: {
+    ; Add a guard to prevent key leakage during state transitions
+    timeSinceTransition := A_TickCount - stateTransitionTime
+    if (timeSinceTransition >= stateTransitionDelay) {
+        HandleSubGridKey("h")
+    }
+}
+
+; Add number keys for monitor switching
+1:: SwitchMonitor(1)
+2:: SwitchMonitor(2)
+3:: SwitchMonitor(3)
+4:: SwitchMonitor(4)
+#HotIf
