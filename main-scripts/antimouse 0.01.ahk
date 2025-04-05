@@ -1942,10 +1942,8 @@ CapsLock:: {
 
     g_ModifierState.caps := GetKeyState("CapsLock", "P")
     ; --- Physical Key State Check & Tooltip ---
-    if g_ModifierState.caps { ; Check physical state
-        ToolTip("capslock held detected")
-    } else {
-        ToolTip('capslock not held')
+    if showcaseDebug {
+        ToolTip(g_ModifierState.caps ? "capslock held detected" : "capslock not held")
     }
 
     currentTime := A_TickCount
@@ -1967,6 +1965,8 @@ CapsLock:: {
 
 }
 
+; turned out autohotkey is making combo (caps&1) - prio, instead of just a single caps
+; ==> so I gave it a hotif physical caps > now holding singular key(caps) can be tracked
 #HotIf g_ModifierState.caps
 ; Monitor switching hotkeys that work regardless of grid state
 CapsLock & 1:: {
