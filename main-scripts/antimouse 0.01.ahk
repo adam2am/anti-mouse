@@ -1932,36 +1932,64 @@ Tab:: {
 #HotIf
 
 global g_ModifierState := {
-    caps: false
+    caps: false,
+    capsFirstReleased: false,
+    lastCapsUpTime: 0,
+    capsPressedFirstTime: 0,
+    capsPressedSecondTime: 0
 }
-
-; Replace CapsLock & q with standalone CapsLock handler for double press
+; CapsLock handler for single tap + press activation
 CapsLock:: {
+    global g_ModifierState, doubleCapsThreshold
 
-    global capsLockPressedTime, doubleCapsThreshold, g_ModifierState
-
+    ; Update CapsLock state
     g_ModifierState.caps := GetKeyState("CapsLock", "P")
-    ; --- Physical Key State Check & Tooltip ---
-    if showcaseDebug {
-        ToolTip(g_ModifierState.caps ? "capslock held detected" : "capslock not held")
-    }
 
     currentTime := A_TickCount
-    timeSinceLastPress := currentTime - capsLockPressedTime
 
-    ; Check for double press
-    if (timeSinceLastPress < doubleCapsThreshold) {
-        ; Double press detected - activate grid
-        CapsLock_Q()
-        ; Reset the timer to prevent triple-press triggering
-        capsLockPressedTime := 0
-    } else {
-        ; First press - just record the time
-        capsLockPressedTime := currentTime
+    ; First press detection
+    if (g_ModifierState.capsPressedFirstTime == 0) {
+        g_ModifierState.capsPressedFirstTime := currentTime
+        ToolTip("CapsLock 111first press detected")
+    }
+    ; Second press detection - check if we already have a first press recorded
+    else if (g_ModifierState.capsPressedFirstTime > 0) {
+        ; Check if this is within the double-press threshold
+        if ((currentTime - g_ModifierState.capsPressedFirstTime) < doubleCapsThreshold) {
+            g_ModifierState.capsPressedSecondTime := currentTime
+            ToolTip("CapsLock 222second press detected")
+
+            ; Activate grid immediately on second press
+            CapsLock_Q()
+
+            ; Reset state after activation
+            g_ModifierState.capsPressedFirstTime := 0
+            g_ModifierState.capsPressedSecondTime := 0
+        } else {
+            ; Too much time passed, treat as new first press
+            g_ModifierState.capsPressedFirstTime := currentTime
+            g_ModifierState.capsPressedSecondTime := 0
+            ToolTip("CapsLock first press (reset)")
+        }
+    }
+
+    ; Show debug tooltip if enabled
+    if showcaseDebug {
+        ToolTip(g_ModifierState.caps ? "CapsLock held detected" : "CapsLock not held")
     }
 
     ; Important: Return to avoid toggling CapsLock state
     return
+}
+
+CapsLock Up:: {
+    ToolTip('Capslock UP')
+    global g_ModifierState
+
+    currentTime := A_TickCount
+    g_ModifierState.lastCapsUpTime := currentTime
+    g_ModifierState.capsFirstReleased := true
+    g_ModifierState.caps := false
 
 }
 
