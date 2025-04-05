@@ -2082,6 +2082,72 @@ CapsLock Up:: {
     }
 }
 
+#HotIf GetKeyState('CapsLock', 'P')
+1:: {
+    global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to ensure grid is initialized
+    }
+
+    ; Now switch to monitor 1
+    SwitchMonitor(1)
+}
+
+2:: {
+    global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to bensure grid is initialized
+    }
+
+    ; Now switch to monitor 2
+    SwitchMonitor(2)
+}
+
+3:: {
+    global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to ensure grid is initialized
+    }
+
+    ; Now switch to monitor 3
+    SwitchMonitor(3)
+}
+
+4:: {
+    global currentState
+
+    ; Temporarily disable tracking
+    SetTimer(TrackCursor, 0)
+
+    ; If grid not active, activate it first
+    if (currentState == "IDLE") {
+        CapsLock_Q()  ; Call the grid activation function
+        Sleep(100)  ; Short delay to ensure grid is initialized
+    }
+
+    ; Now switch to monitor 4
+    SwitchMonitor(4)
+}
+#HotIf
+
 #HotIf g_ModifierState.caps && !instaClickMode
 ; Monitor switching hotkeys that work regardless of grid state
 CapsLock & 1:: {
