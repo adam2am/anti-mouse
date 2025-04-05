@@ -1931,6 +1931,43 @@ Tab:: {
 }
 #HotIf
 
+global g_ModifierState := {
+    caps: false
+}
+
+; Replace CapsLock & q with standalone CapsLock handler for double press
+CapsLock:: {
+
+    global capsLockPressedTime, doubleCapsThreshold, g_ModifierState
+
+    g_ModifierState.caps := GetKeyState("CapsLock", "P")
+    ; --- Physical Key State Check & Tooltip ---
+    if g_ModifierState.caps { ; Check physical state
+        ToolTip("capslock held detected")
+    } else {
+        ToolTip('capslock not held')
+    }
+
+    currentTime := A_TickCount
+    timeSinceLastPress := currentTime - capsLockPressedTime
+
+    ; Check for double press
+    if (timeSinceLastPress < doubleCapsThreshold) {
+        ; Double press detected - activate grid
+        CapsLock_Q()
+        ; Reset the timer to prevent triple-press triggering
+        capsLockPressedTime := 0
+    } else {
+        ; First press - just record the time
+        capsLockPressedTime := currentTime
+    }
+
+    ; Important: Return to avoid toggling CapsLock state
+    return
+
+}
+
+#HotIf g_ModifierState.caps
 ; Monitor switching hotkeys that work regardless of grid state
 CapsLock & 1:: {
     global currentState
@@ -1996,32 +2033,11 @@ CapsLock & 4:: {
     SwitchMonitor(4)
 }
 
-; Replace CapsLock & q with standalone CapsLock handler for double press
-*CapsLock:: {
-    global capsLockPressedTime, doubleCapsThreshold
-
-    currentTime := A_TickCount
-    timeSinceLastPress := currentTime - capsLockPressedTime
-
-    ; Check for double press
-    if (timeSinceLastPress < doubleCapsThreshold) {
-        ; Double press detected - activate grid
-        CapsLock_Q()
-        ; Reset the timer to prevent triple-press triggering
-        capsLockPressedTime := 0
-    } else {
-        ; First press - just record the time
-        capsLockPressedTime := currentTime
-    }
-
-    ; Important: Return to avoid toggling CapsLock state
-    return
-}
-
 ; Keep CapsLock & q (optional for backwards compatibility)
 CapsLock & q:: {
     CapsLock_Q()
 }
+#HotIf
 
 ; Helper function to reuse the CapsLock & q code
 CapsLock_Q() {
