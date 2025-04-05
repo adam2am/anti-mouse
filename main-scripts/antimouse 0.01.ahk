@@ -18,6 +18,7 @@ global monitorMapping := [2, 1, 3, 4] ; Map physical monitor index to logical: [
 global cellMemoryFile := A_ScriptDir "\cell_memory.txt" ; File to store cell-subcell selections
 global settingsFile := A_ScriptDir "\antimouse_settings.ini" ; File to store settings
 global storePerMonitor := true      ; Store subcell positions per monitor
+global instaClickMode := false      ; New: Track if we're in instaclick mode (hold-release click)
 
 ; Finite State Machine state
 global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
@@ -665,7 +666,7 @@ SaveCellMemory() {
 ; New function to load settings from INI file
 LoadSettings() {
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
-    global defaultTransparency, highlightColor
+    global defaultTransparency, highlightColor, instaClickMode
 
     try {
         if (FileExist(settingsFile)) {
@@ -678,6 +679,7 @@ LoadSettings() {
 
             storePerMonitor := IniRead(settingsFile, "General", "StorePerMonitor", storePerMonitor)
             showcaseDebug := IniRead(settingsFile, "General", "Debug", showcaseDebug)
+            instaClickMode := IniRead(settingsFile, "General", "InstaClickMode", instaClickMode)
 
             ; Load monitor mapping
             for i, _ in monitorMapping {
@@ -718,7 +720,7 @@ IsNumber(value) {
 ; New function to save settings to INI file
 SaveSettings() {
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
-    global defaultTransparency, highlightColor
+    global defaultTransparency, highlightColor, instaClickMode
 
     try {
         ; Ensure directory exists
@@ -731,6 +733,7 @@ SaveSettings() {
         IniWrite(selectedLayout, settingsFile, "General", "Layout")
         IniWrite(storePerMonitor, settingsFile, "General", "StorePerMonitor")
         IniWrite(showcaseDebug, settingsFile, "General", "Debug")
+        IniWrite(instaClickMode, settingsFile, "General", "InstaClickMode")
 
         ; Save monitor mapping
         for i, mapping in monitorMapping {
@@ -1936,11 +1939,12 @@ global g_ModifierState := {
     capsFirstReleased: false,
     lastCapsUpTime: 0,
     capsPressedFirstTime: 0,
-    capsPressedSecondTime: 0
+    capsPressedSecondTime: 0,
+    inHoldMode: false        ; New: Track if we're in CapsLock hold mode
 }
 ; CapsLock handler for single tap + press activation
 CapsLock:: {
-    global g_ModifierState, doubleCapsThreshold
+    global g_ModifierState, doubleCapsThreshold, instaClickMode
 
     ; Update CapsLock state
     g_ModifierState.caps := GetKeyState("CapsLock", "P")
@@ -1950,26 +1954,41 @@ CapsLock:: {
     ; First press detection
     if (g_ModifierState.capsPressedFirstTime == 0) {
         g_ModifierState.capsPressedFirstTime := currentTime
-        ToolTip("CapsLock 111first press detected")
+        g_ModifierState.inHoldMode := false  ; Reset hold mode on first press
+        instaClickMode := false  ; Reset instaclick mode
+
+        if showcaseDebug {
+            ToolTip("CapsLock first press detected")
+        }
     }
     ; Second press detection - check if we already have a first press recorded
     else if (g_ModifierState.capsPressedFirstTime > 0) {
         ; Check if this is within the double-press threshold
         if ((currentTime - g_ModifierState.capsPressedFirstTime) < doubleCapsThreshold) {
             g_ModifierState.capsPressedSecondTime := currentTime
-            ToolTip("CapsLock 222second press detected")
+            g_ModifierState.inHoldMode := true  ; Set hold mode on second press
+            instaClickMode := true  ; Enable instaclick mode
+
+            if showcaseDebug {
+                ToolTip("CapsLock second press detected - hold mode active")
+            }
 
             ; Activate grid immediately on second press
             CapsLock_Q()
 
-            ; Reset state after activation
-            g_ModifierState.capsPressedFirstTime := 0
-            g_ModifierState.capsPressedSecondTime := 0
+            ; Note: Do NOT reset state as we want to track the hold
+            ; g_ModifierState.capsPressedFirstTime := 0
+            ; g_ModifierState.capsPressedSecondTime := 0
         } else {
             ; Too much time passed, treat as new first press
             g_ModifierState.capsPressedFirstTime := currentTime
             g_ModifierState.capsPressedSecondTime := 0
-            ToolTip("CapsLock first press (reset)")
+            g_ModifierState.inHoldMode := false  ; Reset hold mode flag
+            instaClickMode := false  ; Reset instaclick mode
+
+            if showcaseDebug {
+                ToolTip("CapsLock first press (reset)")
+            }
         }
     }
 
@@ -1983,14 +2002,70 @@ CapsLock:: {
 }
 
 CapsLock Up:: {
-    ToolTip('Capslock UP')
-    global g_ModifierState
+    if showcaseDebug {
+        ToolTip('Capslock UP')
+    }
+    global g_ModifierState, instaClickMode, currentState, highlight, subGrid, StateMap
 
     currentTime := A_TickCount
     g_ModifierState.lastCapsUpTime := currentTime
     g_ModifierState.capsFirstReleased := true
     g_ModifierState.caps := false
 
+    ; Handle instaclick mode - perform click when releasing CapsLock
+    if (instaClickMode && currentState != "IDLE") {
+        if showcaseDebug {
+            ToolTip("InstaClick: Clicking at current position")
+        }
+
+        ; Save mouse position before any cleanup
+        MouseGetPos(&mouseX, &mouseY)
+
+        ; First stop tracking and change state to prevent issues
+        SetTimer(TrackCursor, 0)
+
+        ; Hide elements immediately
+        if (IsObject(highlight))
+            highlight.Hide()
+        if (IsObject(subGrid))
+            subGrid.Hide()
+
+        ; Hide all grid overlays to prevent visual artifacts
+        for overlay in StateMap['overlays'] {
+            if (IsObject(overlay))
+                overlay.Hide()
+        }
+
+        ; Small delay to ensure UI elements are hidden
+        Sleep(30)
+
+        ; Forcefully set state to prevent conflicts
+        currentState := "IDLE"
+
+        ; Perform the mouse click
+        MouseClick("Left", mouseX, mouseY, 1, 0)
+
+        ; Ensure cleanup happens after the click
+        Sleep(30)
+
+        ; Clean up after the click
+        Cleanup()
+
+        ; Reset instaclick mode
+        instaClickMode := false
+        g_ModifierState.inHoldMode := false
+        g_ModifierState.capsPressedFirstTime := 0
+        g_ModifierState.capsPressedSecondTime := 0
+    } else {
+        ; Reset only the hold mode if we're not in instaclick mode
+        g_ModifierState.inHoldMode := false
+
+        ; Full reset of first/second press times if too much time has elapsed
+        if ((currentTime - g_ModifierState.capsPressedFirstTime) > doubleCapsThreshold * 1.5) {
+            g_ModifierState.capsPressedFirstTime := 0
+            g_ModifierState.capsPressedSecondTime := 0
+        }
+    }
 }
 
 ; turned out autohotkey is making combo (caps&1) - prio, instead of just a single caps
@@ -2202,14 +2277,14 @@ CapsLock_Q() {
 ; Function to show settings GUI
 ShowSettingsGUI() {
     global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
-    global defaultTransparency, highlightColor
+    global defaultTransparency, highlightColor, instaClickMode
 
     ; Create settings GUI
     settingsGui := Gui("+AlwaysOnTop +Resize", "Anti-Mouse Settings")
     settingsGui.SetFont("s10", "Segoe UI")
 
     ; General settings
-    settingsGui.Add("GroupBox", "x10 y10 w380 h100", "General Settings")
+    settingsGui.Add("GroupBox", "x10 y10 w380 h130", "General Settings")
 
     settingsGui.Add("Text", "x20 y30 w120 h20", "Layout:")
     layoutDropdown := settingsGui.Add("DropDownList", "x150 y30 w230 h20",
@@ -2225,27 +2300,32 @@ ShowSettingsGUI() {
     debugCheckbox := settingsGui.Add("Checkbox", "x150 y80 w230 h20", "Show debug tooltips")
     debugCheckbox.Value := showcaseDebug
 
+    settingsGui.Add("Text", "x20 y100 w120 h20", "Click Mode:")
+    instaClickCheckbox := settingsGui.Add("Checkbox", "x150 y100 w230 h20",
+        "InstaClick (release CapsLock to click)")
+    instaClickCheckbox.Value := instaClickMode
+
     ; Monitor mapping
-    settingsGui.Add("GroupBox", "x10 y120 w380 h120", "Monitor Mapping")
+    settingsGui.Add("GroupBox", "x10 y150 w380 h120", "Monitor Mapping")
 
     ; Create monitor input controls
     mapInputs := []
     for i, mapping in monitorMapping {
         ; Calculate y position
-        y := 140 + (i - 1) * 25
+        y := 170 + (i - 1) * 25
         settingsGui.Add("Text", "x20 y" y " w140 h20", "Physical Monitor " i ":")
         mapInputs.Push(settingsGui.Add("Edit", "x170 y" y " w40 h20", mapping))
         settingsGui.Add("UpDown", "Range1-4", mapping)
     }
 
     ; Appearance
-    settingsGui.Add("GroupBox", "x10 y250 w380 h80", "Appearance")
+    settingsGui.Add("GroupBox", "x10 y280 w380 h80", "Appearance")
 
-    settingsGui.Add("Text", "x20 y270 w130 h20", "Transparency:")
-    transparencySlider := settingsGui.Add("Slider", "x150 y270 w230 h20 Range0-255 TickInterval20", defaultTransparency
+    settingsGui.Add("Text", "x20 y300 w130 h20", "Transparency:")
+    transparencySlider := settingsGui.Add("Slider", "x150 y300 w230 h20 Range0-255 TickInterval20", defaultTransparency
     )
 
-    transparencyText := settingsGui.Add("Text", "x150 y295 w50 h20", defaultTransparency)
+    transparencyText := settingsGui.Add("Text", "x150 y325 w50 h20", defaultTransparency)
 
     ; Update transparency text when slider changes (using function defined first)
     UpdateSliderText(*) {
@@ -2253,24 +2333,25 @@ ShowSettingsGUI() {
     }
     transparencySlider.OnEvent("Change", UpdateSliderText)
 
-    settingsGui.Add("Text", "x200 y295 w130 h20", "Highlight Color:")
-    highlightColorEdit := settingsGui.Add("Edit", "x340 y295 w50 h20", highlightColor)
+    settingsGui.Add("Text", "x200 y325 w130 h20", "Highlight Color:")
+    highlightColorEdit := settingsGui.Add("Edit", "x340 y325 w50 h20", highlightColor)
 
     ; Buttons
-    applyBtn := settingsGui.Add("Button", "x10 y340 w120 h30", "Apply")
-    resetBtn := settingsGui.Add("Button", "x140 y340 w120 h30", "Reset to Default")
-    closeBtn := settingsGui.Add("Button", "x270 y340 w120 h30", "Close")
+    applyBtn := settingsGui.Add("Button", "x10 y370 w120 h30", "Apply")
+    resetBtn := settingsGui.Add("Button", "x140 y370 w120 h30", "Reset to Default")
+    closeBtn := settingsGui.Add("Button", "x270 y370 w120 h30", "Close")
 
     ; Define button functions
     ApplySettings(*) {
         ; Need to access globals
         global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
-        global defaultTransparency, highlightColor
+        global defaultTransparency, highlightColor, instaClickMode
 
         ; Update general settings
         selectedLayout := layoutDropdown.Value
         storePerMonitor := storePerMonitorCheckbox.Value
         showcaseDebug := debugCheckbox.Value
+        instaClickMode := instaClickCheckbox.Value
 
         ; Update monitor mapping
         for i, _ in monitorMapping {
@@ -2313,6 +2394,7 @@ ShowSettingsGUI() {
         layoutDropdown.Choose(2)  ; Default layout
         storePerMonitorCheckbox.Value := true
         debugCheckbox.Value := false
+        instaClickCheckbox.Value := false
 
         ; Reset monitor mapping
         if (mapInputs.Length >= 4) {
@@ -2340,7 +2422,7 @@ ShowSettingsGUI() {
     settingsGui.OnEvent("Escape", CloseSettings)
 
     ; Show the settings GUI
-    settingsGui.Show("w400 h380")
+    settingsGui.Show("w400 h410")
 }
 
 ; Load settings at script startup
