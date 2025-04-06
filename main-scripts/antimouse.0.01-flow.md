@@ -281,12 +281,12 @@ This approach prioritizes optimizing the common case for speed and efficiency, a
 
 
 2.  **Modifier + Home Row Subgrid (3x3):** Overall: 7.5/10 (User: okayish, Alt hold? TAB conflict?)
-3.  **Two-Key Subgrid Sequence (4x4):** Overall: 7/10 (User: conflict 1-4)
-4.  **Layer Shift Subgrid (Home Row 4x4):** Overall: 7.5/10 (User: conflicts with Caps-hold release)
-5.  **Modal Subgrid Keys (Distinct Set):** Overall: 8/10 (User: flawed if missclicked?)
-6.  **Visual Subgrid + Number Keys (Non-Numpad):** Overall: 6/10 (User: conflict 1-4, not intuitive)
+3.  **Two-Key Subgrid Sequence (4x4):** Overall: 7/10 (User: nope, conflict 1-4) 
+4.  **Layer Shift Subgrid (Home Row 4x4):** Overall: 7.5/10 (User: nope, conflicts with Caps-hold release)
+5.  **Modal Subgrid Keys (Distinct Set):** Overall: 8/10 (User: nope, flawed if missclicked = sequence startin over)
+6.  **Visual Subgrid + Number Keys (Non-Numpad):** Overall: 6/10 (User: nope, conflict 1-4 + not intuitive, numbers too far away)
 
-**Winner 1.0:** Option 2.0: Modifier (Distinct Set)
+**Winner 1.0:** Option 2.0: Modifier(ex:Alt) + Homerow (Distinct Set qwer/asdf)
     Option 2.1: holding a cell keys
     but in both options concerns about smoothness
 
