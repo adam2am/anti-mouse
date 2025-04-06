@@ -46,6 +46,8 @@ ForceCapsLockOff() {
 global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
 global stateTransitionTime := 0     ; Timestamp of the last state transition
 global stateTransitionDelay := 50   ; Minimum time (ms) between state transitions to prevent leakage
+global gridActivationInProgress := false  ; Flag to prevent double activation
+global gridActivationTime := 0      ; Timestamp of last grid activation attempt
 
 ; Double CapsLock variables - declare them globally here
 global capsLockPressedTime := 0
@@ -518,10 +520,12 @@ ForceCloseAllGuis() {
 }
 
 Cleanup() {
-    global currentState, highlight, subGrid, StateMap, g_ModifierState
+    global currentState, highlight, subGrid, StateMap, g_ModifierState, gridActivationInProgress
 
     ; If already cleaned up, don't attempt again
     if (currentState == "IDLE") {
+        ; Still reset the grid activation flag
+        gridActivationInProgress := false
         return
     }
 
@@ -536,6 +540,9 @@ Cleanup() {
 
     ; Reset instaclick flags for extra reliability
     g_ModifierState.inHoldMode := false
+
+    ; Reset grid activation flag
+    gridActivationInProgress := false
 
     ; Hide elements before destroying them - with error checking
     try {
@@ -1946,6 +1953,7 @@ Tab:: {
     if (IsObject(subGrid)) {
         subGrid.Hide()
     }
+
     if (IsObject(highlight)) {
         highlight.Hide()
     }
@@ -2656,10 +2664,27 @@ CapsLock & SC027:: { ; Semicolon
 CapsLock_Q() {
     global currentState, highlight, subGrid, cellMemory, StateMap
     global selectedLayout, layoutConfigs, showcaseDebug ; Also ensure these are global
+    global gridActivationInProgress, gridActivationTime ; For preventing double activation
+
+    ; Protect against double activation
+    currentTime := A_TickCount
+    if (gridActivationInProgress || (currentTime - gridActivationTime < 300)) {
+        if (showcaseDebug) {
+            ToolTip("Grid activation already in progress, ignoring duplicate request")
+            Sleep(200)
+            ToolTip()
+        }
+        return
+    }
+
+    ; Set activation flag and timestamp
+    gridActivationInProgress := true
+    gridActivationTime := currentTime
 
     ; If already active, clean up and exit
     if (currentState != "IDLE") {
         Cleanup()
+        gridActivationInProgress := false
         return
     }
 
@@ -2757,9 +2782,13 @@ CapsLock_Q() {
         if (StateMap['overlays'].Length > 0 && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
             currentState := "GRID_VISIBLE"
             SetTimer(TrackCursor, 50)
+            ; Reset activation flag after successful initialization
+            gridActivationInProgress := false
         } else {
             ; Clean up and show error if unsuccessful
             Cleanup()
+            ; Reset activation flag after failure
+            gridActivationInProgress := false
             ToolTip("Failed to create grid overlays")
             Sleep(2000)
             ToolTip()
@@ -2767,6 +2796,8 @@ CapsLock_Q() {
     } catch as e {
         ; Handle any uncaught errors
         Cleanup()
+        ; Reset activation flag after any exception
+        gridActivationInProgress := false
         if (showcaseDebug) {
             ToolTip("Error initializing: " e.Message)
             Sleep(2000)
