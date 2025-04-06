@@ -277,8 +277,12 @@ This approach prioritizes optimizing the common case for speed and efficiency, a
 
 
 
-
-
+    - mainIdea: to navigate through UI without mouse yet with speed and precision, 
+        less moving hands/palms/fingers, yet moving smooth and fast af 
+    - key things, characteristics:
+        - easy to use (less finger motions)
+        - fast (reducing presses)
+        - precise (can access any part of a screen)
 
 2.  **Modifier + Home Row Subgrid (3x3):** Overall: 7.5/10 (User: okayish, Alt hold? TAB conflict?)
 3.  **Two-Key Subgrid Sequence (4x4):** Overall: 7/10 (User: nope, conflict 1-4) 
@@ -289,6 +293,7 @@ This approach prioritizes optimizing the common case for speed and efficiency, a
 **Winner 1.0:** Option 2.0: Modifier(ex:Alt) + Homerow (Distinct Set qwer/asdf)
     Option 2.1: holding a cell keys
     but in both options concerns about smoothness
+    
 
     potential suggestions: when colKey of targeted cell held > making uiojklm,. in use = no hand conflict
     and when rowCey of a targeted cell being held > making colKey in use = no hand or keys conflict when being held
