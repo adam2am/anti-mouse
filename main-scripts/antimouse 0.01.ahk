@@ -465,13 +465,27 @@ ForceCloseAllGuis() {
         WinClose("ahk_class AutoHotkeyGUI")
         Sleep(10)
 
-        ; Final aggressive attempt - kill any remaining windows
+        ; Try closing specific types
         WinClose("SubGrid ahk_class AutoHotkeyGUI")
+        WinClose("Highlight ahk_class AutoHotkeyGUI")
+        WinClose("Grid ahk_class AutoHotkeyGUI")
 
-        ; Force kill as last resort
-        try {
-            WinKill("ahk_class AutoHotkeyGUI")
-        } catch {
+        ; Force kill any remaining AHK GUI windows
+        hwnd := WinExist("ahk_class AutoHotkeyGUI")
+        while (hwnd) {
+            WinKill("ahk_id " hwnd)
+            Sleep(10)
+            hwnd := WinExist("ahk_class AutoHotkeyGUI")
+        }
+
+        ; Final loop to ensure ALL AHK GUIs are gone
+        loop 3 {
+            hwnd := WinExist("ahk_class AutoHotkeyGUI")
+            if (!hwnd)
+                break
+
+            WinKill("ahk_id " hwnd)
+            Sleep(10)
         }
 
         ; Reset detection setting
@@ -482,7 +496,7 @@ ForceCloseAllGuis() {
 }
 
 Cleanup() {
-    global currentState, highlight, subGrid, StateMap
+    global currentState, highlight, subGrid, StateMap, g_ModifierState
 
     ; If already cleaned up, don't attempt again
     if (currentState == "IDLE") {
@@ -497,6 +511,9 @@ Cleanup() {
 
     ; Set state to IDLE immediately to prevent re-entry
     currentState := "IDLE"
+
+    ; Reset instaclick flags for extra reliability
+    g_ModifierState.inHoldMode := false
 
     ; Hide elements before destroying them - with error checking
     try {
@@ -522,8 +539,8 @@ Cleanup() {
     } catch {
     }
 
-    ; Small delay to ensure GUIs have time to hide
-    Sleep(20)
+    ; Increased delay to ensure GUIs have time to hide
+    Sleep(30)
 
     ; Now destroy GUIs - with individual try/catch blocks
     try {
@@ -542,32 +559,14 @@ Cleanup() {
     } catch {
     }
 
-    try {
-        for i, overlay in StateMap['overlays'] { ; Use StateMap
-            if (IsObject(overlay)) {
-                overlay.Destroy()
-            }
-        }
-        StateMap['overlays'] := [] ; Reset using StateMap
-    } catch {
-    }
-
-    ; Forcefully close any remaining GUIs
+    ; Make one more attempt to forcibly close any stray GUI elements
     try {
         ForceCloseAllGuis()
     } catch {
     }
 
-    ; Reset state variables using StateMap
-    StateMap['firstKey'] := ""
-    StateMap['currentOverlay'] := ""
-    StateMap['activeColKeys'] := []
-    StateMap['activeRowKeys'] := []
-    StateMap['activeCellKey'] := ""
-    StateMap['activeSubCellKey'] := ""
-    StateMap['currentColIndex'] := 0
-    StateMap['currentRowIndex'] := 0
-    StateMap['lastSelectedRowIndex'] := 0
+    ; Final sleep to ensure cleanup is complete
+    Sleep(10)
 }
 
 ; Helper function to load cell memory from file
@@ -1945,7 +1944,7 @@ Tab:: {
 
 global g_ModifierState := {
     caps: false,
-    capsFirstReleased: false,
+    capsFirstReleased: false,    ; Flag to track if first press was released
     lastCapsUpTime: 0,
     capsPressedFirstTime: 0,
     capsPressedSecondTime: 0,
@@ -1964,38 +1963,52 @@ CapsLock:: {
     if (g_ModifierState.capsPressedFirstTime == 0) {
         g_ModifierState.capsPressedFirstTime := currentTime
         g_ModifierState.inHoldMode := false  ; Reset hold mode on first press
+        g_ModifierState.capsFirstReleased := false  ; Mark that first press hasn't been released yet
 
         if showcaseDebug {
             ToolTip("CapsLock first press detected")
         }
+
+        ; IMPORTANT: Do not activate the grid on first press when CapsLock is pressed alone,
+        ; only on second press within threshold or when used with other keys
     }
     ; Second press detection - check if we already have a first press recorded
     else if (g_ModifierState.capsPressedFirstTime > 0) {
-        ; Check if this is within the double-press threshold
-        if ((currentTime - g_ModifierState.capsPressedFirstTime) < doubleCapsThreshold) {
-            g_ModifierState.capsPressedSecondTime := currentTime
-            g_ModifierState.inHoldMode := true  ; Set hold mode on second press
+        ; We only consider this a valid second press if the first press was released
+        if (g_ModifierState.capsFirstReleased) {
+            ; Check if this is within the double-press threshold
+            if ((currentTime - g_ModifierState.lastCapsUpTime) < doubleCapsThreshold) {
+                g_ModifierState.capsPressedSecondTime := currentTime
+                g_ModifierState.inHoldMode := true  ; Set hold mode on second press
 
-            if showcaseDebug {
-                ToolTip("CapsLock second press detected - hold mode active")
+                if showcaseDebug {
+                    ToolTip("CapsLock second press detected - hold mode active")
+                }
+
+                ; Activate grid immediately on second press
+                if (currentState == "IDLE") {
+                    CapsLock_Q()
+                }
+
+                ; Note: Do NOT reset state as we want to track the hold
+                ; g_ModifierState.capsPressedFirstTime := 0
+                ; g_ModifierState.capsPressedSecondTime := 0
+            } else {
+                ; Too much time passed, treat as new first press
+                g_ModifierState.capsPressedFirstTime := currentTime
+                g_ModifierState.capsPressedSecondTime := 0
+                g_ModifierState.inHoldMode := false  ; Reset hold mode flag
+                g_ModifierState.capsFirstReleased := false  ; Mark that first press hasn't been released yet
+
+                if showcaseDebug {
+                    ToolTip("CapsLock first press (reset)")
+                }
             }
-
-            ; Activate grid immediately on second press
-            if (currentState == "IDLE") {
-                CapsLock_Q()
-            }
-
-            ; Note: Do NOT reset state as we want to track the hold
-            ; g_ModifierState.capsPressedFirstTime := 0
-            ; g_ModifierState.capsPressedSecondTime := 0
         } else {
-            ; Too much time passed, treat as new first press
-            g_ModifierState.capsPressedFirstTime := currentTime
-            g_ModifierState.capsPressedSecondTime := 0
-            g_ModifierState.inHoldMode := false  ; Reset hold mode flag
-
+            ; The first press wasn't released, so this isn't a valid second press
+            ; Just treat it as continued holding of the first press
             if showcaseDebug {
-                ToolTip("CapsLock first press (reset)")
+                ToolTip("Still on first CapsLock press (not released yet)")
             }
         }
     }
@@ -2017,7 +2030,7 @@ CapsLock Up:: {
 
     currentTime := A_TickCount
     g_ModifierState.lastCapsUpTime := currentTime
-    g_ModifierState.capsFirstReleased := true
+    g_ModifierState.capsFirstReleased := true  ; Mark that CapsLock has been released
     g_ModifierState.caps := false
 
     ; Handle instaclick mode - perform click when releasing CapsLock
@@ -2045,17 +2058,31 @@ CapsLock Up:: {
                 overlay.Hide()
         }
 
-        ; Small delay to ensure UI elements are hidden
-        Sleep(30)
+        ; Improved: Slightly longer delay to ensure GUI elements are fully hidden
+        Sleep(50)
 
         ; Forcefully set state to prevent conflicts
         currentState := "IDLE"
 
-        ; Perform the mouse click
-        MouseClick("Left", mouseX, mouseY, 1, 0)
+        try {
+            ; Perform the mouse click with improved reliability
+            Click("Left")  ; Use Click instead of MouseClick for better reliability
+
+            ; Fallback if Click command fails
+            if GetKeyState("LButton", "P") != 1 {
+                MouseClick("Left", mouseX, mouseY, 1, 0)
+            }
+        } catch as e {
+            if (showcaseDebug) {
+                ToolTip("Click error: " e.Message)
+                Sleep(500)
+            }
+            ; Try alternative click method as fallback
+            MouseClick("Left", mouseX, mouseY, 1, 0)
+        }
 
         ; Ensure cleanup happens after the click
-        Sleep(30)
+        Sleep(50)  ; Increased delay for better reliability
 
         ; Clean up after the click
         Cleanup()
@@ -2064,6 +2091,7 @@ CapsLock Up:: {
         g_ModifierState.inHoldMode := false
         g_ModifierState.capsPressedFirstTime := 0
         g_ModifierState.capsPressedSecondTime := 0
+
     } else {
         ; IMPORTANT: Only clean up if it's a single tap (not in hold mode)
         ; This allows the grid to stay visible when in hold mode
@@ -2088,17 +2116,19 @@ global qmove := true
 #HotIf GetKeyState('CapsLock', 'P') && (currentState == "IDLE")
 q:: {
     global qmove, g_ModifierState ; Add g_ModifierState here
+
+    ; Always activate the grid for explicit Caps+q key combinations
     CapsLock_Q()
     ; Set inHoldMode to true so CapsLock Up triggers a click
     g_ModifierState.inHoldMode := true
-    ; The rest of the column selection logic is removed to prevent instant selection.
 }
 #HotIf
 
 #HotIf GetKeyState('CapsLock', 'P')
 1:: {
-    global currentState
+    global currentState, g_ModifierState
 
+    ; Always allow direct Caps+1 hotkey regardless of hold mode
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
 
@@ -2110,11 +2140,13 @@ q:: {
 
     ; Now switch to monitor 1
     SwitchMonitor(1)
+    g_ModifierState.inHoldMode := true ; Ensure hold mode is set for click on release
 }
 
 2:: {
-    global currentState
+    global currentState, g_ModifierState
 
+    ; Always allow direct Caps+2 hotkey regardless of hold mode
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
 
@@ -2126,11 +2158,13 @@ q:: {
 
     ; Now switch to monitor 2
     SwitchMonitor(2)
+    g_ModifierState.inHoldMode := true ; Ensure hold mode is set for click on release
 }
 
 3:: {
-    global currentState
+    global currentState, g_ModifierState
 
+    ; Always allow direct Caps+3 hotkey regardless of hold mode
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
 
@@ -2142,11 +2176,13 @@ q:: {
 
     ; Now switch to monitor 3
     SwitchMonitor(3)
+    g_ModifierState.inHoldMode := true ; Ensure hold mode is set for click on release
 }
 
 4:: {
-    global currentState
+    global currentState, g_ModifierState
 
+    ; Always allow direct Caps+4 hotkey regardless of hold mode
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
 
@@ -2158,6 +2194,7 @@ q:: {
 
     ; Now switch to monitor 4
     SwitchMonitor(4)
+    g_ModifierState.inHoldMode := true ; Ensure hold mode is set for click on release
 }
 #HotIf
 
