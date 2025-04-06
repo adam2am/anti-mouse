@@ -199,11 +199,12 @@ This approach prioritizes optimizing the common case for speed and efficiency, a
 
 
 
-# Brainstorming Options & Winner (Sub-Cell Precision & Key Conflicts)
+# Brainstorming Options & Winner 1.0: (Sub-Cell Precision & Key Conflicts)
 
 **Goal:** Increase sub-cell precision (3x3 minimum, 4x4/5x5 desirable) and resolve key conflicts between sub-cell keys, main grid keys, and monitor keys, while allowing easy "start new selection".
 
 **Options:**
+
 
 
 ## --- nope ---
@@ -222,7 +223,26 @@ This approach prioritizes optimizing the common case for speed and efficiency, a
         >> conflict with existing 1234 and when
 
 
-## +++ okay +++
+5.  **Modal Subgrid Keys (Distinct Set):**
+    *   **Mechanism:** After cell selection, enter subgrid mode. A distinct set of keys becomes active for subgrid selection (e.g., `uio`, `jkl`, `m,.` for 3x3, or include `p`, `;`, `/` etc. for 4x4). These keys are chosen because they are less likely to be the *first* key pressed in main grid navigation for the specified layout. Pressing any *other* main grid key (like `q`, `w`, `a`, `s`) immediately starts a new selection.
+    *   **Keys (3x3 Example):** `uio` (top), `jkl` (mid), `m,.` (bot).
+    *   **Pros:** No modifier needed, uses single key presses, clear separation (subgrid keys select subcell, other main keys start new selection), avoids monitor key conflict, keeps hands near home row.
+    *   **Cons:** Requires learning the dedicated subgrid key map. Might still feel slightly close to main grid keys depending on layout. 3x3 precision initially (can be expanded).
+    *   **Rating:** Speed: 7/10 (4 presses), Precision: 8/10 (3x3), Less Motions: 8/10. **Overall: 8/10**
+        >> flawed if user missclicked and now cant move, gotta start somehow again?
+
+
+6.  **Visual Subgrid + Number Keys (Non-Numpad):**
+    *   **Mechanism:** After cell selection, display a 3x3 visual subgrid overlay with numbers 1-9 shown in the cells. Press the corresponding number row key (`1`-`9`) to select the subcell.
+    *   **Pros:** Intuitive visual mapping, 3x3 precision, single key press for subcell.
+    *   **Cons:** Conflicts directly with monitor switching keys (`1`-`4`). Requires looking at the overlay. Number row keys can be less ergonomic than home row.
+    *   **Rating:** Speed: 7/10 (4 presses), Precision: 8/10 (3x3), Less Motions: 6/10. **Overall: 6/10** (Due to monitor key conflict).
+        >> conflicting with monitor switch (1/2/3/4)
+        >> too far, not intuitive numbers 65789
+
+
+
+## +++ okayish + winner +++ [
 2.  **Modifier + Home Row Subgrid (3x3):**
     *   **Mechanism:** After cell selection, use `Alt` + home row cluster (e.g., `Alt+w/e/r`, `Alt+s/d/f`, `Alt+x/c/v`) for 3x3 sub-cells.
     *   **Pros:** Keeps hands on home row (ergonomic), 3x3 precision, modifier clearly separates subgrid mode (main keys start new selection), avoids Numpad/monitor key conflicts.
@@ -234,12 +254,15 @@ This approach prioritizes optimizing the common case for speed and efficiency, a
 2. 1. Or if smth being held like caps+Q being held = we activate subgrid second layer     
         >> so if we just press Q > L = QL cell, its centered, but now if we also hold Q = subgrid will not follow the regular qwer
             but if we release holding caps+colKey/rowKey = now we can use those default keys as altered (qwer/asd/uio/jkl)?
-            potential big cognitive load and less simplicity
+            potential big cognitive load and less simplicityЙ
             also potentially more clicks, which might be not suitable
             
 
 2. 2. Or somehow also can make use of the keys we already pressing (freed = not in use = can take the role) 
         like if its a Q/L => we can make Q=left, QL=mid(its default), L=right 
+]
+
+
 
 
 ## --- meh +++
@@ -249,47 +272,28 @@ This approach prioritizes optimizing the common case for speed and efficiency, a
     *   **Pros:** Reuses familiar keys, 4x4 precision, keeps hands on home row, layer key separates mode.
     *   **Cons:** Requires holding a key, overloading keys is potentially confusing, needs clear cancel mechanism (`Escape` while holding layer key?). Using `Tab` conflicts with monitor cycling. `AppsKey` might be better if available.
     *   **Rating (AppsKey layer, tap grid key):** Speed: 6/10 (4 presses + hold), Precision: 9/10 (4x4), Less Motions: 8/10. **Overall: 7.5/10**
-        >> not working with a mode of holding a caps for fast
+        >> not working with a mode of holding a caps for fast release
 
 
 
-5.  **Modal Subgrid Keys (Distinct Set):**
-    *   **Mechanism:** After cell selection, enter subgrid mode. A distinct set of keys becomes active for subgrid selection (e.g., `uio`, `jkl`, `m,.` for 3x3, or include `p`, `;`, `/` etc. for 4x4). These keys are chosen because they are less likely to be the *first* key pressed in main grid navigation for the specified layout. Pressing any *other* main grid key (like `q`, `w`, `a`, `s`) immediately starts a new selection.
-    *   **Keys (3x3 Example):** `uio` (top), `jkl` (mid), `m,.` (bot).
-    *   **Pros:** No modifier needed, uses single key presses, clear separation (subgrid keys select subcell, other main keys start new selection), avoids monitor key conflict, keeps hands near home row.
-    *   **Cons:** Requires learning the dedicated subgrid key map. Might still feel slightly close to main grid keys depending on layout. 3x3 precision initially (can be expanded).
-    *   **Rating:** Speed: 7/10 (4 presses), Precision: 8/10 (3x3), Less Motions: 8/10. **Overall: 8/10**
 
-6.  **Visual Subgrid + Number Keys (Non-Numpad):**
-    *   **Mechanism:** After cell selection, display a 3x3 visual subgrid overlay with numbers 1-9 shown in the cells. Press the corresponding number row key (`1`-`9`) to select the subcell.
-    *   **Pros:** Intuitive visual mapping, 3x3 precision, single key press for subcell.
-    *   **Cons:** Conflicts directly with monitor switching keys (`1`-`4`). Requires looking at the overlay. Number row keys can be less ergonomic than home row.
-    *   **Rating:** Speed: 7/10 (4 presses), Precision: 8/10 (3x3), Less Motions: 6/10. **Overall: 6/10** (Due to monitor key conflict).
 
-**Comparison Table (Sub-Cell Focus):**
 
-| Option                      | Precision | Speed (Presses) | Less Motions | Conflict Risk      | Ergonomics | Overall |
-| :-------------------------- | :-------- | :-------------- | :----------- | :----------------- | :--------- | :------ |
-| 1. Numpad (3x3)             | 8 (3x3)   | 7 (4)           | 6            | Low                | Medium     | 7       |
-| 2. Alt+Home Row (3x3)       | 8 (3x3)   | 7 (4)           | 8            | Medium (Alt+)      | Good       | 7.5     |
-| 3. Two-Key Sequence (4x4)   | 9 (4x4)   | 5 (5)           | 7            | Medium (1-4)       | Good       | 7       |
-| 4. Layer Shift (Apps+Grid 4x4)| 9 (4x4)   | 6 (4+Hold)      | 8            | Medium (Layer Key) | Medium     | 7.5     |
-| 5. Modal Distinct Keys (3x3)| 8 (3x3)   | 7 (4)           | 8            | Low                | Good       | **8**   |
-| 6. Visual + Num Row (3x3)   | 8 (3x3)   | 7 (4)           | 6            | High (Monitor Keys)| Medium     | 6       |
 
-**Winner & Rationale:**
+2.  **Modifier + Home Row Subgrid (3x3):** Overall: 7.5/10 (User: okayish, Alt hold? TAB conflict?)
+3.  **Two-Key Subgrid Sequence (4x4):** Overall: 7/10 (User: conflict 1-4)
+4.  **Layer Shift Subgrid (Home Row 4x4):** Overall: 7.5/10 (User: conflicts with Caps-hold release)
+5.  **Modal Subgrid Keys (Distinct Set):** Overall: 8/10 (User: flawed if missclicked?)
+6.  **Visual Subgrid + Number Keys (Non-Numpad):** Overall: 6/10 (User: conflict 1-4, not intuitive)
 
-**Option 5: Modal Subgrid Keys (Distinct Set)** is the winner for improving sub-cell selection.
+**Winner 1.0:** Option 2.0: Modifier (Distinct Set)
+    Option 2.1: holding a cell keys
+    but in both options concerns about smoothness
 
-*   **Why:**
-    *   **Conflict Resolution:** It provides the clearest separation between sub-cell selection and starting a new main grid selection without needing modifiers or layers. Pressing a key from the dedicated subgrid set (`uiojklm,.`) selects a subcell; pressing any *other* main grid key (`qwerasdf...`) starts a new selection. This directly addresses the user's concern about easily correcting a wrong cell choice. It also avoids conflicts with monitor keys (`1-4`) and Numpad dependency.
-    *   **Ergonomics/Less Motions:** Uses single key presses and keeps hands near the home row (especially for the suggested `uiojklm,.` mapping on a standard QWERTY).
-    *   **Speed:** Maintains the 4-press flow (Activate -> Col -> Row -> SubKey -> Click).
-    *   **Precision:** Starts with 3x3 (9 points), which is a good improvement, and the concept *can* be expanded to 4x4 by adding more distinct keys (`p`, `;`, `/` etc.) if needed later, without changing the core mechanism.
-    *   **Simplicity:** Conceptually simpler than layer shifts or modifier keys, reducing cognitive load once the subgrid key map is learned.
+    potential suggestions: when colKey of targeted cell held > making uiojklm,. in use = no hand conflict
+    and when rowCey of a targeted cell being held > making colKey in use = no hand or keys conflict when being held
+    should be less cognitive load compared to alt pressed in on 2.0
 
-**Implementation Notes for Option 5:**
-*   Define the `subGridKeys` array (e.g., `["u", "i", "o", "j", "k", "l", "m", ",", "."]`).
-*   Update `SubGridOverlay` to display a 3x3 grid, potentially showing these keys.
-*   Modify hotkey definitions: In the `#HotIf currentState == "SUBGRID_ACTIVE"` context, map `u`, `i`, `o`, etc., to `HandleSubGridKey`.
-*   Modify `StartNewSelection`: Ensure it's triggered by *any* key press within the `SUBGRID_ACTIVE` context that is *not* in the `subGridKeys` array (and is a valid main grid key).
+---
+
+## Brainstorming Options & Winner 2.0: (Sub-Cell Precision & Key Conflicts):
