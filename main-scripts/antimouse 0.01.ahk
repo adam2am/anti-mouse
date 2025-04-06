@@ -2082,6 +2082,39 @@ CapsLock Up:: {
     }
 }
 
+global qmove := true
+
+#HotIf GetKeyState('CapsLock', 'P') && (currentState == "IDLE")
+q:: {
+    global qmove
+    CapsLock_Q()
+    if qmove {
+        ; Wait for grid to fully activate
+        Sleep(100)
+        ; Ensure we're in GRID_VISIBLE state before selecting the q column
+        if (currentState == "GRID_VISIBLE") {
+            ; HandleKey("q") selects the q column, but we should ensure we preserve the last row
+            StateMap['firstKey'] := "q"
+            StateMap['currentColIndex'] := 1  ; Assuming q is the first column
+
+            ; Use the remembered row if available, otherwise use the first row
+            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1
+            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
+
+            ; Get the cell key (q + the target row key)
+            cellKey := "q" . StateMap['activeRowKeys'][targetRowIndex]
+
+            ; Highlight and move to this cell
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+            if (IsObject(boundaries)) {
+                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+            }
+        }
+    }
+}
+#HotIf
+
 #HotIf GetKeyState('CapsLock', 'P')
 1:: {
     global currentState
