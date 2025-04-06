@@ -2021,7 +2021,8 @@ CapsLock Up:: {
     g_ModifierState.caps := false
 
     ; Handle instaclick mode - perform click when releasing CapsLock
-    if (instaClickMode && currentState != "IDLE" && g_ModifierState.inHoldMode) {
+    ; Click if we were in hold mode, regardless of instaClickMode setting
+    if (g_ModifierState.inHoldMode && currentState != "IDLE") {
         if showcaseDebug {
             ToolTip("InstaClick: Clicking at current position")
         }
@@ -2086,32 +2087,11 @@ global qmove := true
 
 #HotIf GetKeyState('CapsLock', 'P') && (currentState == "IDLE")
 q:: {
-    global qmove
+    global qmove, g_ModifierState ; Add g_ModifierState here
     CapsLock_Q()
-    if qmove {
-        ; Wait for grid to fully activate
-        Sleep(100)
-        ; Ensure we're in GRID_VISIBLE state before selecting the q column
-        if (currentState == "GRID_VISIBLE") {
-            ; HandleKey("q") selects the q column, but we should ensure we preserve the last row
-            StateMap['firstKey'] := "q"
-            StateMap['currentColIndex'] := 1  ; Assuming q is the first column
-
-            ; Use the remembered row if available, otherwise use the first row
-            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1
-            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
-
-            ; Get the cell key (q + the target row key)
-            cellKey := "q" . StateMap['activeRowKeys'][targetRowIndex]
-
-            ; Highlight and move to this cell
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
-            if (IsObject(boundaries)) {
-                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-            }
-        }
-    }
+    ; Set inHoldMode to true so CapsLock Up triggers a click
+    g_ModifierState.inHoldMode := true
+    ; The rest of the column selection logic is removed to prevent instant selection.
 }
 #HotIf
 
@@ -2197,10 +2177,11 @@ CapsLock & 1:: {
 
     ; Now switch to monitor 1
     SwitchMonitor(1)
+    g_ModifierState.inHoldMode := true ; Set hold mode for click on release
 }
 
 CapsLock & 2:: {
-    global currentState
+    global currentState, g_ModifierState ; Add g_ModifierState
 
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
@@ -2213,10 +2194,11 @@ CapsLock & 2:: {
 
     ; Now switch to monitor 2
     SwitchMonitor(2)
+    g_ModifierState.inHoldMode := true ; Set hold mode for click on release
 }
 
 CapsLock & 3:: {
-    global currentState
+    global currentState, g_ModifierState ; Add g_ModifierState
 
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
@@ -2229,10 +2211,11 @@ CapsLock & 3:: {
 
     ; Now switch to monitor 3
     SwitchMonitor(3)
+    g_ModifierState.inHoldMode := true ; Set hold mode for click on release
 }
 
 CapsLock & 4:: {
-    global currentState
+    global currentState, g_ModifierState ; Add g_ModifierState
 
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
@@ -2245,11 +2228,12 @@ CapsLock & 4:: {
 
     ; Now switch to monitor 4
     SwitchMonitor(4)
+    g_ModifierState.inHoldMode := true ; Set hold mode for click on release
 }
 
 ; --- Add Navigation Hotkeys for CapsLock Held State ---
 CapsLock & w:: {
-    global currentState
+    global currentState, g_ModifierState ; Add g_ModifierState
     if (currentState == "GRID_VISIBLE") {
         HandleKey("w")
     } else if (currentState == "SUBGRID_ACTIVE") {
