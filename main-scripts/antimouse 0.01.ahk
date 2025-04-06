@@ -9,6 +9,9 @@
 SetCapsLockState("AlwaysOff")
 CoordMode "Mouse", "Screen" ; Mouse coordinates relative to the virtual screen
 
+; Timer to ensure CapsLock never gets activated
+SetTimer ForceCapsLockOff, 250
+
 ; Global configuration
 global showcaseDebug := false       ; Enable debug tooltips and delays
 global selectedLayout := 2            ; Layout options: 1=User QWERTY/ASDF, 2=ergonomics for diff hands, 3=WASD/QWER
@@ -19,6 +22,25 @@ global cellMemoryFile := A_ScriptDir "\cell_memory.txt" ; File to store cell-sub
 global settingsFile := A_ScriptDir "\antimouse_settings.ini" ; File to store settings
 global storePerMonitor := true      ; Store subcell positions per monitor
 global instaClickMode := false      ; New: Track if we're in instaclick mode (hold-release click)
+
+; Function to forcibly keep CapsLock turned off
+ForceCapsLockOff() {
+    static lastCheck := 0
+    currentTime := A_TickCount
+
+    ; Only check every 250ms to reduce overhead
+    if (currentTime - lastCheck < 250)
+        return
+
+    lastCheck := currentTime
+
+    ; Force CapsLock off if it gets turned on somehow
+    if (GetKeyState("CapsLock", "T")) {
+        SetCapsLockState "AlwaysOff"
+        if (showcaseDebug)
+            ToolTip("Forcing CapsLock off")
+    }
+}
 
 ; Finite State Machine state
 global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
@@ -1954,6 +1976,9 @@ global g_ModifierState := {
 CapsLock:: {
     global g_ModifierState, doubleCapsThreshold, instaClickMode, currentState
 
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
+
     ; Update CapsLock state
     g_ModifierState.caps := GetKeyState("CapsLock", "P")
 
@@ -2019,10 +2044,14 @@ CapsLock:: {
     }
 
     ; Important: Return to avoid toggling CapsLock state
-    return
+    SetCapsLockState "AlwaysOff"  ; Redundant safeguard
+    return false  ; Explicitly block native functionality
 }
 
 CapsLock Up:: {
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
+
     if showcaseDebug {
         ToolTip('Capslock UP')
     }
@@ -2117,6 +2146,9 @@ global qmove := true
 q:: {
     global qmove, g_ModifierState ; Add g_ModifierState here
 
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
+
     ; Always activate the grid for explicit Caps+q key combinations
     CapsLock_Q()
     ; Set inHoldMode to true so CapsLock Up triggers a click
@@ -2127,6 +2159,9 @@ q:: {
 #HotIf GetKeyState('CapsLock', 'P')
 1:: {
     global currentState, g_ModifierState
+
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
 
     ; Always allow direct Caps+1 hotkey regardless of hold mode
     ; Temporarily disable tracking
@@ -2146,6 +2181,9 @@ q:: {
 2:: {
     global currentState, g_ModifierState
 
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
+
     ; Always allow direct Caps+2 hotkey regardless of hold mode
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
@@ -2164,6 +2202,9 @@ q:: {
 3:: {
     global currentState, g_ModifierState
 
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
+
     ; Always allow direct Caps+3 hotkey regardless of hold mode
     ; Temporarily disable tracking
     SetTimer(TrackCursor, 0)
@@ -2181,6 +2222,9 @@ q:: {
 
 4:: {
     global currentState, g_ModifierState
+
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
 
     ; Always allow direct Caps+4 hotkey regardless of hold mode
     ; Temporarily disable tracking
