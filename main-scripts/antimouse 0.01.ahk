@@ -2144,13 +2144,106 @@ global qmove := true
 
 #HotIf GetKeyState('CapsLock', 'P') && (currentState == "IDLE")
 q:: {
-    global qmove, g_ModifierState ; Add g_ModifierState here
+    global qmove, g_ModifierState, currentState, StateMap, highlight
 
     ; Ensure CapsLock stays off
     SetCapsLockState "AlwaysOff"
 
-    ; Always activate the grid for explicit Caps+q key combinations
+    ; Get current mouse position before activating grid
+    MouseGetPos(&cursorX, &cursorY)
+
+    ; First activate the grid
     CapsLock_Q()
+
+    ; Now immediately snap to the q column at the current row
+    if (currentState == "GRID_VISIBLE") {
+        ; Find q column index
+        qColIndex := 0
+        for i, colKey in StateMap['activeColKeys'] {
+            if (colKey == "q") {
+                qColIndex := i
+                break
+            }
+        }
+
+        ; If q column exists, handle it
+        if (qColIndex > 0) {
+            ; Determine the current row based on cursor position
+            rowIndex := 0
+
+            ; If we don't have a current position, try to find nearest row
+            if (IsObject(StateMap['currentOverlay'])) {
+                if (StateMap['currentOverlay'].ContainsPoint(cursorX, cursorY)) {
+                    ; Find the row near the current cursor position
+                    bestDistance := 99999
+                    bestRowIndex := 0
+
+                    for i, rowKey in StateMap['activeRowKeys'] {
+                        ; Check cell position for this row in q column
+                        cellKey := "q" . rowKey
+                        boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+
+                        if (IsObject(boundaries)) {
+                            ; Calculate distance to cell center
+                            cellCenterY := boundaries.y + (boundaries.h // 2)
+                            distance := Abs(cellCenterY - cursorY)
+
+                            if (distance < bestDistance) {
+                                bestDistance := distance
+                                bestRowIndex := i
+                            }
+                        }
+                    }
+
+                    if (bestRowIndex > 0) {
+                        rowIndex := bestRowIndex
+                    }
+                }
+            }
+
+            ; If we failed to find a good row, use the middle or last used one
+            if (rowIndex == 0) {
+                if (StateMap['lastSelectedRowIndex'] > 0) {
+                    rowIndex := StateMap['lastSelectedRowIndex']
+                } else {
+                    rowIndex := Ceil(StateMap['activeRowKeys'].Length / 2)
+                }
+            }
+
+            ; Validate index
+            rowIndex := Min(Max(1, rowIndex), StateMap['activeRowKeys'].Length)
+
+            ; Set the state variables for both column and row
+            StateMap['firstKey'] := "q"
+            StateMap['currentColIndex'] := qColIndex
+
+            ; Create cell key
+            rowKey := StateMap['activeRowKeys'][rowIndex]
+            cellKey := "q" . rowKey
+
+            ; Get cell boundaries
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+            if (IsObject(boundaries)) {
+                ; Move cursor to cell center
+                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+
+                ; Update highlight
+                if (IsObject(highlight)) {
+                    highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                }
+
+                ; Store row for future use
+                StateMap['lastSelectedRowIndex'] := rowIndex
+                StateMap['currentRowIndex'] := rowIndex
+
+                if (showcaseDebug) {
+                    tooltipMsg := "Selected cell: q" rowKey
+                    ToolTip(tooltipMsg)
+                }
+            }
+        }
+    }
+
     ; Set inHoldMode to true so CapsLock Up triggers a click
     g_ModifierState.inHoldMode := true
 }
