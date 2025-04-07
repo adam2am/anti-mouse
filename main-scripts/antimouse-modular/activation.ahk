@@ -5,40 +5,37 @@
 ; --- Grid Activation ---
 
 ; Main function to activate the grid overlays. Called by activation hotkeys.
+; Helper function to reuse the CapsLock & q code
 CapsLock_Q() {
-    ; Access global state and config
     global currentState, highlight, subGrid, cellMemory, StateMap
-    global selectedLayout, layoutConfigs, showcaseDebug, monitorMapping ; Config needed for layout/overlays
-    global gridActivationInProgress, gridActivationTime ; State needed for double activation check
+    global selectedLayout, layoutConfigs, showcaseDebug ; Also ensure these are global
+    global gridActivationInProgress, gridActivationTime ; For preventing double activation
 
-    ; --- Double Activation Prevention ---
+    ; Protect against double activation
     currentTime := A_TickCount
-    ; Check if activation is already running or happened very recently
     if (gridActivationInProgress || (currentTime - gridActivationTime < 300)) {
         if (showcaseDebug) {
-            ToolTip("Grid activation already in progress or too recent, ignoring duplicate request")
-            Sleep(500) ; Show tooltip longer
+            ToolTip("Grid activation already in progress, ignoring duplicate request")
+            Sleep(200)
             ToolTip()
         }
-        return ; Exit if activation is already happening
+        return
     }
 
     ; Set activation flag and timestamp
     gridActivationInProgress := true
     gridActivationTime := currentTime
 
-    ; --- Cleanup if Already Active (Shouldn't happen if called from IDLE, but safeguard) ---
+    ; If already active, clean up and exit
     if (currentState != "IDLE") {
-        if (showcaseDebug) ToolTip("Warning: CapsLock_Q called when not IDLE. Cleaning up.")
-            Cleanup()
-        ; Reset flag and exit after cleanup
+        Cleanup()
         gridActivationInProgress := false
         return
     }
 
-    ; --- Initialization ---
+    ; Try to initialize
     try {
-        ; Reset all relevant state variables using StateMap
+        ; IMPROVEMENT: Explicitly reset all state variables using StateMap
         StateMap['firstKey'] := ""
         StateMap['currentOverlay'] := ""
         StateMap['activeColKeys'] := []
@@ -48,193 +45,109 @@ CapsLock_Q() {
         StateMap['currentColIndex'] := 0
         StateMap['currentRowIndex'] := 0
         StateMap['lastSelectedRowIndex'] := 0
-        StateMap['overlays'] := [] ; Clear any previous overlay objects
+        StateMap['overlays'] := []
 
-        ; Load cell memory from file (uses function from memory_settings.ahk)
+        ; Load cell memory from file
         LoadCellMemory()
 
-        ; Get configured layout from config.ahk
-        if (!layoutConfigs.Has(selectedLayout)) {
-            if (showcaseDebug) {
-                ToolTip("Invalid layout (" selectedLayout ") in config, falling back to layout 2")
-            }
-            selectedLayout := 2 ; Fallback to a default layout
-        }
+        ; Get configured layout
         currentConfig := layoutConfigs[selectedLayout]
-
-        ; Validate layout configuration structure
-        if (!IsObject(currentConfig) || !currentConfig.Has("colKeys") || !currentConfig.Has("rowKeys") || !IsObject(
-            currentConfig["colKeys"]) || !IsObject(currentConfig["rowKeys"])) {
-            throw Error("Invalid layout configuration structure for layout: " selectedLayout)
+        if (!IsObject(currentConfig)) {
+            ; Fall back to default layout if the selected one is invalid
+            selectedLayout := 2
+            currentConfig := layoutConfigs[2]
+            if (showcaseDebug) {
+                ToolTip("Invalid layout selected, falling back to layout 2")
+                Sleep(2000)
+                ToolTip()
+            }
         }
 
-        ; Set up active keys in state map
-        StateMap['activeColKeys'] := currentConfig["colKeys"]
-        StateMap['activeRowKeys'] := currentConfig["rowKeys"]
+        ; Set up state - ensure we have valid data
+        if (IsObject(currentConfig) && currentConfig.Has("colKeys") && currentConfig.Has("rowKeys") &&
+        IsObject(currentConfig["colKeys"]) && IsObject(currentConfig["rowKeys"])) {
+            StateMap['activeColKeys'] := currentConfig["colKeys"] ; Use StateMap
+            StateMap['activeRowKeys'] := currentConfig["rowKeys"] ; Use StateMap
+        } else {
+            ; Fallback to a basic layout if config is invalid
+            StateMap['activeColKeys'] := ["q", "w", "e", "r"] ; Use StateMap
+            StateMap['activeRowKeys'] := ["a", "s", "d", "f"] ; Use StateMap
+            if (showcaseDebug) {
+                ToolTip("Invalid layout configuration, using fallback layout")
+                Sleep(2000)
+                ToolTip()
+            }
+        }
 
-        ; Get current mouse position to determine starting monitor
+        ; Get current mouse position
         MouseGetPos(&startX, &startY)
         foundMonitor := false
 
-        ; Initialize reusable GUI elements (Highlight and SubGrid)
-        ; Ensure previous instances are destroyed if they somehow exist
-        if (IsObject(highlight)) {
-            highlight.Destroy()
-            highlight := ""
-        }
-        if (IsObject(subGrid)) {
-            subGrid.Destroy()
-            subGrid := ""
-        }
-
-        ; Create new instances with proper error handling
+        ; Initialize reusable GUI elements
         try {
-            highlight := HighlightOverlay() ; Create new instance (class from gui_classes.ahk)
+            highlight := HighlightOverlay()
+            subGrid := SubGridOverlay()
         } catch as e {
-            throw Error("Failed to create HighlightOverlay: " e.Message)
+            ToolTip("Error initializing GUI: " e.Message)
+            Sleep(2000)
+            ToolTip()
+            return
         }
 
-        try {
-            subGrid := SubGridOverlay()     ; Create new instance (class from gui_classes.ahk)
-        } catch as e {
-            throw Error("Failed to create SubGridOverlay: " e.Message)
-        }
-
-        ; --- Create Overlays for Each Monitor ---
+        ; Create overlay for each monitor
         monitorCount := MonitorGetCount()
-        if (showcaseDebug)
-            ToolTip("Found " monitorCount " monitors")
-
-        ; Initialize monitor mapping if needed
-        if (!IsObject(monitorMapping) || monitorMapping.Length == 0) {
-            monitorMapping := [1] ; At least map the primary monitor
-            if (showcaseDebug)
-                ToolTip("Warning: No monitor mapping found, defaulting to primary monitor")
-        }
-
         loop monitorCount {
-            ; Initialize local variables at the start of each loop iteration
-            local overlay := "", Left := 0, Top := 0, Right := 0, Bottom := 0
-            physicalMonitorIndex := A_Index
-
-            if (showcaseDebug)
-                ToolTip("Processing monitor " physicalMonitorIndex)
-
-            ; Check if this physical monitor should be used based on mapping
-            logicalMonitorIndex := 0
-            for physIdx, logIdx in monitorMapping {
-                if (physIdx == physicalMonitorIndex) {
-                    logicalMonitorIndex := Integer(logIdx) ; Ensure we get a number
-                    break
-                }
-            }
-
-            ; Skip if this physical monitor is not mapped or mapped to 0/invalid
-            if (logicalMonitorIndex <= 0) {
-                if (showcaseDebug)
-                    ToolTip("Skipping monitor " physicalMonitorIndex ": not mapped")
-                continue
-            }
-
             try {
-                ; Get monitor coordinates
-                if (!MonitorGet(physicalMonitorIndex, &Left, &Top, &Right, &Bottom)) {
-                    if (showcaseDebug)
-                        ToolTip("Failed to get monitor " physicalMonitorIndex " coordinates")
-                    continue
-                }
-
-                ; Convert coordinates to numbers immediately
-                Left := Integer(Left)
-                Top := Integer(Top)
-                Right := Integer(Right)
-                Bottom := Integer(Bottom)
-
-                if (showcaseDebug) {
-                    ToolTip("Creating overlay for monitor " physicalMonitorIndex " -> " logicalMonitorIndex " at " Left "," Top "," Right "," Bottom
-                    )
-                    ToolTip("Types: Left=" Type(Left) ", Top=" Type(Top) ", Right=" Type(Right) ", Bottom=" Type(Bottom
-                    ) ", logicalMonitorIndex=" Type(logicalMonitorIndex))
-                }
-
-                ; Validate monitor coordinates
-                if (Left >= Right || Top >= Bottom) {
-                    if (showcaseDebug)
-                        ToolTip("Invalid monitor coordinates for monitor " physicalMonitorIndex)
-                    continue
-                }
-
-                ; Create OverlayGUI instance with numeric coordinates
-                try {
-                    overlay := OverlayGUI(Integer(logicalMonitorIndex), Left, Top, Right, Bottom, StateMap[
-                        'activeColKeys'],
-                    StateMap['activeRowKeys'])
-                } catch as e {
-                    if (showcaseDebug) {
-                        ToolTip("Error in OverlayGUI constructor: " e.Message)
-                        ToolTip("Constructor args: monitorIndex=" Type(logicalMonitorIndex) ", Left=" Type(Left) ", Top=" Type(
-                            Top) ", Right=" Type(Right) ", Bottom=" Type(Bottom))
-                    }
-                    throw e
-                }
-
-                ; Verify overlay was created successfully
-                if (!IsObject(overlay)) {
-                    if (showcaseDebug)
-                        ToolTip("Failed to create overlay object for monitor " physicalMonitorIndex)
-                    continue
-                }
-
+                MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+                overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, StateMap['activeColKeys'], StateMap[
+                    'activeRowKeys']) ; Use StateMap
                 overlay.Show()
-                StateMap['overlays'].Push(overlay)
+                StateMap['overlays'].Push(overlay) ; Use StateMap
 
-                if (showcaseDebug)
-                    ToolTip("Successfully created overlay for monitor " physicalMonitorIndex)
-
-                ; Determine if the cursor starts on this monitor
                 if (overlay.ContainsPoint(startX, startY)) {
-                    StateMap['currentOverlay'] := overlay
+                    StateMap['currentOverlay'] := overlay ; Use StateMap
                     foundMonitor := true
-                    if (showcaseDebug)
-                        ToolTip("Found cursor on monitor " physicalMonitorIndex)
                 }
             } catch as e {
                 if (showcaseDebug) {
-                    ToolTip("Error creating overlay for monitor " physicalMonitorIndex ": " e.Message)
-                    ToolTip("Error details: " e.File ":" e.Line " - " e.What)
+                    ToolTip("Error creating overlay for monitor " A_Index ": " e.Message)
+                    Sleep(2000)
+                    ToolTip()
                 }
-                ; Attempt to clean up partially created overlay if possible
-                if (IsObject(overlay))
-                    overlay.Destroy()
-                overlay := ""
+                ; Continue with next monitor
             }
-            Sleep(50) ; Small delay between monitor processing
         }
 
-        ; If cursor wasn't found on any *active* overlay, default to the first one created
-        if (!foundMonitor && StateMap['overlays'].Length > 0) {
-            StateMap['currentOverlay'] := StateMap['overlays'][1]
+        ; If no monitor found for current position, use first overlay
+        if (!foundMonitor && StateMap['overlays'].Length > 0) { ; Use StateMap
+            StateMap['currentOverlay'] := StateMap['overlays'][1] ; Use StateMap
         }
 
-        ; --- Final State Update and Timer Start ---
-        if (StateMap['overlays'].Length > 0 && IsObject(StateMap['currentOverlay'])) {
-            currentState := "GRID_VISIBLE" ; Update FSM state
-            SetTimer(TrackCursor, 50)      ; Start cursor tracking (function from core_logic.ahk)
-            gridActivationInProgress := false ; Reset activation flag *after* successful initialization
-            if (showcaseDebug)
-                ToolTip("Grid activated. State: GRID_VISIBLE")
+        ; Only continue if overlay creation was successful
+        if (StateMap['overlays'].Length > 0 && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+            currentState := "GRID_VISIBLE"
+            SetTimer(TrackCursor, 50)
+            ; Reset activation flag after successful initialization
+            gridActivationInProgress := false
         } else {
-            ; If no overlays were successfully created, clean up and report error
-            throw Error("Failed to create any grid overlays.")
+            ; Clean up and show error if unsuccessful
+            Cleanup()
+            ; Reset activation flag after failure
+            gridActivationInProgress := false
+            ToolTip("Failed to create grid overlays")
+            Sleep(2000)
+            ToolTip()
         }
-
     } catch as e {
-        ; --- Error Handling during Initialization ---
-        Cleanup() ; Attempt cleanup on any error
-        gridActivationInProgress := false ; Reset activation flag on failure
-        MsgBox("Error initializing AntiMouse: " e.Message, "Initialization Error", 16)
-        if (showcaseDebug)
+        ; Handle any uncaught errors
+        Cleanup()
+        ; Reset activation flag after any exception
+        gridActivationInProgress := false
+        if (showcaseDebug) {
             ToolTip("Error initializing: " e.Message)
+            Sleep(2000)
+            ToolTip()
+        }
     }
 }
 

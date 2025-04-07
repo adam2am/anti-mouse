@@ -201,28 +201,36 @@ GetCellAtPosition(x, y) {
 
 ; --- Key Handling Logic ---
 
-; Handles key presses when the grid is visible (first or second key press).
 HandleKey(key) {
-    ; Access global state and config
-    global currentState, highlight, subGrid, stateTransitionTime, stateTransitionDelay, StateMap,
-        showcaseDebug
+    global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap,
+        storePerMonitor, showcaseDebug, instaClickMode, g_ModifierState
 
-    ; IMPROVEMENT: Explicitly hide UI elements at the beginning to prevent artifacts
-    if (IsObject(highlight)) highlight.Hide()
-        if (IsObject(subGrid)) subGrid.Hide()
-        ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference during key processing
-            SetTimer(TrackCursor, 0)
+    ; Special handling for instaclick mode - always handle key events even when CapsLock is held
+    if (instaClickMode && g_ModifierState.inHoldMode) {
+        ; Process key normally, even though CapsLock is being held
+    }
 
-    ; Ensure we are in the correct state and have a valid overlay
-    if (currentState != "GRID_VISIBLE" || !IsObject(StateMap['currentOverlay'])) {
-        SetTimer(TrackCursor, 50) ; Re-enable TrackCursor before returning
+    ; IMPROVEMENT: Explicit hiding at the beginning
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+
+    ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference
+    SetTimer(TrackCursor, 0)
+
+    if (currentState != "GRID_VISIBLE" || !IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
         return
     }
 
-    ; Check if the pressed key is a valid column or row key for the current layout
+    ; Check if key is a valid column or row key
     isColKey := false
     colIndex := 0
-    for i, colKeyCheck in StateMap['activeColKeys'] {
+    for i, colKeyCheck in StateMap['activeColKeys'] { ; Use StateMap
         if (colKeyCheck = key) {
             isColKey := true
             colIndex := i
@@ -232,7 +240,7 @@ HandleKey(key) {
 
     isRowKey := false
     rowIndex := 0
-    for i, rowKeyCheck in StateMap['activeRowKeys'] {
+    for i, rowKeyCheck in StateMap['activeRowKeys'] { ; Use StateMap
         if (rowKeyCheck = key) {
             isRowKey := true
             rowIndex := i
@@ -240,10 +248,13 @@ HandleKey(key) {
         }
     }
 
-    ; If the key is not part of the grid layout, ignore it
     if (!isColKey && !isRowKey) {
-        if (showcaseDebug) ToolTip("Invalid key for grid: " key)
-            SetTimer(TrackCursor, 50) ; Re-enable TrackCursor
+        if (showcaseDebug) {
+            ToolTip("Invalid key: " key)
+            Sleep 1000
+            ToolTip()
+        }
+        SetTimer(TrackCursor, 50)
         return
     }
 
@@ -255,31 +266,29 @@ HandleKey(key) {
     tooltipText := ""
     proceedToSubgrid := false
 
-    if (StateMap['firstKey'] = "") {
+    if (StateMap['firstKey'] = "") { ; Use StateMap
         ; --- First Key Press ---
-        StateMap['firstKey'] := key ; Store the first key
+        StateMap['firstKey'] := key ; Use StateMap
 
         if (isColKey) {
             ; First key is COLUMN
-            StateMap['currentColIndex'] := colIndex
-            ; Predict row based on last selection or default to 1
-            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1
-            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length) ; Use util function
-            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; Col + Row
-            tooltipText := "Column: " key ". Select row."
+            StateMap['currentColIndex'] := colIndex ; Use StateMap
+            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1 ; Use StateMap
+            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
+            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; Use StateMap
+            tooltipText := "First key: " key ". Select row."
         } else { ; isRowKey
             ; First key is ROW
-            StateMap['currentRowIndex'] := rowIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex ; Remember this row
-            ; Predict column based on current or default to center
-            targetColIndex := StateMap['currentColIndex'] ? StateMap[
-                'currentColIndex'] : Ceil(StateMap['activeColKeys'].Length / 2)
-            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length) ; Use util function
-            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Col + Row
-            tooltipText := "Row: " key ". Select column."
+            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
+            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
+            targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'
+                ].Length / 2) ; Use StateMap
+            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
+            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Use StateMap
+            tooltipText := "First key: " key ". Select column."
         }
 
-        boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+        boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
         if (IsObject(boundaries)) {
             targetCellX := boundaries.x
             targetCellY := boundaries.y
@@ -287,53 +296,55 @@ HandleKey(key) {
             targetCellH := boundaries.h
         }
 
-        ; Update highlight, move cursor, and wait for the second key
+        ; Center cursor and wait for second key
         if (targetCellW > 0) {
             highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
             MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
-            Sleep(10) ; Small delay
-            if (showcaseDebug)
+            Sleep(10)
+            if (showcaseDebug) {
                 ToolTip(tooltipText)
+            }
         }
-        SetTimer(TrackCursor, 50) ; Re-enable tracking
-        return ; Exit and wait for the second key
+        SetTimer(TrackCursor, 50)
+        return ; Wait for second key
 
     } else {
         ; --- Second Key Press ---
         firstKeyWasCol := false
-        for colKeyCheck in StateMap['activeColKeys'] {
-            if (colKeyCheck = StateMap['firstKey']) {
+        for colKeyCheck in StateMap['activeColKeys'] { ; Use StateMap
+            if (colKeyCheck = StateMap['firstKey']) { ; Use StateMap
                 firstKeyWasCol := true
                 break
             }
         }
-        firstKeyWasRow := !firstKeyWasCol
+        firstKeyWasRow := !firstKeyWasCol ; Assume it must be one or the other if firstKey != ""
 
         if (firstKeyWasCol && isRowKey) {
             ; Expected: Col -> Row
-            cellKey := StateMap['firstKey'] . key ; Col + Row
-            StateMap['currentRowIndex'] := rowIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex ; Remember row
+            cellKey := StateMap['firstKey'] . key ; Use StateMap - column first, then row
+            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
+            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
             proceedToSubgrid := true
-            StateMap['firstKey'] := "" ; Reset first key state
+            StateMap['firstKey'] := "" ; Reset using StateMap
         }
         else if (firstKeyWasRow && isColKey) {
             ; Expected: Row -> Col
-            cellKey := key . StateMap['firstKey'] ; Col + Row (Consistent key format)
-            StateMap['currentColIndex'] := colIndex
+            ; IMPORTANT: Always store cell keys as column+row for consistency
+            cellKey := key . StateMap['firstKey'] ; Use StateMap - column first, then row
+            StateMap['currentColIndex'] := colIndex ; Use StateMap
             proceedToSubgrid := true
-            StateMap['firstKey'] := "" ; Reset first key state
+            StateMap['firstKey'] := "" ; Reset using StateMap
         }
         else if (firstKeyWasCol && isColKey) {
-            ; Unexpected: Col -> Col (Change column selection)
-            StateMap['firstKey'] := key ; Update stored first key (the new column)
-            StateMap['currentColIndex'] := colIndex
-            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap[
-                'lastSelectedRowIndex'] : 1
-            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
-            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; New Col + Predicted Row
+            ; Unexpected: Col -> Col (Change column)
+            StateMap['firstKey'] := key ; Update stored col key using StateMap
+            StateMap['currentColIndex'] := colIndex ; Use StateMap
+            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1 ; Use StateMap
+            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
+            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; Use StateMap
             tooltipText := "Column changed to: " key ". Select row."
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
             if (IsObject(boundaries)) {
                 targetCellX := boundaries.x
                 targetCellY := boundaries.y
@@ -342,17 +353,17 @@ HandleKey(key) {
             }
         }
         else if (firstKeyWasRow && isRowKey) {
-            ; Unexpected: Row -> Row (Change row selection)
-            StateMap['firstKey'] := key ; Update stored first key (the new row)
-            StateMap['currentRowIndex'] := rowIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex ; Remember new row
-            targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] :
-                Ceil(StateMap['activeColKeys'].Length / 2)
-            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length
-            )
-            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Predicted Col + New Row
+            ; Unexpected: Row -> Row (Change row)
+            StateMap['firstKey'] := key ; Update stored row key using StateMap
+            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
+            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
+            targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'
+                ].Length / 2) ; Use StateMap
+            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
+            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Use StateMap
             tooltipText := "Row changed to: " key ". Select column."
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
             if (IsObject(boundaries)) {
                 targetCellX := boundaries.x
                 targetCellY := boundaries.y
@@ -361,194 +372,200 @@ HandleKey(key) {
             }
         }
         else {
-            ; Invalid sequence (should not happen if key validation is correct)
-            StateMap['firstKey'] := "" ; Reset state
-            SetTimer(TrackCursor, 50) ; Re-enable tracking
+            ; Invalid sequence (e.g., firstKey wasn't found in either col/row keys somehow?)
+            StateMap['firstKey'] := "" ; Use StateMap
+            SetTimer(TrackCursor, 50)
             return
         }
 
-        ; If we are not proceeding to subgrid, it means we changed the first key (Col->Col or Row->Row)
+        ; If not proceeding to subgrid, it means we changed the first key (col->col or row->row)
         if (!proceedToSubgrid) {
             if (targetCellW > 0) {
                 highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
-                MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH //
-                    2), 0)
+                MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
                 Sleep(10)
                 if (showcaseDebug) {
                     ToolTip(tooltipText)
                 }
             }
-            SetTimer(TrackCursor, 50) ; Re-enable tracking
-            return ; Wait for the *new* second key press
+            SetTimer(TrackCursor, 50)
+            return ; Wait for the *new* second key
         }
     }
 
-    ; --- Proceed to Subgrid State ---
+    ; --- Proceed to Subgrid State (if proceedToSubgrid is true) ---
     if (!proceedToSubgrid || cellKey = "") {
-        StateMap['firstKey'] := "" ; Ensure reset if something went wrong
-        SetTimer(TrackCursor, 50) ; Re-enable tracking
+        StateMap['firstKey'] := "" ; Ensure reset if something went wrong using StateMap
+        SetTimer(TrackCursor, 50)
         return
     }
 
-    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
     if (IsObject(boundaries)) {
-        StateMap['activeCellKey'] := cellKey ; Store the final selected cell
-        stateTransitionTime := A_TickCount ; Record transition time
-        currentState := "SUBGRID_ACTIVE" ; Change FSM state
+        StateMap['activeCellKey'] := cellKey ; Use StateMap
+        stateTransitionTime := A_TickCount
+        currentState := "SUBGRID_ACTIVE"
 
-        ; Update UI: Move cursor, show highlight, show subgrid
         highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-        MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2
-        ), 0)
-        Sleep(40) ; Increased delay before showing subgrid
+        MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+        Sleep(40) ; Increased delay
         subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
 
-        ; Check cell memory for a remembered subcell position for this cell
+        ; Ensure subgrid is visible - use a more compatible approach
+        try {
+            ; Force redraw by temporarily changing the window's style
+            if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                winHwnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                if (winHwnd) {
+                    ; Force window to redraw by sending a redraw message
+                    PostMessage(0x000F, 0, 0, , "ahk_id " winHwnd)  ; WM_PAINT message
+                }
+            }
+        } catch {
+        }
+
+        ; Check if we have a remembered subcell for this cell
         rememberedSubCell := ""
         cellFound := false
-        keyToCheck := ""
 
-        ; Check monitor-specific key first if enabled
+        ; First check monitor-specific key if enabled
         if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
             monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . cellKey
             if (cellMemory.Has(monitorCellKey)) {
                 rememberedSubCell := cellMemory[monitorCellKey]
                 cellFound := true
-                keyToCheck := monitorCellKey
+                if (showcaseDebug) {
+                    ToolTip("Found monitor-specific subcell: " monitorCellKey " -> " rememberedSubCell)
+                    Sleep(500)
+                }
             }
         }
 
-        ; Fall back to general cell key if no monitor-specific key found or not enabled
+        ; Fall back to general cell key if no monitor-specific key found
         if (!cellFound && cellMemory.Has(cellKey)) {
             rememberedSubCell := cellMemory[cellKey]
             cellFound := true
-            keyToCheck := cellKey
+            if (showcaseDebug) {
+                ToolTip("Found general subcell: " cellKey " -> " rememberedSubCell)
+                Sleep(500)
+            }
         }
 
-        ; If a position was remembered, move the mouse to it
+        ; Move to the remembered subcell position if found
         if (cellFound && rememberedSubCell != "") {
-            if (showcaseDebug) ToolTip("Found memory: " keyToCheck " -> " rememberedSubCell
-            )
-                HandleSubGridKey(rememberedSubCell) ; Call subgrid handler to move mouse
+            HandleSubGridKey(rememberedSubCell)
         } else if (showcaseDebug) {
-            ToolTip("No saved subcell for " cellKey)
+            ToolTip("No saved subcell found for " cellKey)
+            Sleep(500)
         }
 
-        if (showcaseDebug)
-            ToolTip("Cell '" cellKey "' targeted. Use subgrid keys (" SubStr(
-                subGridKeys.ToString(), 2, -1) ").")
-    } else {
         if (showcaseDebug) {
-            ToolTip("Could not get boundaries for cell: " cellKey)
+            ToolTip("Cell '" cellKey "' targeted. Use b-h.")
         }
-        StateMap['firstKey'] := "" ; Reset if boundaries failed
     }
 
-    SetTimer(TrackCursor, 50) ; Re-enable tracking
+    SetTimer(TrackCursor, 50)
 }
-
-; Handles key presses when the subgrid is active.
 HandleSubGridKey(subKey) {
-    ; Access global state and config
-    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay,
-        storePerMonitor, StateMap, showcaseDebug
+    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap,
+        showcaseDebug, instaClickMode, g_ModifierState
 
-    ; Ensure we are in the correct state and have a valid subgrid object
+    ; Special handling for instaclick mode - always handle key events even when CapsLock is held
+    if (instaClickMode && g_ModifierState.inHoldMode) {
+        ; Process key normally, even though CapsLock is being held
+    }
+
     if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
         return
     }
 
-    ; Prevent processing keys too quickly after entering subgrid state
+    ; Ensure enough time has passed since state transition to prevent accidental keypresses
     timeSinceTransition := A_TickCount - stateTransitionTime
     if (timeSinceTransition < stateTransitionDelay) {
         Sleep(stateTransitionDelay - timeSinceTransition)
     }
 
-    ; Check if the pressed key is a valid subgrid key
-    isValidSubKey := false
-    for i, k in subGridKeys {
-        if (k = subKey) {
-            isValidSubKey := true
-            break
-        }
-    }
-
-    if (!isValidSubKey) {
-        if (showcaseDebug) ToolTip("Invalid subgrid key: " subKey)
-            return
-    }
-
-    ; Get the target coordinates for the subkey within the subgrid
     targetCoords := subGrid.GetTargetCoordinates(subKey)
     if (IsObject(targetCoords)) {
-        MouseMove(targetCoords.x, targetCoords.y, 0) ; Move the mouse
-        StateMap['activeSubCellKey'] := subKey ; Update state
+        MouseMove(targetCoords.x, targetCoords.y, 0)
+        StateMap['activeSubCellKey'] := subKey ; Use StateMap
 
-        ; Remember this subcell selection for the current active cell
+        ; Remember this subcell for the current cell
         activeCell := StateMap['activeCellKey']
-        if (activeCell != "") {
+        if (activeCell != "") { ; Use StateMap
             keyToSave := ""
-            ; Determine the key for saving based on storePerMonitor setting
-            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
-                keyToSave := StateMap['currentOverlay'].monitorIndex . "_" .
-                    activeCell
+
+            ; Determine the key to use based on the storePerMonitor setting
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+                keyToSave := StateMap['currentOverlay'].monitorIndex . "_" . activeCell
             } else {
                 keyToSave := activeCell
             }
 
-            ; Update the cell memory map and save it
-            if (keyToSave != "" && cellMemory.Has(keyToSave) ? cellMemory[
-                keyToSave] != subKey : true) { ; Only save if changed
+            ; Update the memory map
+            if (keyToSave != "") {
                 cellMemory[keyToSave] := subKey
-                if (showcaseDebug) ToolTip("Memory updated: " keyToSave " -> " subKey
-                )
-                    SaveCellMemory() ; Save the entire map to file
+                if (showcaseDebug) {
+                    ToolTip("Memory updated: " keyToSave " -> " subKey)
+                    Sleep(500)
+                }
+                ; Save the entire map to file
+                SaveCellMemory()
             }
         }
 
         if (showcaseDebug) {
-            monitorInfo := (storePerMonitor && IsObject(StateMap[
-                'currentOverlay'])) ? " on monitor " StateMap['currentOverlay']
-                .monitorIndex : ""
-            ToolTip("Moved to sub-cell " subKey " in " activeCell monitorInfo)
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+                ToolTip("Moved to sub-cell " subKey " in " activeCell " on monitor " StateMap['currentOverlay'].monitorIndex
+                ) ; Use StateMap
+            } else {
+                ToolTip("Moved to sub-cell " subKey " in " activeCell) ; Use StateMap
+            }
         }
     } else {
         if (showcaseDebug) {
-            ToolTip(
-                "Could not get target coordinates for sub-key: " subKey)
+            ToolTip("Invalid sub-key: " subKey)
+            Sleep 1000
+            ToolTip()
         }
     }
 }
 
-; Resets the state from SUBGRID_ACTIVE back to GRID_VISIBLE and processes the key as the start of a new selection.
 StartNewSelection(key) {
-    ; Access global state
     global currentState, subGrid, highlight, StateMap
 
     ; IMPROVEMENT: Temporarily disable TrackCursor
     SetTimer(TrackCursor, 0)
 
-    ; Only proceed if we are actually in the subgrid state
     if (currentState != "SUBGRID_ACTIVE") {
-        SetTimer(TrackCursor, 50) ; Re-enable TrackCursor before returning
+        ; Re-enable TrackCursor before returning
+        SetTimer(TrackCursor, 50)
         return
     }
 
-    ; Hide the subgrid and highlight first
-    if (IsObject(subGrid)) subGrid.Hide()
-        if (IsObject(highlight)) highlight.Hide() ; Hide highlight too
-        ; Reset relevant state variables before handling the new key
-            StateMap['activeCellKey'] := ""
+    ; Hide the subgrid first
+    if (IsObject(subGrid)) {
+        subGrid.Hide()
+    }
+
+    ; Hide highlight as well
+    if (IsObject(highlight)) {
+        highlight.Hide()
+    }
+
+    ; Reset state before handling the new key using StateMap
+    StateMap['activeCellKey'] := ""
     StateMap['activeSubCellKey'] := ""
     StateMap['firstKey'] := ""
-    currentState := "GRID_VISIBLE" ; Transition back to grid selection state
+    currentState := "GRID_VISIBLE"
 
-    Sleep(10) ; Force a small delay to ensure state transitions properly
+    ; Force a small delay to ensure state transitions properly
+    Sleep(10)
 
-    ; Call HandleKey to process the pressed key as the *first* key of a new selection
+    ; Call HandleKey to process the key press
     HandleKey(key)
 
-    ; Note: TrackCursor is re-enabled within HandleKey
+    ; TrackCursor re-enabled in HandleKey
 }
 
 ; --- Cursor Tracking ---
