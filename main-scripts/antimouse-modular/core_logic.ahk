@@ -18,8 +18,10 @@ SwitchMonitor(monitorNum) {
 
     ; Check if mapped monitor index is valid and grid is active
     if (mappedMonitor > StateMap['overlays'].Length || currentState == "IDLE") {
-        if (showcaseDebug && currentState != "IDLE") ToolTip("Invalid mapped monitor index: " mappedMonitor)
-            return
+        if (showcaseDebug && currentState != "IDLE") {
+            ToolTip("Invalid mapped monitor index: " mappedMonitor)
+        }
+        return
     }
 
     ; Temporarily disable cursor tracking during the switch
@@ -28,8 +30,10 @@ SwitchMonitor(monitorNum) {
     ; Get the target overlay object
     newOverlay := StateMap['overlays'][mappedMonitor]
     if (!IsObject(newOverlay)) {
-        if (showcaseDebug) ToolTip("Target overlay object not found for monitor " mappedMonitor)
-            SetTimer(TrackCursor, 50) ; Re-enable tracking if switch fails
+        if (showcaseDebug) {
+            ToolTip("Target overlay object not found for monitor " mappedMonitor)
+        }
+        SetTimer(TrackCursor, 50) ; Re-enable tracking if switch fails
         return
     }
 
@@ -176,221 +180,211 @@ CycleToNextMonitor() {
 
 ; Determines the cell key (e.g., "qj") at given absolute screen coordinates (x, y).
 GetCellAtPosition(x, y) {
-    global StateMap ; Access global state
+    global StateMap, showcaseDebug ; Access global state
 
     ; Ensure we have a valid current overlay
     if (!IsObject(StateMap['currentOverlay'])) {
+        if (showcaseDebug)
+            ToolTip("GetCellAtPosition: No valid current overlay")
         return ""
     }
+
     ; Check if the point is within the current overlay's boundaries
     if (!StateMap['currentOverlay'].ContainsPoint(x, y)) {
+        if (showcaseDebug)
+            ToolTip("GetCellAtPosition: Point (" x "," y ") outside overlay bounds")
         return ""
     }
 
     ; Iterate through cells of the current overlay to find which one contains the point
     ; Use the cells map directly from the OverlayGUI object
     for cellKey, cellData in StateMap['currentOverlay'].cells {
-        if (x >= cellData.absX && x < cellData.absX + cellData.w && y >= cellData.absY && y < cellData.absY + cellData.h
-        ) {
+        if (x >= cellData.absX && x < cellData.absX + cellData.w &&
+            y >= cellData.absY && y < cellData.absY + cellData.h) {
+            if (showcaseDebug)
+                ToolTip("GetCellAtPosition: Found cell " cellKey " at (" x "," y ")")
             return cellKey ; Return the key (e.g., "qj")
         }
     }
+
+    if (showcaseDebug)
+        ToolTip("GetCellAtPosition: No cell found at (" x "," y ")")
     return ""
-    ; Return empty string if no cell found at the position
 }
 
 ; --- Key Handling Logic ---
 
 HandleKey(key) {
-    global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap,
-        storePerMonitor, showcaseDebug, instaClickMode, g_ModifierState, enableUltraFast, rowKeyHoldThreshold
+    ; Static variables for processing lock and auto-repeat prevention
+    static keyProcessingLock := false
+    static lastKeyProcessed := ""
+    static lastKeyTime := 0
+    static ignoreThreshold := 50 ; Ignore same key if pressed within 50ms
 
-    ; Special handling for instaclick mode - always handle key events even when CapsLock is held
-    if (instaClickMode && g_ModifierState.inHoldMode) {
-        ; Process key normally, even though CapsLock is being held
+    ; Define currentTime at the beginning of the function
+    currentTime := A_TickCount
+
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        keyPhysicallyDown := GetKeyState(key, "P")
+        logMsg := Format(
+            "Timestamp: {} | HandleKey START | key={} | PhysicallyDown={} | currentState={} | firstKey={} | activeRowKey={} | inUltraFastMode={}",
+            currentTime, key, keyPhysicallyDown ? "DOWN" : "UP", currentState, StateMap['firstKey'], StateMap[
+                'activeRowKey'], StateMap['inUltraFastMode']
+        )
+        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
     }
+    ; <<< ADD LOGGING END >>>
 
-    ; IMPROVEMENT: Explicit hiding at the beginning
-    if (IsObject(highlight)) {
-        highlight.Hide()
-    }
-    if (IsObject(subGrid)) {
-        subGrid.Hide()
-    }
-
-    ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference
-    SetTimer(TrackCursor, 0)
-
-    if (currentState != "GRID_VISIBLE" || !IsObject(StateMap['currentOverlay'])) { ; Use StateMap
-        ; Re-enable TrackCursor before returning
-        SetTimer(TrackCursor, 50)
-        return
-    }
-
-    ; Check if key is a valid column or row key
-    isColKey := false
-    colIndex := 0
-    for i, colKeyCheck in StateMap['activeColKeys'] { ; Use StateMap
-        if (colKeyCheck = key) {
-            isColKey := true
-            colIndex := i
-            break
-        }
-    }
-
-    isRowKey := false
-    rowIndex := 0
-    for i, rowKeyCheck in StateMap['activeRowKeys'] { ; Use StateMap
-        if (rowKeyCheck = key) {
-            isRowKey := true
-            rowIndex := i
-            break
-        }
-    }
-
-    if (!isColKey && !isRowKey) {
+    ; Prevent re-entry if already processing
+    if (keyProcessingLock) {
         if (showcaseDebug) {
-            ToolTip("Invalid key: " key)
-            Sleep 1000
-            ToolTip()
+            logMsg := Format("Timestamp: {} | HandleKey Locked - Ignoring key={}", currentTime, key)
+            FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
         }
-        SetTimer(TrackCursor, 50)
         return
     }
 
-    cellKey := ""
-    targetCellX := 0
-    targetCellY := 0
-    targetCellW := 0
-    targetCellH := 0
-    tooltipText := ""
-    proceedToSubgrid := false
-
-    if (StateMap['firstKey'] = "") { ; Use StateMap
-        ; --- First Key Press ---
-        StateMap['firstKey'] := key ; Use StateMap
-
-        if (isColKey) {
-            ; First key is COLUMN
-            StateMap['currentColIndex'] := colIndex ; Use StateMap
-            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1 ; Use StateMap
-            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
-            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; Use StateMap
-            tooltipText := "First key: " key ". Select row."
-        } else { ; isRowKey
-            ; First key is ROW
-            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
-            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
-            targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'
-                ].Length / 2) ; Use StateMap
-            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
-            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Use StateMap
-            tooltipText := "First key: " key ". Select column."
+    ; Special check for active row key - ignore auto-repeat if we're tracking it
+    if (currentState == "SUBGRID_ACTIVE" && enableUltraFast && key == StateMap['activeRowKey']) {
+        if (showcaseDebug) {
+            keyPhysicallyDown := GetKeyState(key, "P")
+            logMsg := Format(
+                "Timestamp: {} | HandleKey: Ignoring auto-repeat of active row key | key={} | PhysicallyDown={}",
+                currentTime, key, keyPhysicallyDown ? "DOWN" : "UP")
+            FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
         }
+        return
+    }
 
-        boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
-        if (IsObject(boundaries)) {
-            targetCellX := boundaries.x
-            targetCellY := boundaries.y
-            targetCellW := boundaries.w
-            targetCellH := boundaries.h
-        }
+    ; Set lock
+    keyProcessingLock := true
 
-        ; Center cursor and wait for second key
-        if (targetCellW > 0) {
-            highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
-            MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
-            Sleep(10)
+    try {
+        ; currentTime already defined at the top of the function
+
+        ; Check if the same key is being processed too rapidly (likely auto-repeat)
+        ; Note: This check might become less critical with the lock, but kept for safety
+        if (key = lastKeyProcessed && (currentTime - lastKeyTime < ignoreThreshold)) {
             if (showcaseDebug) {
-                ToolTip(tooltipText)
+                logMsg := Format("Timestamp: {} | Ignored rapid repeat: key={}", currentTime, key)
+                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
             }
+            ; Ensure lock is released before returning
+            keyProcessingLock := false
+            return ; Ignore this key press
         }
-        SetTimer(TrackCursor, 50)
-        return ; Wait for second key
 
-    } else {
-        ; --- Second Key Press ---
-        firstKeyWasCol := false
-        for colKeyCheck in StateMap['activeColKeys'] { ; Use StateMap
-            if (colKeyCheck = StateMap['firstKey']) { ; Use StateMap
-                firstKeyWasCol := true
-                break
-            }
-        }
-        firstKeyWasRow := !firstKeyWasCol ; Assume it must be one or the other if firstKey != ""
+        ; Update last key processed *before* handling the logic
+        ; Update time immediately
+        lastKeyProcessed := key
+        lastKeyTime := currentTime
 
-        if (firstKeyWasCol && isRowKey) {
-            ; Expected: Col -> Row
-            cellKey := StateMap['firstKey'] . key ; Use StateMap - column first, then row
-            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
-            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
-            proceedToSubgrid := true
-            StateMap['firstKey'] := "" ; Reset using StateMap
+        global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap,
+            storePerMonitor, showcaseDebug, instaClickMode, g_ModifierState, enableUltraFast, rowKeyHoldThreshold
 
-            ; Ultra-Fast Mode: Track row key pressed time for hold detection
-            if (enableUltraFast) {
-                StateMap['rowKeyHeldTime'] := A_TickCount
-                StateMap['activeRowKey'] := key
-                if (showcaseDebug) {
-                    ToolTip("Row key " key " time recorded: " StateMap['rowKeyHeldTime'])
-                    Sleep(200)
-                    ToolTip()
-                }
-            }
+        ; Special handling for instaclick mode - always handle key events even when CapsLock is held
+        if (instaClickMode && g_ModifierState.inHoldMode) {
+            ; Process key normally, even though CapsLock is being held
         }
-        else if (firstKeyWasRow && isColKey) {
-            ; Expected: Row -> Col
-            ; IMPORTANT: Always store cell keys as column+row for consistency
-            cellKey := key . StateMap['firstKey'] ; Use StateMap - column first, then row
-            StateMap['currentColIndex'] := colIndex ; Use StateMap
-            proceedToSubgrid := true
-            StateMap['firstKey'] := "" ; Reset using StateMap
-        }
-        else if (firstKeyWasCol && isColKey) {
-            ; Unexpected: Col -> Col (Change column)
-            StateMap['firstKey'] := key ; Update stored col key using StateMap
-            StateMap['currentColIndex'] := colIndex ; Use StateMap
-            targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1 ; Use StateMap
-            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length) ; Use StateMap
-            cellKey := key . StateMap['activeRowKeys'][targetRowIndex] ; Use StateMap
-            tooltipText := "Column changed to: " key ". Select row."
 
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
-            if (IsObject(boundaries)) {
-                targetCellX := boundaries.x
-                targetCellY := boundaries.y
-                targetCellW := boundaries.w
-                targetCellH := boundaries.h
-            }
+        ; IMPROVEMENT: Explicit hiding at the beginning
+        if (IsObject(highlight)) {
+            highlight.Hide()
         }
-        else if (firstKeyWasRow && isRowKey) {
-            ; Unexpected: Row -> Row (Change row)
-            StateMap['firstKey'] := key ; Update stored row key using StateMap
-            StateMap['currentRowIndex'] := rowIndex ; Use StateMap
-            StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
-            targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'
-                ].Length / 2) ; Use StateMap
-            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length) ; Use StateMap
-            cellKey := StateMap['activeColKeys'][targetColIndex] . key ; Use StateMap
-            tooltipText := "Row changed to: " key ". Select column."
+        if (IsObject(subGrid)) {
+            subGrid.Hide()
+        }
 
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
-            if (IsObject(boundaries)) {
-                targetCellX := boundaries.x
-                targetCellY := boundaries.y
-                targetCellW := boundaries.w
-                targetCellH := boundaries.h
-            }
-        }
-        else {
-            ; Invalid sequence (e.g., firstKey wasn't found in either col/row keys somehow?)
-            StateMap['firstKey'] := "" ; Use StateMap
+        ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference
+        SetTimer(TrackCursor, 0)
+
+        if (currentState != "GRID_VISIBLE" || !IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+            ; Re-enable TrackCursor before returning
             SetTimer(TrackCursor, 50)
+            ; Ensure lock is released before returning
+            keyProcessingLock := false
             return
         }
 
-        ; If not proceeding to subgrid, it means we changed the first key (col->col or row->row)
-        if (!proceedToSubgrid) {
+        ; Check if key is a valid column or row key
+        isColKey := false
+        colIndex := 0
+        for i, colKeyCheck in StateMap['activeColKeys'] { ; Use StateMap
+            if (colKeyCheck = key) {
+                isColKey := true
+                colIndex := i
+                break
+            }
+        }
+
+        isRowKey := false
+        rowIndex := 0
+        for i, rowKeyCheck in StateMap['activeRowKeys'] { ; Use StateMap
+            if (rowKeyCheck = key) {
+                isRowKey := true
+                rowIndex := i
+                break
+            }
+        }
+
+        if (!isColKey && !isRowKey) {
+            if (showcaseDebug) {
+                ToolTip("Invalid key: " key)
+                Sleep 1000
+                ToolTip()
+            }
+            SetTimer(TrackCursor, 50)
+            ; Ensure lock is released before returning
+            keyProcessingLock := false
+            return
+        }
+
+        cellKey := ""
+        targetCellX := 0
+        targetCellY := 0
+        targetCellW := 0
+        targetCellH := 0
+        tooltipText := ""
+        proceedToSubgrid := false
+        updateFirstKeyOnly := false
+        secondKeyWasRow := false
+
+        if (StateMap['firstKey'] = "") {
+            ; --- First Key Press ---
+            ; <<< ADD LOGGING START >>>
+            if (showcaseDebug) FileAppend(Format("Timestamp: {} | HandleKey: First Key Press | key={}", currentTime,
+                key) "`n", A_ScriptDir "\debugRapidRefresh.log")
+            ; <<< ADD LOGGING END >>>
+                StateMap['firstKey'] := key
+            if (isColKey) {
+                ; First key is COLUMN
+                StateMap['currentColIndex'] := colIndex
+                targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1
+                targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
+                cellKey := key . StateMap['activeRowKeys'][targetRowIndex]
+                tooltipText := "First key: " key ". Select row."
+            } else { ; isRowKey
+                ; First key is ROW
+                StateMap['currentRowIndex'] := rowIndex
+                StateMap['lastSelectedRowIndex'] := rowIndex
+                targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap[
+                    'activeColKeys'
+                    ].Length / 2)
+                targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length)
+                cellKey := StateMap['activeColKeys'][targetColIndex] . key
+                tooltipText := "First key: " key ". Select column."
+            }
+
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+            if (IsObject(boundaries)) {
+                targetCellX := boundaries.x
+                targetCellY := boundaries.y
+                targetCellW := boundaries.w
+                targetCellH := boundaries.h
+            }
+
+            ; Center cursor and wait for second key
             if (targetCellW > 0) {
                 highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
                 MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
@@ -400,84 +394,241 @@ HandleKey(key) {
                 }
             }
             SetTimer(TrackCursor, 50)
-            return ; Wait for the *new* second key
-        }
-    }
+            ; Ensure lock is released before returning
+            keyProcessingLock := false
+            return ; Wait for second key
 
-    ; --- Proceed to Subgrid State (if proceedToSubgrid is true) ---
-    if (!proceedToSubgrid || cellKey = "") {
-        StateMap['firstKey'] := "" ; Ensure reset if something went wrong using StateMap
-        SetTimer(TrackCursor, 50)
-        return
-    }
-
-    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey) ; Use StateMap
-    if (IsObject(boundaries)) {
-        StateMap['activeCellKey'] := cellKey ; Use StateMap
-        stateTransitionTime := A_TickCount
-        currentState := "SUBGRID_ACTIVE"
-
-        highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-        MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-        Sleep(40) ; Increased delay
-        subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-        subGrid.Show() ; Explicitly show the subgrid after updating
-
-        ; Ensure subgrid is visible - use a more compatible approach
-        try {
-            ; Force redraw by temporarily changing the window's style
-            if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
-                winHwnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
-                if (winHwnd) {
-                    ; Force window to redraw by sending a redraw message
-                    PostMessage(0x000F, 0, 0, , "ahk_id " winHwnd)  ; WM_PAINT message
+        } else {
+            ; --- Second Key Press Logic Refactored ---
+            ; <<< ADD LOGGING START >>>
+            if (showcaseDebug) FileAppend(Format("Timestamp: {} | HandleKey: Second Key Press | key={} | firstKey={}",
+                currentTime, key, StateMap['firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+            ; <<< ADD LOGGING END >>>
+                firstKey := StateMap['firstKey']
+            firstKeyWasCol := false
+            for colKeyCheck in StateMap['activeColKeys'] {
+                if (colKeyCheck = firstKey) {
+                    firstKeyWasCol := true
+                    break
                 }
             }
-        } catch {
+            firstKeyWasRow := !firstKeyWasCol
+            if (showcaseDebug) {
+                logMsg := Format("Timestamp: {} | Second Key Check: firstKeyWasCol={} | firstKeyWasRow={}", currentTime,
+                    firstKeyWasCol, firstKeyWasRow)
+                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+            }
+
+            if (firstKeyWasCol && isRowKey) {
+                if (showcaseDebug) {
+                    logMsg := Format("Timestamp: {} | Branch: Col -> Row", currentTime)
+                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+
+                    ; Check if this row key is physically held down
+                    rowKeyIsPhysicallyDown := GetKeyState(key, "P")
+                    logMsg := Format("Timestamp: {} | Row key '{}' physical state: {}",
+                        currentTime, key, rowKeyIsPhysicallyDown ? "DOWN" : "UP")
+                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+                }
+                ; Valid: Col -> Row
+                cellKey := firstKey . key
+                proceedToSubgrid := true
+                secondKeyWasRow := true
+            } else if (firstKeyWasRow && isColKey) {
+                if (showcaseDebug) {
+                    logMsg := Format("Timestamp: {} | Branch: Row -> Col", currentTime)
+                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+                }
+                ; Valid: Row -> Col
+                cellKey := key . firstKey
+                proceedToSubgrid := true
+            } else if (firstKeyWasCol && isColKey) {
+                if (showcaseDebug) {
+                    logMsg := Format("Timestamp: {} | Branch: Col -> Col (Change Col)", currentTime)
+                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+                }
+                ; Update First Key: Col -> Col
+                StateMap['firstKey'] := key
+                tooltipText := "Column changed to: " key ". Select row."
+                updateFirstKeyOnly := true
+            } else if (firstKeyWasRow && isRowKey) {
+                if (showcaseDebug) {
+                    logMsg := Format("Timestamp: {} | Branch: Row -> Row (Change Row)", currentTime)
+                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+                }
+                ; Update First Key: Row -> Row
+                StateMap['firstKey'] := key
+                tooltipText := "Row changed to: " key ". Select column."
+                updateFirstKeyOnly := true
+            } else {
+                if (showcaseDebug) {
+                    logMsg := Format("Timestamp: {} | Branch: Invalid Sequence", currentTime)
+                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+                }
+                ; Invalid sequence (e.g., firstKey wasn't found in either col/row keys somehow?)
+                StateMap['firstKey'] := ""
+                SetTimer(TrackCursor, 50)
+                ; Ensure lock is released before returning
+                keyProcessingLock := false
+                return
+            }
+
+            ; --- Handle Outcome of Second Key Press ---
+            if (updateFirstKeyOnly) {
+                ; Only update the preview, don't proceed to subgrid yet
+                if (targetCellW > 0) {
+                    highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
+                    MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
+                    Sleep(10)
+                    if (showcaseDebug) {
+                        ToolTip(tooltipText)
+                    }
+                }
+                SetTimer(TrackCursor, 50)
+                keyProcessingLock := false
+                return ; Wait for the *new* second key
+            }
         }
 
-        ; Check if we have a remembered subcell for this cell
-        rememberedSubCell := ""
-        cellFound := false
+        ; --- Proceed to Subgrid State (Only if proceedToSubgrid is true) ---
+        if (proceedToSubgrid && cellKey != "") {
+            ; <<< ADD LOGGING START >>>
+            if (showcaseDebug) FileAppend(Format("Timestamp: {} | HandleKey: Proceeding to Subgrid | cellKey={}",
+                currentTime, cellKey) "`n", A_ScriptDir "\debugRapidRefresh.log")
+            ; <<< ADD LOGGING END >>>
+                boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+            if (IsObject(boundaries)) {
+                ; <<< ADD LOGGING START >>>
+                if (showcaseDebug) FileAppend(Format(
+                    "Timestamp: {} | HandleKey: Setting currentState=SUBGRID_ACTIVE (Before)", currentTime) "`n",
+                A_ScriptDir "\debugRapidRefresh.log")
+                ; <<< ADD LOGGING END >>>
+                    StateMap['activeCellKey'] := cellKey
+                stateTransitionTime := currentTime
+                currentState := "SUBGRID_ACTIVE"
 
-        ; First check monitor-specific key if enabled
-        if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
-            monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . cellKey
-            if (cellMemory.Has(monitorCellKey)) {
-                rememberedSubCell := cellMemory[monitorCellKey]
-                cellFound := true
-                if (showcaseDebug) {
-                    ToolTip("Found monitor-specific subcell: " monitorCellKey " -> " rememberedSubCell)
+                ; <<< ADD LOGGING START >>>
+                if (showcaseDebug) FileAppend(Format(
+                    "Timestamp: {} | HandleKey: Set currentState=SUBGRID_ACTIVE (After) | activeCellKey={}",
+                    currentTime, StateMap['activeCellKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+                ; <<< ADD LOGGING END >>>
+                ; Set ultra-fast tracking info *if applicable*
+                    if (enableUltraFast && secondKeyWasRow) {
+                        ; Check if this row key is physically held down before setting track variables
+                        rowKeyIsPhysicallyDown := GetKeyState(key, "P")
+                        ; <<< ADD LOGGING START >>>
+                        if (showcaseDebug)
+                            FileAppend(Format(
+                                "Timestamp: {} | HandleKey: Setting UltraFast Vars | key={} | currentTime={} | PhysicallyDown={}",
+                                currentTime, key, currentTime, rowKeyIsPhysicallyDown) "`n", A_ScriptDir "\debugRapidRefresh.log"
+                            )
+                        ; <<< ADD LOGGING END >>>
+                        StateMap['rowKeyHeldTime'] := currentTime
+                        StateMap['activeRowKey'] := key
+                        ; <<< ADD LOGGING START >>>
+                        if (showcaseDebug)
+                            FileAppend(Format(
+                                "Timestamp: {} | HandleKey: Set UltraFast Vars | activeRowKey={} | rowKeyHeldTime={}",
+                                currentTime, StateMap['activeRowKey'], StateMap['rowKeyHeldTime']) "`n", A_ScriptDir "\debugRapidRefresh.log"
+                            )
+                        ; <<< ADD LOGGING END >>>
+                    }
+
+                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+                Sleep(40)
+                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                subGrid.Show()
+
+                ; Force redraw
+                try {
+                    if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                        winHnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                        if (winHnd) {
+                            PostMessage(0x000F, 0, 0, , "ahk_id " winHnd)  ; WM_PAINT message
+                        }
+                    }
+                } catch {
+                }
+
+                ; *** Clear firstKey ONLY AFTER successfully entering subgrid state ***
+                ; <<< ADD LOGGING START >>>
+                if (showcaseDebug) FileAppend(Format(
+                    "Timestamp: {} | HandleKey: Clearing firstKey (Before) | firstKey={}", currentTime, StateMap[
+                        'firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+                ; <<< ADD LOGGING END >>>
+                    StateMap['firstKey'] := ""
+                ; <<< ADD LOGGING START >>>
+                if (showcaseDebug) FileAppend(Format(
+                    "Timestamp: {} | HandleKey: Cleared firstKey (After) | firstKey={}", currentTime, StateMap[
+                        'firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+                ; <<< ADD LOGGING END >>>
+                ; Check if we have a remembered subcell for this cell
+                    rememberedSubCell := ""
+                cellFound := false
+
+                ; First check monitor-specific key if enabled
+                if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
+                    monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . cellKey
+                    if (cellMemory.Has(monitorCellKey)) {
+                        rememberedSubCell := cellMemory[monitorCellKey]
+                        cellFound := true
+                        if (showcaseDebug) {
+                            ToolTip("Found monitor-specific subcell: " monitorCellKey " -> " rememberedSubCell)
+                            Sleep(500)
+                        }
+                    }
+                }
+
+                ; Fall back to general cell key if no monitor-specific key found
+                if (!cellFound && cellMemory.Has(cellKey)) {
+                    rememberedSubCell := cellMemory[cellKey]
+                    cellFound := true
+                    if (showcaseDebug) {
+                        ToolTip("Found general subcell: " cellKey " -> " rememberedSubCell)
+                        Sleep(500)
+                    }
+                }
+
+                ; Move to the remembered subcell position if found
+                if (cellFound && rememberedSubCell != "") {
+                    HandleSubGridKey(rememberedSubCell)
+                } else if (showcaseDebug) {
+                    ToolTip("No saved subcell found for " cellKey)
                     Sleep(500)
                 }
+
+                if (showcaseDebug) {
+                    ToolTip("Cell '" cellKey "' targeted. Use b-h.")
+                }
+            } else {
+                ; Failed to get boundaries
+                StateMap['firstKey'] := ""
+                if (showcaseDebug && proceedToSubgrid && cellKey == "") {
+                    ToolTip("Error: Proceeding to subgrid but cellKey is empty")
+                }
+            }
+        } else {
+            ; This case should ideally not be reached if logic is sound, but reset firstKey as safety
+            StateMap['firstKey'] := ""
+            if (showcaseDebug && proceedToSubgrid && cellKey == "") {
+                ToolTip("Error: Proceeding to subgrid but cellKey is empty")
             }
         }
 
-        ; Fall back to general cell key if no monitor-specific key found
-        if (!cellFound && cellMemory.Has(cellKey)) {
-            rememberedSubCell := cellMemory[cellKey]
-            cellFound := true
-            if (showcaseDebug) {
-                ToolTip("Found general subcell: " cellKey " -> " rememberedSubCell)
-                Sleep(500)
-            }
-        }
+        SetTimer(TrackCursor, 50)
 
-        ; Move to the remembered subcell position if found
-        if (cellFound && rememberedSubCell != "") {
-            HandleSubGridKey(rememberedSubCell)
-        } else if (showcaseDebug) {
-            ToolTip("No saved subcell found for " cellKey)
-            Sleep(500)
-        }
-
-        if (showcaseDebug) {
-            ToolTip("Cell '" cellKey "' targeted. Use b-h.")
-        }
+    } finally {
+        ; Ensure the lock is always released
+        keyProcessingLock := false
+        ; <<< ADD LOGGING START >>>
+        if (showcaseDebug)
+            FileAppend(Format("Timestamp: {} | HandleKey FINALLY: Lock Released", currentTime) "`n",
+            A_ScriptDir "\debugRapidRefresh.log")
+        ; <<< ADD LOGGING END >>>
     }
-
-    SetTimer(TrackCursor, 50)
 }
+
 HandleSubGridKey(subKey) {
     global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap,
         showcaseDebug, instaClickMode, g_ModifierState
@@ -500,15 +651,15 @@ HandleSubGridKey(subKey) {
     targetCoords := subGrid.GetTargetCoordinates(subKey)
     if (IsObject(targetCoords)) {
         MouseMove(targetCoords.x, targetCoords.y, 0)
-        StateMap['activeSubCellKey'] := subKey ; Use StateMap
+        StateMap['activeSubCellKey'] := subKey
 
         ; Remember this subcell for the current cell
         activeCell := StateMap['activeCellKey']
-        if (activeCell != "") { ; Use StateMap
+        if (activeCell != "") {
             keyToSave := ""
 
             ; Determine the key to use based on the storePerMonitor setting
-            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
                 keyToSave := StateMap['currentOverlay'].monitorIndex . "_" . activeCell
             } else {
                 keyToSave := activeCell
@@ -527,11 +678,11 @@ HandleSubGridKey(subKey) {
         }
 
         if (showcaseDebug) {
-            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
                 ToolTip("Moved to sub-cell " subKey " in " activeCell " on monitor " StateMap['currentOverlay'].monitorIndex
-                ) ; Use StateMap
+                )
             } else {
-                ToolTip("Moved to sub-cell " subKey " in " activeCell) ; Use StateMap
+                ToolTip("Moved to sub-cell " subKey " in " activeCell)
             }
         }
     } else {
@@ -564,7 +715,7 @@ HandleUltraFastKey(key) {
     if (IsObject(targetCoords)) {
         ; Move the mouse to the target position
         MouseMove(targetCoords.x, targetCoords.y, 0)
-        StateMap['activeSubCellKey'] := key ; Store which ultrafast key was used
+        StateMap['activeSubCellKey'] := key
 
         ; Remember this ultrafast subcell for the current cell
         activeCell := StateMap['activeCellKey']
@@ -592,7 +743,8 @@ HandleUltraFastKey(key) {
 
         if (showcaseDebug) {
             if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
-                ToolTip("Moved to ultra-fast cell " key " in " activeCell " on monitor " StateMap['currentOverlay'].monitorIndex
+                ToolTip("Moved to ultra-fast cell " key " in " activeCell " on monitor " StateMap['currentOverlay']
+                    .monitorIndex
                 )
             } else {
                 ToolTip("Moved to ultra-fast cell " key " in " activeCell)
@@ -608,7 +760,25 @@ HandleUltraFastKey(key) {
 }
 
 StartNewSelection(key) {
-    global currentState, subGrid, highlight, StateMap, enableUltraFast
+    global currentState, subGrid, highlight, StateMap, enableUltraFast, showcaseDebug
+
+    ; Define currentTime at the beginning
+    currentTime := A_TickCount
+
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        ; Get physical key state
+        keyPhysicallyDown := GetKeyState(key, "P")
+        rowKeyPhysicallyDown := StateMap['activeRowKey'] != "" ? GetKeyState(StateMap['activeRowKey'], "P") : false
+        logMsg := Format(
+            "Timestamp: {} | StartNewSelection START | key={} | PhysicallyDown={} | currentState={} | firstKey={} | activeRowKey={} | activeRowKeyPhysicallyDown={} | inUltraFastMode={}",
+            currentTime, key, keyPhysicallyDown ? "DOWN" : "UP", currentState, StateMap['firstKey'], StateMap[
+                'activeRowKey'],
+            rowKeyPhysicallyDown ? "DOWN" : "UP", StateMap['inUltraFastMode']
+        )
+        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING END >>>
 
     ; IMPROVEMENT: Temporarily disable TrackCursor
     SetTimer(TrackCursor, 0)
@@ -621,9 +791,22 @@ StartNewSelection(key) {
 
     ; If in Ultra-Fast mode and this is the held row key, ignore
     if (enableUltraFast && StateMap['inUltraFastMode'] && key == StateMap['activeRowKey']) {
-        ; The user is still holding the row key that activated ultra-fast mode
-        ; We should ignore it to prevent conflicts
-        SetTimer(TrackCursor, 50) ; Re-enable tracker
+        ; <<< ADD LOGGING START >>>
+        if (showcaseDebug) FileAppend(Format("Timestamp: {} | StartNewSelection: Ignoring held row key press | key={}",
+            currentTime, key) "`n", A_ScriptDir "\debugRapidRefresh.log")
+        ; <<< ADD LOGGING END >>>
+            SetTimer(TrackCursor, 50) ; Re-enable tracker
+        return
+    }
+
+    ; If not in UltraFast mode yet but this is the active row key being held, don't reset
+    if (enableUltraFast && key == StateMap['activeRowKey'] && GetKeyState(key, "P")) {
+        ; <<< ADD LOGGING START >>>
+        if (showcaseDebug) FileAppend(Format(
+            "Timestamp: {} | StartNewSelection: Ignoring active row key that's being held | key={}",
+            currentTime, key) "`n", A_ScriptDir "\debugRapidRefresh.log")
+        ; <<< ADD LOGGING END >>>
+            SetTimer(TrackCursor, 50) ; Re-enable tracker
         return
     }
 
@@ -638,15 +821,33 @@ StartNewSelection(key) {
     }
 
     ; Reset state before handling the new key using StateMap
-    StateMap['activeCellKey'] := ""
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) FileAppend(Format(
+        "Timestamp: {} | StartNewSelection: Resetting State (Before) | activeCellKey={} | activeSubCellKey={} | firstKey={} | inUltraFastMode={} | activeRowKey={}",
+        currentTime, StateMap['activeCellKey'], StateMap['activeSubCellKey'], StateMap['firstKey'], StateMap[
+            'inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    ; <<< ADD LOGGING END >>>
+        StateMap['activeCellKey'] := ""
     StateMap['activeSubCellKey'] := ""
     StateMap['firstKey'] := ""
     StateMap['inUltraFastMode'] := false ; Exit ultra-fast mode
     StateMap['activeRowKey'] := "" ; Clear active row key
-    currentState := "GRID_VISIBLE"
-
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) FileAppend(Format(
+        "Timestamp: {} | StartNewSelection: Reset State (After) | inUltraFastMode={} | activeRowKey={}", currentTime,
+        StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+        if (showcaseDebug) FileAppend(Format(
+            "Timestamp: {} | StartNewSelection: Setting currentState=GRID_VISIBLE (Before) | currentState={}",
+            currentTime, currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
+        ; <<< ADD LOGGING END >>>
+            currentState := "GRID_VISIBLE"
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) FileAppend(Format(
+        "Timestamp: {} | StartNewSelection: Set currentState=GRID_VISIBLE (After) | currentState={}", currentTime,
+        currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    ; <<< ADD LOGGING END >>>
     ; Force a small delay to ensure state transitions properly
-    Sleep(10)
+        Sleep(10)
 
     ; Call HandleKey to process the key press
     HandleKey(key)
@@ -661,7 +862,16 @@ TrackCursor() {
     ; Access global state and config
     global currentState, highlight, subGrid, StateMap, showcaseDebug, enableUltraFast, rowKeyHoldThreshold
 
-    ; Ignore tracking if idle or dragging (dragging state not fully implemented here)
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        logMsg := Format(
+            "Timestamp: {} | TrackCursor START | currentState={} | firstKey={} | activeRowKey={} | inUltraFastMode={}",
+            A_TickCount, currentState, StateMap['firstKey'], StateMap['activeRowKey'], StateMap['inUltraFastMode'])
+        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING END >>>
+
+    ; Ignore tracking if idle or dragging ...
     if (currentState == "IDLE" || currentState == "DRAGGING") {
         return
     }
@@ -669,33 +879,74 @@ TrackCursor() {
     ; --- Check for Ultra-Fast Mode Activation ---
     if (enableUltraFast && currentState == "SUBGRID_ACTIVE" &&
         StateMap['activeRowKey'] != "" && !StateMap['inUltraFastMode']) {
+        ; Get physical state of the row key using GetKeyState
+        rowKeyPhysicallyDown := GetKeyState(StateMap['activeRowKey'], "P")
+
         ; Calculate how long the row key has been held
         heldTime := A_TickCount - StateMap['rowKeyHeldTime']
 
-        ; Check if we've held long enough to trigger ultra-fast mode
-        if (heldTime >= rowKeyHoldThreshold) {
-            ; Switch to Ultra-Fast mode
-            StateMap['inUltraFastMode'] := true
+        ; Detailed logging before the check
+        if (showcaseDebug) {
+            logMsg := Format(
+                "Timestamp: {} | TrackCursor Check: CurrentTick={}, HeldTimeStart={}, CalculatedHeldTime={}, Threshold={}, ActiveRowKey={}, PhysicallyDown={}, State={}",
+                A_TickCount, A_TickCount, StateMap['rowKeyHeldTime'], heldTime, rowKeyHoldThreshold, StateMap[
+                    'activeRowKey'], rowKeyPhysicallyDown, currentState)
+            FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+        }
 
-            ; Update subgrid display
-            if (IsObject(subGrid)) {
-                subGrid.SwitchToUltraFast()
+        ; Add debug output to help diagnose timing
+        if (showcaseDebug) {
+            static lastDebugTime := 0
+            currentTime := A_TickCount
 
-                ; Force redraw
-                try {
-                    if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
-                        winHwnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
-                        if (winHwnd) {
-                            PostMessage(0x000F, 0, 0, , "ahk_id " winHwnd)  ; WM_PAINT message
-                        }
-                    }
-                } catch {
-                }
+            ; Only show debug tooltip every 300ms to avoid flicker
+            if (currentTime - lastDebugTime > 300) {
+                lastDebugTime := currentTime
+                ToolTip("Row key " StateMap['activeRowKey'] " held for " heldTime "ms (needs " rowKeyHoldThreshold "ms) - PhysicallyDown: " rowKeyPhysicallyDown
+                )
             }
+        }
+
+        ; Check if key is physically down and we've held long enough to trigger ultra-fast mode
+        if (rowKeyPhysicallyDown && heldTime >= rowKeyHoldThreshold) {
+            ; Add explicit feedback when hold is detected
+            if (showcaseDebug) {
+                logMsg := Format("Timestamp: {} | TrackCursor: Hold Threshold Met! ({} >= {}), Key is physically down",
+                    A_TickCount, heldTime, rowKeyHoldThreshold)
+                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+                ToolTip("Hold detected! Switching to ultra-fast...")
+                Sleep(300) ; Brief pause to show tooltip
+            }
+
+            ; <<< ADD LOGGING START >>>
+            if (showcaseDebug) FileAppend(Format("Timestamp: {} | TrackCursor: Setting inUltraFastMode=true (Before)",
+                A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
+            ; <<< ADD LOGGING END >>>
+                StateMap['inUltraFastMode'] := true
+            ; <<< ADD LOGGING START >>>
+            if (showcaseDebug) FileAppend(Format("Timestamp: {} | TrackCursor: Set inUltraFastMode=true (After)",
+                A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
+            ; <<< ADD LOGGING END >>>
+            ; Update subgrid display
+                if (IsObject(subGrid)) {
+                    subGrid.SwitchToUltraFast()
+                    subGrid.Show() ; Explicitly show the updated subgrid
+
+                    ; Force redraw
+                    try {
+                        if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                            winHnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                            if (winHnd) {
+                                PostMessage(0x000F, 0, 0, , "ahk_id " winHnd)  ; WM_PAINT message
+                            }
+                        }
+                    } catch {
+                    }
+                }
 
             if (showcaseDebug) {
                 ToolTip("Ultra-Fast mode activated! Row key " StateMap['activeRowKey'] " held for " heldTime "ms")
-                Sleep(500)
+                Sleep(1000)
                 ToolTip()
             }
         }
@@ -780,16 +1031,43 @@ TrackCursor() {
                         if (IsObject(subGrid)) {
                             subGrid.Update(boundaries.x, boundaries.y,
                                 boundaries.w, boundaries.h)
+
+                            ; Always show subgrid if we're in SUBGRID_ACTIVE state
+                            if (currentState == "SUBGRID_ACTIVE" || currentState == "SUBGRID_PREVIEW") {
+                                subGrid.Show()
+
+                                ; Force redraw to ensure visibility
+                                try {
+                                    if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                                        winHnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                                        if (winHnd) {
+                                            PostMessage(0x000F, 0, 0, , "ahk_id " winHnd)  ; WM_PAINT message
+                                        }
+                                    }
+                                } catch {
+                                }
+                            }
                         }
 
                         ; Update the active cell key in the state
                         StateMap['activeCellKey'] := currentCellKey
 
                         ; If we were just selecting the grid, moving the mouse over a cell
-                        ; should activate the subgrid state for that cell.
-                        if (currentState == "GRID_VISIBLE") {
-                            currentState := "SUBGRID_ACTIVE"
-                            stateTransitionTime := A_TickCount ; Update transition time
+                        ; should activate the subgrid state for that cell,
+                        ; *** BUT ONLY IF a key sequence isn't already in progress ***
+                        if (currentState == "GRID_VISIBLE" && StateMap['firstKey'] == "") {
+                            ; <<< ADD LOGGING START >>>
+                            if (showcaseDebug) FileAppend(Format(
+                                "Timestamp: {} | TrackCursor: Setting currentState=SUBGRID_ACTIVE (Mouse Move, no firstKey - Before)",
+                                A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
+                            ; <<< ADD LOGGING END >>>
+                                currentState := "SUBGRID_ACTIVE"
+                            ; <<< ADD LOGGING START >>>
+                            if (showcaseDebug) FileAppend(Format(
+                                "Timestamp: {} | TrackCursor: Set currentState=SUBGRID_ACTIVE (Mouse Move, no firstKey - After)",
+                                A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
+                            ; <<< ADD LOGGING END >>>
+                                stateTransitionTime := A_TickCount ; Update transition time
                             if (IsObject(subGrid)) {
                                 subGrid.Show() ; Use proper Show method
                             }
@@ -824,8 +1102,12 @@ TrackCursor() {
                     }
                 }
             } else if (currentCellKey == "" && StateMap['activeCellKey'] != "") {
-                ; Cursor moved off a cell but still within the overlay
-                StateMap['activeCellKey'] := "" ; Clear active cell
+                ; <<< ADD LOGGING START >>>
+                if (showcaseDebug) FileAppend(Format(
+                    "Timestamp: {} | TrackCursor: Clearing activeCellKey (Moved Off Cell)", A_TickCount) "`n",
+                A_ScriptDir "\debugRapidRefresh.log")
+                ; <<< ADD LOGGING END >>>
+                    StateMap['activeCellKey'] := "" ; Clear active cell
                 if (IsObject(highlight))
                     highlight.Hide()
                 if (IsObject(subGrid))
@@ -851,21 +1133,44 @@ TrackCursor() {
 ProcessKeyPress(key) {
     ; Access global state and config
     global currentState, subGridKeys, instaClickMode,
-        g_ModifierState, StateMap, enableUltraFast, ultraFastSubGridKeys
+        g_ModifierState, StateMap, enableUltraFast, ultraFastSubGridKeys, showcaseDebug
+
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        ; Get physical key state
+        keyPhysicallyDown := GetKeyState(key, "P")
+        logMsg := Format(
+            "Timestamp: {} | ProcessKeyPress START | key={} | PhysicallyDown={} | currentState={} | rowKeyHeldTime={} | activeRowKey={}",
+            A_TickCount, key, keyPhysicallyDown ? "DOWN" : "UP", currentState, StateMap['rowKeyHeldTime'], StateMap[
+                'activeRowKey']
+        )
+        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING END >>>
 
     ; Special handling for instaclick mode - allow key events even when CapsLock is held for the click
     if (instaClickMode && g_ModifierState.inHoldMode) {
         ; Allow processing even if CapsLock is physically down for the click release
     }
-    ; If not in instaclick hold mode, check if CapsLock is physically pressed (for standard Caps+Key navigation)
-    ; This check might be redundant if #HotIf contexts are set up correctly, but acts as a safeguard.
-    ; else if (GetKeyState("CapsLock", "P")) {
-    ;     ; Allow processing if CapsLock is held for navigation (handled by CapsLock & key hotkeys)
-    ; }
 
     if (currentState == "GRID_VISIBLE") {
         HandleKey(key) ; Process as first or second grid key
     } else if (currentState == "SUBGRID_ACTIVE") {
+        ; Check if key is the active row key that we're already tracking
+        if (enableUltraFast && key == StateMap['activeRowKey']) {
+            ; We're already tracking this key being held, don't process it again
+            ; This prevents auto-repeat from disrupting the hold tracking
+            if (showcaseDebug) {
+                keyPhysicallyDown := GetKeyState(key, "P")
+                logMsg := Format(
+                    "Timestamp: {} | ProcessKeyPress: Ignoring repeat of active row key | key={} | PhysicallyDown={}",
+                    A_TickCount, key, keyPhysicallyDown ? "DOWN" : "UP"
+                )
+                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+            }
+            return
+        }
+
         ; Check if we're in ultra-fast mode
         if (enableUltraFast && StateMap['inUltraFastMode']) {
             ; Check if key is an ultra-fast subgrid key
@@ -907,36 +1212,86 @@ ProcessKeyPress(key) {
 HandleRowKeyRelease(key) {
     global subGrid, StateMap, showcaseDebug, enableUltraFast
 
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        logMsg := Format(
+            "Timestamp: {} | HandleRowKeyRelease START | key={} | currentState={} | activeRowKey={} | inUltraFastMode={}",
+            A_TickCount, key, currentState, StateMap['activeRowKey'], StateMap['inUltraFastMode'])
+        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING END >>>
+
+    ; Log Check condition
+    if (showcaseDebug) {
+        logMsg := Format(
+            "Timestamp: {} | HandleRowKeyRelease: Check condition: enableUltraFast={}, inUltraFastMode={}, activeRowKey={}",
+            A_TickCount, enableUltraFast, StateMap['inUltraFastMode'], StateMap['activeRowKey'])
+        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+
     ; Only proceed if we're in Ultra-Fast mode and this is the key that activated it
     if (!enableUltraFast || !StateMap['inUltraFastMode'] || key != StateMap['activeRowKey']) {
+        ; Log condition failed if applicable
+        if (showcaseDebug && StateMap['inUltraFastMode']) {
+            logMsg := Format(
+                "Timestamp: {} | HandleRowKeyRelease: Condition FAILED for key={}. Expected activeRowKey={}",
+                A_TickCount, key, StateMap['activeRowKey'])
+            FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+        }
         return
     }
 
-    ; Switch back to standard mode
-    StateMap['inUltraFastMode'] := false
-
-    ; Update the subgrid UI
-    if (IsObject(subGrid)) {
-        subGrid.SwitchToStandard()
-
-        ; Force redraw
-        try {
-            if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
-                winHwnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
-                if (winHwnd) {
-                    PostMessage(0x000F, 0, 0, , "ahk_id " winHwnd)  ; WM_PAINT message
-                }
-            }
-        } catch {
-        }
+    ; Log Deactivation confirmation
+    if (showcaseDebug) {
+        logMsg := Format("Timestamp: {} | HandleRowKeyRelease: Deactivating ultra-fast mode for key={}", A_TickCount,
+            key)
+        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
     }
+
+    ; Switch back to standard mode
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) FileAppend(Format(
+        "Timestamp: {} | HandleRowKeyRelease: Setting inUltraFastMode=false (Before) | inUltraFastMode={}", A_TickCount,
+        StateMap['inUltraFastMode']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    ; <<< ADD LOGGING END >>>
+        StateMap['inUltraFastMode'] := false
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) FileAppend(Format(
+        "Timestamp: {} | HandleRowKeyRelease: Set inUltraFastMode=false (After) | inUltraFastMode={}", A_TickCount,
+        StateMap['inUltraFastMode']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    ; <<< ADD LOGGING END >>>
+    ; Update the subgrid UI
+        if (IsObject(subGrid)) {
+            subGrid.SwitchToStandard()
+
+            ; Force redraw
+            try {
+                if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                    winHnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                    if (winHnd) {
+                        PostMessage(0x000F, 0, 0, , "ahk_id " winHnd)  ; WM_PAINT message
+                    }
+                }
+            } catch {
+            }
+        }
 
     ; Reset state
-    StateMap['activeRowKey'] := ""
-
-    if (showcaseDebug) {
-        ToolTip("Ultra-Fast mode deactivated - row key " key " released")
-        Sleep(500)
-        ToolTip()
-    }
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) FileAppend(Format(
+        "Timestamp: {} | HandleRowKeyRelease: Clearing activeRowKey (Before) | activeRowKey={}", A_TickCount, StateMap[
+            'activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    ; <<< ADD LOGGING END >>>
+        StateMap['activeRowKey'] := ""
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) FileAppend(Format(
+        "Timestamp: {} | HandleRowKeyRelease: Cleared activeRowKey (After) | activeRowKey={}", A_TickCount, StateMap[
+            'activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    ; <<< ADD LOGGING END >>>
+    ; Original Tooltip
+        if (showcaseDebug) {
+            ToolTip("Ultra-Fast mode deactivated - row key " key " released")
+            Sleep(500)
+            ToolTip()
+        }
 }

@@ -543,3 +543,28 @@ CapsLock Up:: {
 ; Defined in settings_gui.ahk but triggered here if needed globally
 ; Hotstring definition moved to settings_gui.ahk to keep related code together.
 ; :*:;settings:: ShowSettingsGUI()
+
+; --- ROW KEY UP EVENTS FOR ULTRA-FAST SUBGRID MODE ---
+#HotIf currentState == "SUBGRID_ACTIVE" && StateMap['inUltraFastMode']
+
+; Function to handle row key releases in ultra-fast mode
+CheckRowKeyUpForUltraFast(key) {
+    ; Simply forward to the core function that handles row key releases
+    HandleRowKeyRelease(key)
+}
+
+; Row key up events
+u up:: CheckRowKeyUpForUltraFast("u")
+i up:: CheckRowKeyUpForUltraFast("i")
+o up:: CheckRowKeyUpForUltraFast("o")
+p up:: CheckRowKeyUpForUltraFast("p")
+j up:: CheckRowKeyUpForUltraFast("j")
+k up:: CheckRowKeyUpForUltraFast("k")
+l up:: CheckRowKeyUpForUltraFast("l")
+SC027 up:: CheckRowKeyUpForUltraFast(";") ; Semicolon
+m up:: CheckRowKeyUpForUltraFast("m")
+SC033 up:: CheckRowKeyUpForUltraFast(",") ; Comma
+SC034 up:: CheckRowKeyUpForUltraFast(".") ; Period
+SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
+
+#HotIf

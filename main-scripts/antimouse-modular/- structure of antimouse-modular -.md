@@ -5,20 +5,23 @@ This document outlines the modular structure of the refactored AntiMouse AutoHot
 
 ## Directory Structure
 
-All script modules reside within the `main-scripts/antimouse/` directory:
+All script modules reside within the `main-scripts/antimouse-modular/` directory:
 
 ```
-main-scripts/antimouse/
-├── 1main.ahk             # Main script entry point, includes, initialization
-├── config.ahk           # Global configuration variables (layouts, colors, paths, etc.)
-├── state.ahk            # State management (FSM, StateMap, GUI instances, memory)
-├── utils.ahk            # Utility functions (validation, GUI closing, type checks, CapsLock forcing)
-├── gui_classes.ahk      # Class definitions for GUI overlays (Highlight, SubGrid, Grid, OverlayGUI)
-├── memory_settings.ahk  # Functions for loading/saving cell memory and INI settings
-├── core_logic.ahk       # Core interaction logic (key handling, cursor tracking, monitor switching)
-├── activation.ahk       # Grid activation (CapsLock_Q) and cleanup logic
-├── settings_gui.ahk     # Settings GUI function and hotstring trigger
-└── hotkeys.ahk          # All hotkey definitions and #HotIf contexts
+main-scripts/antimouse-modular/
+├── 1main.ahk             ; Main script entry point, includes, initialization
+├── config.ahk            ; Global configuration variables (layouts, colors, paths, etc.)
+├── state.ahk             ; State management (FSM, StateMap, GUI instances, memory)
+├── utils.ahk             ; Utility functions (validation, GUI closing, type checks, CapsLock forcing)
+├── gui_classes.ahk       ; Class definitions for GUI overlays (Highlight, SubGrid, Grid, OverlayGUI)
+├── memory_settings.ahk   ; Functions for loading/saving cell memory and INI settings
+├── core_logic.ahk        ; Core interaction logic (key handling, cursor tracking, monitor switching)
+├── activation.ahk        ; Grid activation (CapsLock_Q) and cleanup logic
+├── settings_gui.ahk      ; Settings GUI function and hotstring trigger
+├── hotkeys.ahk           ; All hotkey definitions and #HotIf contexts
+├── cell_memory.txt       ; Storage for remembered subcell positions
+├── antimouse_settings.ini ; User configuration settings
+└── debug_log.txt         ; Debug information (when debugging is enabled)
 ```
 
 
@@ -28,7 +31,7 @@ main-scripts/antimouse/
 
 *   **`config.ahk`**: Centralizes all user-configurable and static settings like layout definitions, colors, file paths, timing thresholds, etc.
 
-*   **`state.ahk`**: Declares and initializes global variables responsible for tracking the script's current state, including the Finite State Machine (`currentState`), the `StateMap` for dynamic grid info, GUI object placeholders (`highlight`, `subGrid`), and the `g_ModifierState` for CapsLock handling.
+*   **`state.ahk`**: Declares and initializes global variables responsible for tracking the script's current state, including the Finite State Machine (`currentState`), the `StateMap` for dynamic grid info, GUI object placeholders (`highlight`, `subGrid`), and the `g_ModifierState` for CapsLock handling. Also contains variables for state transitions and grid activation prevention flags.
 
 *   **`utils.ahk`**: Contains reusable helper functions like `ValidateIndex`, `ForceCloseAllGuis`, `IsInteger`, `IsNumber`, and the `ForceCapsLockOff` timer function.
 
@@ -60,7 +63,10 @@ main-scripts/antimouse/
     *   `;settings` hotstring can trigger `ShowSettingsGUI` (from `settings_gui.ahk`).
 3.  **Activation (e.g., CapsLock double-tap or CapsLock+Q)**:
     *   Relevant hotkey in `hotkeys.ahk` triggers `CapsLock_Q` (from `activation.ahk`).
-    *   `CapsLock_Q` resets state, loads memory, creates GUI instances (`HighlightOverlay`, `SubGridOverlay` from `gui_classes.ahk`), creates `OverlayGUI` for each monitor, shows GUIs, sets `currentState` to `GRID_VISIBLE`, and starts the `TrackCursor` timer (function in `core_logic.ahk`).
+    *   `CapsLock_Q` checks for duplicate activation requests using `gridActivationInProgress` flag.
+    *   It resets state, loads memory, creates GUI instances (`HighlightOverlay`, `SubGridOverlay` from `gui_classes.ahk`).
+    *   Creates `OverlayGUI` for each monitor, attempts to identify current monitor.
+    *   Shows GUIs, sets `currentState` to `GRID_VISIBLE`, and starts the `TrackCursor` timer (function in `core_logic.ahk`).
 4.  **Grid Visible State (`GRID_VISIBLE`)**:
     *   `TrackCursor` monitors mouse position. If the cursor moves over a cell, it updates `StateMap['activeCellKey']`, potentially transitions to `SUBGRID_ACTIVE`, and updates the highlight/subgrid GUIs.
     *   Grid navigation keys (q, w, a, s, etc.) trigger `ProcessKeyPress` -> `HandleKey` (from `core_logic.ahk`).
@@ -76,13 +82,18 @@ main-scripts/antimouse/
     *   Monitor switching keys work as in `GRID_VISIBLE`.
     *   `Escape`, single `CapsLock` tap, or `Space` trigger cleanup/click+cleanup as in `GRID_VISIBLE`.
 6.  **InstaClick (Hold Mode)**:
-    *   Entering hold mode (`g_ModifierState.inHoldMode = true`) is typically triggered by CapsLock double-tap or CapsLock+ActivationKey (`hotkeys.ahk`).
+    *   Entering hold mode (`g_ModifierState.inHoldMode = true`) is typically triggered by CapsLock double-tap, CapsLock+Q, or CapsLock+MonitorNumber (`hotkeys.ahk`).
     *   When `CapsLock Up` occurs while `inHoldMode` is true and the state is not `IDLE`, a left click is performed at the current cursor position, followed by `Cleanup`.
-7.  **Cleanup (`activation.ahk`)**:
+    *   `instaClickMode` setting (from config) allows processing key events even when CapsLock is physically held for the click release.
+7.  **Monitor Switching**:
+    *   Can be triggered directly via hotkeys (1-4 when grid is active, or CapsLock+1-4 from any state).
+    *   When switching monitors, the script attempts to preserve the same cell position on the new monitor.
+    *   If cursor tracking detects movement to a different monitor, it can also trigger monitor switching and reset cell selection.
+8.  **Cleanup (`activation.ahk`)**:
     *   Called by `Escape`, `Space`, single `CapsLock` tap, or on error.
     *   Stops `TrackCursor` timer.
     *   Sets `currentState` to `IDLE`.
-    *   Resets relevant state flags (`inHoldMode`, `firstKey`, etc.).
+    *   Resets relevant state flags (`inHoldMode`, `firstKey`, `gridActivationInProgress`, etc.).
     *   Hides and destroys all GUI elements (`highlight`, `subGrid`, all overlays).
     *   Resets global GUI object variables (`highlight`, `subGrid`, `StateMap['overlays']`).
     *   Calls `ForceCloseAllGuis` (from `utils.ahk`) as a final measure.
