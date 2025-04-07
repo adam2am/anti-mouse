@@ -203,7 +203,7 @@ GetCellAtPosition(x, y) {
 
 HandleKey(key) {
     global currentState, highlight, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, StateMap,
-        storePerMonitor, showcaseDebug, instaClickMode, g_ModifierState
+        storePerMonitor, showcaseDebug, instaClickMode, g_ModifierState, enableUltraFast, rowKeyHoldThreshold
 
     ; Special handling for instaclick mode - always handle key events even when CapsLock is held
     if (instaClickMode && g_ModifierState.inHoldMode) {
@@ -326,6 +326,17 @@ HandleKey(key) {
             StateMap['lastSelectedRowIndex'] := rowIndex ; Use StateMap
             proceedToSubgrid := true
             StateMap['firstKey'] := "" ; Reset using StateMap
+
+            ; Ultra-Fast Mode: Track row key pressed time for hold detection
+            if (enableUltraFast) {
+                StateMap['rowKeyHeldTime'] := A_TickCount
+                StateMap['activeRowKey'] := key
+                if (showcaseDebug) {
+                    ToolTip("Row key " key " time recorded: " StateMap['rowKeyHeldTime'])
+                    Sleep(200)
+                    ToolTip()
+                }
+            }
         }
         else if (firstKeyWasRow && isColKey) {
             ; Expected: Row -> Col
@@ -410,6 +421,7 @@ HandleKey(key) {
         MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
         Sleep(40) ; Increased delay
         subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+        subGrid.Show() ; Explicitly show the subgrid after updating
 
         ; Ensure subgrid is visible - use a more compatible approach
         try {
@@ -531,8 +543,72 @@ HandleSubGridKey(subKey) {
     }
 }
 
+; Handle key presses in Ultra-Fast mode
+HandleUltraFastKey(key) {
+    global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap,
+        showcaseDebug, instaClickMode, g_ModifierState
+
+    ; Only process in the correct state with a valid subgrid
+    if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid) || !StateMap['inUltraFastMode']) {
+        return
+    }
+
+    ; Ensure enough time has passed since state transition to prevent accidental keypresses
+    timeSinceTransition := A_TickCount - stateTransitionTime
+    if (timeSinceTransition < stateTransitionDelay) {
+        Sleep(stateTransitionDelay - timeSinceTransition)
+    }
+
+    ; Get coordinates for the key in the ultra-fast grid
+    targetCoords := subGrid.GetUltraFastTargetCoordinates(key)
+    if (IsObject(targetCoords)) {
+        ; Move the mouse to the target position
+        MouseMove(targetCoords.x, targetCoords.y, 0)
+        StateMap['activeSubCellKey'] := key ; Store which ultrafast key was used
+
+        ; Remember this ultrafast subcell for the current cell
+        activeCell := StateMap['activeCellKey']
+        if (activeCell != "") {
+            keyToSave := ""
+
+            ; Determine the key to use based on the storePerMonitor setting
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
+                keyToSave := StateMap['currentOverlay'].monitorIndex . "_" . activeCell
+            } else {
+                keyToSave := activeCell
+            }
+
+            ; Update the memory map - append "ultra:" prefix to know it's an ultra-fast key
+            if (keyToSave != "") {
+                cellMemory[keyToSave] := "ultra:" . key
+                if (showcaseDebug) {
+                    ToolTip("Memory updated with ultra-fast key: " keyToSave " -> ultra:" key)
+                    Sleep(500)
+                }
+                ; Save the entire map to file
+                SaveCellMemory()
+            }
+        }
+
+        if (showcaseDebug) {
+            if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
+                ToolTip("Moved to ultra-fast cell " key " in " activeCell " on monitor " StateMap['currentOverlay'].monitorIndex
+                )
+            } else {
+                ToolTip("Moved to ultra-fast cell " key " in " activeCell)
+            }
+        }
+    } else {
+        if (showcaseDebug) {
+            ToolTip("Invalid ultra-fast key: " key)
+            Sleep(1000)
+            ToolTip()
+        }
+    }
+}
+
 StartNewSelection(key) {
-    global currentState, subGrid, highlight, StateMap
+    global currentState, subGrid, highlight, StateMap, enableUltraFast
 
     ; IMPROVEMENT: Temporarily disable TrackCursor
     SetTimer(TrackCursor, 0)
@@ -540,6 +616,14 @@ StartNewSelection(key) {
     if (currentState != "SUBGRID_ACTIVE") {
         ; Re-enable TrackCursor before returning
         SetTimer(TrackCursor, 50)
+        return
+    }
+
+    ; If in Ultra-Fast mode and this is the held row key, ignore
+    if (enableUltraFast && StateMap['inUltraFastMode'] && key == StateMap['activeRowKey']) {
+        ; The user is still holding the row key that activated ultra-fast mode
+        ; We should ignore it to prevent conflicts
+        SetTimer(TrackCursor, 50) ; Re-enable tracker
         return
     }
 
@@ -557,6 +641,8 @@ StartNewSelection(key) {
     StateMap['activeCellKey'] := ""
     StateMap['activeSubCellKey'] := ""
     StateMap['firstKey'] := ""
+    StateMap['inUltraFastMode'] := false ; Exit ultra-fast mode
+    StateMap['activeRowKey'] := "" ; Clear active row key
     currentState := "GRID_VISIBLE"
 
     ; Force a small delay to ensure state transitions properly
@@ -573,11 +659,46 @@ StartNewSelection(key) {
 ; Monitors the mouse cursor position and updates the active cell/highlight/subgrid accordingly.
 TrackCursor() {
     ; Access global state and config
-    global currentState, highlight, subGrid, StateMap, showcaseDebug
+    global currentState, highlight, subGrid, StateMap, showcaseDebug, enableUltraFast, rowKeyHoldThreshold
 
     ; Ignore tracking if idle or dragging (dragging state not fully implemented here)
     if (currentState == "IDLE" || currentState == "DRAGGING") {
         return
+    }
+
+    ; --- Check for Ultra-Fast Mode Activation ---
+    if (enableUltraFast && currentState == "SUBGRID_ACTIVE" &&
+        StateMap['activeRowKey'] != "" && !StateMap['inUltraFastMode']) {
+        ; Calculate how long the row key has been held
+        heldTime := A_TickCount - StateMap['rowKeyHeldTime']
+
+        ; Check if we've held long enough to trigger ultra-fast mode
+        if (heldTime >= rowKeyHoldThreshold) {
+            ; Switch to Ultra-Fast mode
+            StateMap['inUltraFastMode'] := true
+
+            ; Update subgrid display
+            if (IsObject(subGrid)) {
+                subGrid.SwitchToUltraFast()
+
+                ; Force redraw
+                try {
+                    if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                        winHwnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                        if (winHwnd) {
+                            PostMessage(0x000F, 0, 0, , "ahk_id " winHwnd)  ; WM_PAINT message
+                        }
+                    }
+                } catch {
+                }
+            }
+
+            if (showcaseDebug) {
+                ToolTip("Ultra-Fast mode activated! Row key " StateMap['activeRowKey'] " held for " heldTime "ms")
+                Sleep(500)
+                ToolTip()
+            }
+        }
     }
 
     try {
@@ -670,7 +791,7 @@ TrackCursor() {
                             currentState := "SUBGRID_ACTIVE"
                             stateTransitionTime := A_TickCount ; Update transition time
                             if (IsObject(subGrid)) {
-                                subGrid.gui.Show() ; Explicitly show subgrid
+                                subGrid.Show() ; Use proper Show method
                             }
                         }
 
@@ -730,7 +851,7 @@ TrackCursor() {
 ProcessKeyPress(key) {
     ; Access global state and config
     global currentState, subGridKeys, instaClickMode,
-        g_ModifierState
+        g_ModifierState, StateMap, enableUltraFast, ultraFastSubGridKeys
 
     ; Special handling for instaclick mode - allow key events even when CapsLock is held for the click
     if (instaClickMode && g_ModifierState.inHoldMode) {
@@ -745,6 +866,24 @@ ProcessKeyPress(key) {
     if (currentState == "GRID_VISIBLE") {
         HandleKey(key) ; Process as first or second grid key
     } else if (currentState == "SUBGRID_ACTIVE") {
+        ; Check if we're in ultra-fast mode
+        if (enableUltraFast && StateMap['inUltraFastMode']) {
+            ; Check if key is an ultra-fast subgrid key
+            for i, ultraKey in ultraFastSubGridKeys {
+                if (key == ultraKey) {
+                    HandleUltraFastKey(key)
+                    return
+                }
+            }
+
+            ; Check if it's the active row key being held
+            if (key == StateMap['activeRowKey']) {
+                ; Just ignore, user is still holding the row key
+                return
+            }
+        }
+
+        ; If not handled by ultra-fast mode, continue with standard logic
         ; Check if the key is a subgrid navigation key
         isSubGridKey := false
         for i, subKey in subGridKeys {
@@ -762,4 +901,42 @@ ProcessKeyPress(key) {
         }
     }
     ; Do nothing if currentState is IDLE (should be handled by activation hotkeys)
+}
+
+; Handles the release of a row key in Ultra-Fast mode, switching back to standard mode
+HandleRowKeyRelease(key) {
+    global subGrid, StateMap, showcaseDebug, enableUltraFast
+
+    ; Only proceed if we're in Ultra-Fast mode and this is the key that activated it
+    if (!enableUltraFast || !StateMap['inUltraFastMode'] || key != StateMap['activeRowKey']) {
+        return
+    }
+
+    ; Switch back to standard mode
+    StateMap['inUltraFastMode'] := false
+
+    ; Update the subgrid UI
+    if (IsObject(subGrid)) {
+        subGrid.SwitchToStandard()
+
+        ; Force redraw
+        try {
+            if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
+                winHwnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
+                if (winHwnd) {
+                    PostMessage(0x000F, 0, 0, , "ahk_id " winHwnd)  ; WM_PAINT message
+                }
+            }
+        } catch {
+        }
+    }
+
+    ; Reset state
+    StateMap['activeRowKey'] := ""
+
+    if (showcaseDebug) {
+        ToolTip("Ultra-Fast mode deactivated - row key " key " released")
+        Sleep(500)
+        ToolTip()
+    }
 }

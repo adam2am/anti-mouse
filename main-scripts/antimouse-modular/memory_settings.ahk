@@ -112,6 +112,7 @@ LoadSettings() {
     ; Access global config variables that will be loaded/updated
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
     global defaultTransparency, highlightColor, instaClickMode
+    global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
 
     try {
         if (FileExist(settingsFile)) {
@@ -125,6 +126,13 @@ LoadSettings() {
             storePerMonitor := IniRead(settingsFile, "General", "StorePerMonitor", storePerMonitor)
             showcaseDebug := IniRead(settingsFile, "General", "Debug", showcaseDebug)
             instaClickMode := IniRead(settingsFile, "General", "InstaClickMode", instaClickMode)
+
+            ; Load Ultra-Fast Subgrid settings
+            enableUltraFast := IniRead(settingsFile, "UltraFast", "Enable", enableUltraFast)
+            loadedThreshold := IniRead(settingsFile, "UltraFast", "HoldThreshold", rowKeyHoldThreshold)
+            if (IsInteger(loadedThreshold) && loadedThreshold >= 50 && loadedThreshold <= 500) {
+                rowKeyHoldThreshold := loadedThreshold
+            }
 
             ; Load monitor mapping
             for i, _ in monitorMapping {
@@ -162,6 +170,7 @@ SaveSettings() {
     ; Access global config variables to be saved
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
     global defaultTransparency, highlightColor, instaClickMode
+    global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
 
     try {
         ; Ensure the directory exists before writing
@@ -175,6 +184,10 @@ SaveSettings() {
         IniWrite(storePerMonitor, settingsFile, "General", "StorePerMonitor")
         IniWrite(showcaseDebug, settingsFile, "General", "Debug")
         IniWrite(instaClickMode, settingsFile, "General", "InstaClickMode")
+
+        ; Save Ultra-Fast Subgrid settings
+        IniWrite(enableUltraFast, settingsFile, "UltraFast", "Enable")
+        IniWrite(rowKeyHoldThreshold, settingsFile, "UltraFast", "HoldThreshold")
 
         ; Save monitor mapping
         for i, mapping in monitorMapping {

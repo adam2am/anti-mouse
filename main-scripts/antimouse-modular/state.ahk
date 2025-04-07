@@ -23,7 +23,10 @@ global StateMap := Map(
     "activeSubCellKey", "",     ; The key of the currently selected sub-cell (e.g., "g")
     "currentColIndex", 0,       ; Index of the currently selected column
     "currentRowIndex", 0,       ; Index of the currently selected row
-    "lastSelectedRowIndex", 0   ; Remembers the last row selected to improve flow
+    "lastSelectedRowIndex", 0,  ; Remembers the last row selected to improve flow
+    "rowKeyHeldTime", 0,        ; Timestamp when row key was pressed (for Ultra-Fast mode)
+    "activeRowKey", "",         ; Currently held row key (for Ultra-Fast mode)
+    "inUltraFastMode", false    ; Whether Ultra-Fast Subgrid mode is active
 )
 
 ; --- GUI Instances ---

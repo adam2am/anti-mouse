@@ -188,6 +188,7 @@ class SubGridOverlay {
         this.borderControls := []
         this.cellBorders := []
         this.textControls := []
+        this.currentLayout := "standard"  ; Track current layout type
 
         ; Add outer border controls (thicker)
         this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background777777")) ; Top
@@ -195,20 +196,30 @@ class SubGridOverlay {
         this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background777777")) ; Left
         this.borderControls.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background777777")) ; Right
 
-        ; Add cell border controls
-        ; Horizontal internal borders
+        ; Add cell border controls - will be updated based on layout
+        ; Standard layout (2x2) borders
         this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Horizontal 1
-        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Horizontal 2
-
-        ; Vertical internal borders
         this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Vertical 1
-        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Vertical 2
 
-        ; Add text controls for sub-cells - use Center and 0x200 for better vertical centering
+        ; Ultra-fast layout (3x4) borders
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Horizontal 2
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Horizontal 3
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Vertical 2
+        this.cellBorders.Push(this.gui.Add("Progress", "x0 y0 w0 h0 Background555555")) ; Vertical 3
+
+        ; Add text controls for both layouts
+        ; Standard layout (2x2) text controls
         loop 4 {
             this.textControls.Push(this.gui.Add("Text", "x0 y0 w0 h0 Center +0x200 BackgroundTrans cFFFF00",
                 subGridKeys[A_Index]))
         }
+
+        ; Ultra-fast layout (3x4) text controls
+        loop 12 {
+            this.textControls.Push(this.gui.Add("Text", "x0 y0 w0 h0 Center +0x200 BackgroundTrans cFFFF00",
+                ultraFastSubGridKeys[A_Index]))
+        }
+
         this.transparency := defaultTransparency + 20
         WinSetTransColor("222222 " this.transparency, this.gui)
     }
@@ -218,70 +229,110 @@ class SubGridOverlay {
         this.y := y
         this.width := w
         this.height := h
-        this.subCellWidth := w // 2
-        this.subCellHeight := h // 2
+        this.subCellWidth := w // (this.currentLayout == "standard" ? 2 : 4)
+        this.subCellHeight := h // (this.currentLayout == "standard" ? 2 : 3)
 
-        borderThickness := 1  ; Change from 2px to 1px
+        borderThickness := 1
         fontSize := Max(16, Min(this.subCellWidth, this.subCellHeight) // 3)
         this.gui.SetFont("s" fontSize " bold", "Arial")
 
-        ; Update outer borders (thicker)
+        ; Update outer borders
         this.borderControls[1].Move(0, 0, w, borderThickness)                   ; Top
         this.borderControls[2].Move(0, h - borderThickness, w, borderThickness) ; Bottom
         this.borderControls[3].Move(0, 0, borderThickness, h)                   ; Left
         this.borderControls[4].Move(w - borderThickness, 0, borderThickness, h) ; Right
 
-        ; Update internal cell borders
-        cellHeight := h // 2
-        cellWidth := w // 2
+        if (this.currentLayout == "standard") {
+            this.UpdateStandardLayout()
+        } else {
+            this.UpdateUltraFastLayout()
+        }
+    }
 
-        ; Horizontal internal borders
-        this.cellBorders[1].Move(0, cellHeight, w, borderThickness)                      ; Horizontal 1
-        this.cellBorders[2].Move(0, cellHeight * 2, w, borderThickness)                  ; Horizontal 2
+    UpdateStandardLayout() {
+        ; Update standard 2x2 layout
+        cellHeight := this.height // 2
+        cellWidth := this.width // 2
 
-        ; Vertical internal borders
-        this.cellBorders[3].Move(cellWidth, 0, borderThickness, h)                       ; Vertical 1
-        this.cellBorders[4].Move(cellWidth * 2, 0, borderThickness, h)                   ; Vertical 2
+        ; Horizontal internal border
+        this.cellBorders[1].Move(0, cellHeight, this.width, 1)
+        ; Vertical internal border
+        this.cellBorders[2].Move(cellWidth, 0, 1, this.height)
 
-        ; Update text controls - centered in each cell with proper numbering layout (b-n/g-h)
+        ; Update text controls for standard layout
         index := 1
         loop 2 {
             row := A_Index - 1
             loop 2 {
                 col := A_Index - 1
-                subX := col * this.subCellWidth
-                subY := row * this.subCellHeight
-
-                ; Use full cell dimensions for better vertical centering with the +0x200 style
                 this.textControls[index].Move(
-                    subX,
-                    subY,
-                    this.subCellWidth,
-                    this.subCellHeight
+                    col * cellWidth + (cellWidth // 4),
+                    row * cellHeight + (cellHeight // 4),
+                    cellWidth // 2,
+                    cellHeight // 2
                 )
-
-                ; Force text to redraw with updated color
-                this.textControls[index].Opt("cFFFF00")
-                this.textControls[index].Text := subGridKeys[index]
-
-                index += 1
+                index++
             }
         }
 
-        ; Ensure transparency is set correctly
-        WinSetTransColor("222222 " this.transparency, this.gui)
+        ; Hide ultra-fast layout borders and text controls
+        loop 4 {
+            this.cellBorders[A_Index + 2].Move(0, 0, 0, 0)
+        }
+        loop 12 {
+            this.textControls[A_Index + 4].Move(0, 0, 0, 0)
+        }
+    }
 
-        ; Show the window with updated parameters
-        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", x, y, w, h))
+    UpdateUltraFastLayout() {
+        ; Update ultra-fast 3x4 layout
+        cellHeight := this.height // 3
+        cellWidth := this.width // 4
 
-        ; Force window to front to ensure visibility
-        try {
-            WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
-        } catch {
+        ; Horizontal internal borders
+        this.cellBorders[1].Move(0, cellHeight, this.width, 1)
+        this.cellBorders[2].Move(0, cellHeight * 2, this.width, 1)
+
+        ; Vertical internal borders
+        this.cellBorders[3].Move(cellWidth, 0, 1, this.height)
+        this.cellBorders[4].Move(cellWidth * 2, 0, 1, this.height)
+        this.cellBorders[5].Move(cellWidth * 3, 0, 1, this.height)
+
+        ; Update text controls for ultra-fast layout
+        index := 5  ; Start after standard layout controls
+        loop 3 {
+            row := A_Index - 1
+            loop 4 {
+                col := A_Index - 1
+                this.textControls[index].Move(
+                    col * cellWidth + (cellWidth // 4),
+                    row * cellHeight + (cellHeight // 4),
+                    cellWidth // 2,
+                    cellHeight // 2
+                )
+                index++
+            }
         }
 
-        ; Short delay to ensure rendering completes
-        Sleep(10)
+        ; Hide standard layout text controls
+        loop 4 {
+            this.textControls[A_Index].Move(0, 0, 0, 0)
+        }
+    }
+
+    SwitchToStandard() {
+        this.currentLayout := "standard"
+        this.Update(this.x, this.y, this.width, this.height)
+    }
+
+    SwitchToUltraFast() {
+        this.currentLayout := "ultrafast"
+        this.Update(this.x, this.y, this.width, this.height)
+    }
+
+    Show() {
+        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+        WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
     }
 
     Hide() {
@@ -297,13 +348,10 @@ class SubGridOverlay {
     Destroy() {
         try {
             if (IsObject(this.gui)) {
-                ; Store handle before destroying the GUI
                 hwnd := this.gui.Hwnd
-
-                ; Try normal destroy first
+                this.gui.Hide()
                 this.gui.Destroy()
 
-                ; Additional: force close the window if it still exists
                 if (WinExist("ahk_id " hwnd)) {
                     WinClose("ahk_id " hwnd)
                     if (WinExist("ahk_id " hwnd)) {
@@ -316,22 +364,54 @@ class SubGridOverlay {
         }
     }
 
-    GetTargetCoordinates(subKey) {
-        subKeyIndex := -1
-        for i, key in subGridKeys {
-            if (key = subKey) {
-                subKeyIndex := i - 1
+    GetTargetCoordinates(key) {
+        if (this.currentLayout == "standard") {
+            return this.GetStandardTargetCoordinates(key)
+        } else {
+            return this.GetUltraFastTargetCoordinates(key)
+        }
+    }
+
+    GetStandardTargetCoordinates(key) {
+        ; Standard 2x2 layout coordinates
+        cellWidth := this.width // 2
+        cellHeight := this.height // 2
+
+        switch key {
+            case "g": return { x: this.x + (cellWidth // 4), y: this.y + (cellHeight // 4) }
+            case "h": return { x: this.x + cellWidth + (cellWidth // 4), y: this.y + (cellHeight // 4) }
+            case "b": return { x: this.x + (cellWidth // 4), y: this.y + cellHeight + (cellHeight // 4) }
+            case "n": return { x: this.x + cellWidth + (cellWidth // 4), y: this.y + cellHeight + (cellHeight // 4) }
+            default: return false
+        }
+    }
+
+    GetUltraFastTargetCoordinates(key) {
+        ; Ultra-fast 3x4 layout coordinates
+        cellWidth := this.width // 4
+        cellHeight := this.height // 3
+
+        ; Find the index of the key in ultraFastSubGridKeys
+        keyIndex := 0
+        for i, k in ultraFastSubGridKeys {
+            if (k == key) {
+                keyIndex := i
                 break
             }
         }
-        if (subKeyIndex = -1) {
+
+        if (keyIndex == 0) {
             return false
         }
-        subRow := subKeyIndex // subGridCols
-        subCol := Mod(subKeyIndex, subGridCols)
-        targetX := this.x + (subCol * this.subCellWidth) + (this.subCellWidth // 2)
-        targetY := this.y + (subRow * this.subCellHeight) + (this.subCellHeight // 2)
-        return { x: targetX, y: targetY }
+
+        ; Calculate row and column from index
+        row := (keyIndex - 1) // 4
+        col := Mod(keyIndex - 1, 4)
+
+        return {
+            x: this.x + (col * cellWidth) + (cellWidth // 4),
+            y: this.y + (row * cellHeight) + (cellHeight // 4)
+        }
     }
 }
 

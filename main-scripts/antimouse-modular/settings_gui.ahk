@@ -23,6 +23,7 @@ ShowSettingsGUI() {
     global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
     global defaultTransparency, highlightColor, instaClickMode, settingsFile ; Need settingsFile for saving
     global StateMap, highlight ; Need StateMap and highlight to apply some settings live
+    global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
 
     ; Create settings GUI window
     settingsGui := Gui("+AlwaysOnTop +Resize", "Anti-Mouse Settings")
@@ -57,8 +58,27 @@ ShowSettingsGUI() {
     instaClickCheckbox := settingsGui.Add("Checkbox", "x150 y100 w230 h20", "InstaClick (release CapsLock to click)")
     instaClickCheckbox.Value := instaClickMode
 
+    ; --- Ultra-Fast Subgrid Settings ---
+    settingsGui.Add("GroupBox", "x10 y150 w380 h85", "Ultra-Fast Subgrid Options")
+
+    settingsGui.Add("Text", "x20 y170 w120 h20", "Enable:")
+    ultraFastCheckbox := settingsGui.Add("Checkbox", "x150 y170 w230 h20", "Enable Ultra-Fast Subgrid mode")
+    ultraFastCheckbox.Value := enableUltraFast
+
+    settingsGui.Add("Text", "x20 y195 w120 h20", "Hold Threshold:")
+    holdThresholdSlider := settingsGui.Add("Slider", "x150 y195 w180 h20 Range50-500 TickInterval50",
+        rowKeyHoldThreshold)
+    holdThresholdText := settingsGui.Add("Text", "x340 y195 w40 h20 Right", rowKeyHoldThreshold) ; Show value
+    settingsGui.Add("Text", "x150 y212 w230 h20 c777777", "Time in ms to hold row key before activation")
+
+    ; Function to update the hold threshold text
+    UpdateHoldThresholdText(*) {
+        holdThresholdText.Value := holdThresholdSlider.Value
+    }
+    holdThresholdSlider.OnEvent("Change", UpdateHoldThresholdText)
+
     ; --- Monitor Mapping Group ---
-    settingsGui.Add("GroupBox", "x10 y150 w380 h120", "Monitor Mapping (Physical -> Logical)")
+    settingsGui.Add("GroupBox", "x10 y245 w380 h120", "Monitor Mapping (Physical -> Logical)")
 
     mapInputs := [] ; Array to hold the Edit controls for mapping
     monitorCount := MonitorGetCount() ; Get actual monitor count
@@ -67,7 +87,7 @@ ShowSettingsGUI() {
     loop maxMonitors {
         i := A_Index
         currentMapping := monitorMapping.Has(i) ? monitorMapping[i] : i ; Default to physical index if not mapped
-        yPos := 170 + (i - 1) * 25
+        yPos := 265 + (i - 1) * 25
         settingsGui.Add("Text", "x20 y" yPos " w140 h20", "Physical Monitor " i ":")
         editCtrl := settingsGui.Add("Edit", "x170 y" yPos " w40 h20", currentMapping)
         settingsGui.Add("UpDown", "Range1-" maxMonitors, currentMapping) ; Allow mapping up to max monitors shown
@@ -75,8 +95,8 @@ ShowSettingsGUI() {
     }
 
     ; --- Appearance Group ---
-    settingsGui.Add("GroupBox", "x10 y" (150 + 25 * maxMonitors + 10) " w380 h80", "Appearance")
-    appearanceY := 150 + 25 * maxMonitors + 10 + 20 ; Calculate Y position based on monitor controls
+    settingsGui.Add("GroupBox", "x10 y" (265 + 25 * maxMonitors + 10) " w380 h80", "Appearance")
+    appearanceY := 265 + 25 * maxMonitors + 10 + 20 ; Calculate Y position based on monitor controls
 
     settingsGui.Add("Text", "x20 y" appearanceY " w130 h20", "Grid Transparency:")
     transparencySlider := settingsGui.Add("Slider", "x150 y" appearanceY " w180 h20 Range0-255 TickInterval20",
@@ -106,13 +126,17 @@ ShowSettingsGUI() {
         ; Access globals needed to update
         global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
         global defaultTransparency, highlightColor, instaClickMode, StateMap, highlight
-        global settingsFile ; Make sure settingsFile is accessible
+        global settingsFile, enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast settings
 
         ; Update general settings from GUI controls
         selectedLayout := layoutDropdown.Value ; Get chosen index
         storePerMonitor := storePerMonitorCheckbox.Value
         showcaseDebug := debugCheckbox.Value
         instaClickMode := instaClickCheckbox.Value
+
+        ; Update Ultra-Fast Subgrid settings
+        enableUltraFast := ultraFastCheckbox.Value
+        rowKeyHoldThreshold := holdThresholdSlider.Value
 
         ; Update monitor mapping from Edit controls
         newMapping := []
@@ -174,6 +198,11 @@ ShowSettingsGUI() {
         storePerMonitorCheckbox.Value := true
         debugCheckbox.Value := false
         instaClickCheckbox.Value := false
+
+        ; Reset Ultra-Fast Subgrid settings
+        ultraFastCheckbox.Value := true
+        holdThresholdSlider.Value := 150
+        UpdateHoldThresholdText() ; Update the threshold text display
 
         ; Reset monitor mapping inputs (example defaults)
         defaultMapping := [2, 1, 3, 4]

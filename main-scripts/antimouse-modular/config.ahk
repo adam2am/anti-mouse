@@ -10,6 +10,13 @@ global instaClickMode := false      ; Track if we're in instaclick mode (hold-re
 global doubleCapsThreshold := 400   ; Time in ms for double CapsLock detection
 global stateTransitionDelay := 50   ; Minimum time (ms) between state transitions to prevent leakage
 
+; --- Ultra-Fast Subgrid Settings ---
+global enableUltraFast := true      ; Enable/disable Ultra-Fast Subgrid mode
+global rowKeyHoldThreshold := 150   ; Time in ms to detect a row key hold
+global ultraFastSubGridKeys := ["q", "w", "e", "r", "a", "s", "d", "f", "z", "x", "c", "v"]  ; Ultra-fast grid keys
+global ultraFastRows := 3           ; Number of rows in ultra-fast grid
+global ultraFastCols := 4           ; Number of columns in ultra-fast grid
+
 ; --- Appearance ---
 global defaultTransparency := 180   ; Transparency level (0-255, 255=opaque)
 global highlightColor := "33AAFF"   ; Highlight color for selected cells
