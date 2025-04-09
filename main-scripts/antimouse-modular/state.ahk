@@ -53,3 +53,6 @@ global g_ModifierState := {
 ; --- Other State Variables ---
 ; (Add any other state-related variables here if needed)
 global qmove := true ; Related to CapsLock+Q activation, might be refactored later
+
+; --- Dedicated Global for HandleKey First Key Tracking ---
+global g_firstKeyPressed := ""
