@@ -125,16 +125,29 @@ CapsLock_Q() {
         loop monitorCount {
             try {
                 MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
+                FileAppend(Format("Timestamp: {} | CapsLock_Q: Creating OverlayGUI for Monitor {}", A_TickCount,
+                    A_Index) "`n", "antimouse_core.log") ; <<< CORE LOGGING
                 overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, StateMap['activeColKeys'], StateMap[
                     'activeRowKeys']) ; Use StateMap
-                overlay.Show()
-                StateMap['overlays'].Push(overlay) ; Use StateMap
+                FileAppend(Format("Timestamp: {} | CapsLock_Q: OverlayGUI created. IsObject(overlay) = {}", A_TickCount,
+                    IsObject(overlay)) "`n", "antimouse_core.log") ; <<< CORE LOGGING
+                if (IsObject(overlay)) { ; Only proceed if overlay created successfully
+                    overlay.Show()
+                    StateMap['overlays'].Push(overlay) ; Use StateMap
 
-                if (overlay.ContainsPoint(startX, startY)) {
-                    StateMap['currentOverlay'] := overlay ; Use StateMap
-                    foundMonitor := true
+                    containsPointResult := overlay.ContainsPoint(startX, startY)
+                    FileAppend(Format("Timestamp: {} | CapsLock_Q: Monitor {} ContainsPoint({}, {}) = {}", A_TickCount,
+                        A_Index, startX, startY, containsPointResult) "`n", "antimouse_core.log") ; <<< CORE LOGGING
+                    if (containsPointResult) {
+                        StateMap['currentOverlay'] := overlay ; Use StateMap
+                        foundMonitor := true
+                        FileAppend(Format("Timestamp: {} | CapsLock_Q: Set currentOverlay to Monitor {}", A_TickCount,
+                            A_Index) "`n", "antimouse_core.log") ; <<< CORE LOGGING
+                    }
                 }
             } catch as e {
+                FileAppend(Format("Timestamp: {} | CapsLock_Q: ERROR creating overlay for Monitor {}: {}", A_TickCount,
+                    A_Index, e.Message) "`n", "antimouse_core.log") ; <<< CORE LOGGING
                 if (showcaseDebug) {
                     ToolTip("Error creating overlay for monitor " A_Index ": " e.Message)
                     Sleep(2000)
@@ -150,13 +163,13 @@ CapsLock_Q() {
         }
 
         ; Only continue if overlay creation was successful
+        FileAppend(Format(
+            "Timestamp: {} | CapsLock_Q: Checking condition: overlays.Length={}, IsObject(currentOverlay)={}",
+            A_TickCount, StateMap['overlays'].Length, IsObject(StateMap['currentOverlay'])) "`n", "antimouse_core.log") ; <<< CORE LOGGING
         if (StateMap['overlays'].Length > 0 && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
-            ; <<< ADD LOGGING START >>>
-            if (showcaseDebug) FileAppend(Format(
-                "Timestamp: {} | CapsLock_Q: Setting currentState=GRID_VISIBLE (Before) | currentState={}", currentTime,
-                currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
-            ; <<< ADD LOGGING END >>>
-                currentState := "GRID_VISIBLE"
+            FileAppend(Format("Timestamp: {} | CapsLock_Q: Condition TRUE. Setting state to GRID_VISIBLE.", A_TickCount
+            ) "`n", "antimouse_core.log") ; <<< CORE LOGGING
+            currentState := "GRID_VISIBLE"
             ; <<< ADD LOGGING START >>>
             if (showcaseDebug) FileAppend(Format(
                 "Timestamp: {} | CapsLock_Q: Set currentState=GRID_VISIBLE (After) | currentState={}", currentTime,
@@ -165,6 +178,8 @@ CapsLock_Q() {
                 SetTimer(TrackCursor, 50)
             gridActivationInProgress := false
         } else {
+            FileAppend(Format("Timestamp: {} | CapsLock_Q: Condition FALSE. Calling Cleanup().", A_TickCount) "`n",
+            "antimouse_core.log") ; <<< CORE LOGGING
             ; Clean up and show error if unsuccessful
             Cleanup()
             ; Reset activation flag after failure
@@ -184,6 +199,8 @@ CapsLock_Q() {
             ToolTip()
         }
     }
+    FileAppend(Format("Timestamp: {} | CapsLock_Q FINISHED | currentState={}", A_TickCount, currentState) "`n",
+    "antimouse_core.log") ; <<< CORE LOGGING
 }
 
 ; --- Grid Cleanup ---

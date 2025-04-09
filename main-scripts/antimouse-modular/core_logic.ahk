@@ -1140,7 +1140,8 @@ TrackCursor() {
 
 ; Central function called by hotkeys to route key presses to the appropriate handler based on the current state.
 ProcessKeyPress(key) {
-    ; Access global state and config
+    FileAppend(Format("Timestamp: {} | ProcessKeyPress START | key={} | currentState={}", A_TickCount, key,
+        currentState) "`n", "antimouse_core.log") ; <<< CORE LOGGING
     global currentState, subGridKeys, instaClickMode,
         g_ModifierState, StateMap, enableUltraFast, ultraFastSubGridKeys, showcaseDebug
 
