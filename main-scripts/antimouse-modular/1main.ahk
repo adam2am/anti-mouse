@@ -16,7 +16,16 @@ SetCapsLockState "AlwaysOff"    ; Ensure CapsLock starts (and stays) off
 #Include %A_ScriptDir%\utils.ahk          ; Utility functions
 #Include %A_ScriptDir%\gui_classes.ahk    ; GUI class definitions
 #Include %A_ScriptDir%\memory_settings.ahk ; Settings and memory management
-#Include %A_ScriptDir%\core_logic.ahk     ; Core grid functionality
+; #Include %A_ScriptDir%\core_logic.ahk     ; Core grid functionality (REMOVED - Refactored into core/)
+; --- Core Logic Modules ---
+#Include %A_ScriptDir%\core\monitor.ahk          ; Monitor switching
+#Include %A_ScriptDir%\core\positioning.ahk      ; Cell position finding
+#Include %A_ScriptDir%\core\key_processing.ahk   ; Key press routing
+#Include %A_ScriptDir%\core\grid_keys.ahk        ; Main grid key handling
+#Include %A_ScriptDir%\core\subgrid_keys.ahk     ; Subgrid & ultra-fast key handling
+#Include %A_ScriptDir%\core\state_transitions.ahk ; State transition functions (StartNewSelection)
+#Include %A_ScriptDir%\core\tracking.ahk         ; Cursor tracking and highlight logic
+; --- End Core Logic Modules ---
 #Include %A_ScriptDir%\activation.ahk     ; Grid activation logic
 #Include %A_ScriptDir%\settings_gui.ahk   ; Settings GUI logic
 #Include %A_ScriptDir%\hotkeys.ahk        ; Hotkey definitions
