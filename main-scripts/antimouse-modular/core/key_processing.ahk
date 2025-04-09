@@ -103,3 +103,5 @@ HandleStandardSubgridKey(key) {
 }
 
 ; Note: The HandleUltraFastKey is defined in subgrid_keys.ahk
+
+; <<< --- REMOVED DUPLICATE HandleKey FUNCTION --- >>>
