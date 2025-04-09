@@ -2,6 +2,10 @@
 ; core/tracking.ahk - Cursor Tracking Logic
 ; ==============================================================================
 
+; Reference state constants and variables defined in state.ahk and config.ahk
+global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST
+global StateMap, currentState, showcaseDebug
+
 ; Monitors the mouse cursor position and updates the active cell/highlight/subgrid accordingly.
 TrackCursor() {
     ; Static variable to prevent re-entry
@@ -30,41 +34,49 @@ TrackCursor() {
         ; FileAppend(Format("Timestamp: {} | TrackCursor START | State={} | Mouse=({},{}) | ActiveCell={} | ActiveRowKey={} | UltraFastMode={}", currentTime, currentState, x, y, activeCellKey, activeRowKey, inUltraFastMode) "`n", "antimouse_core.log")
         ; --- CORE LOGGING END ---
 
-        ; Only track if grid or subgrid is potentially active
-        if (currentState != "GRID_VISIBLE" && currentState != "SUBGRID_ACTIVE") {
-            trackingInProgress := false
+        ; Check if tracking is already in progress or state is invalid
+        if (trackingInProgress || (currentState != State_GRID_VISIBLE && currentState != State_SUBGRID_STANDARD &&
+            currentState != State_SUBGRID_ULTRAFAST)) {
+            ; <<< CORE LOGGING START >>>
+            if (trackingInProgress) FileAppend(Format("Timestamp: {} | TrackCursor: Exit (trackingInProgress=true)",
+                A_TickCount) "`n", "antimouse_core.log")
+                trackingInProgress := false
             return
+            ; <<< CORE LOGGING END >>>
         }
 
         activeCellBoundaries := Map()
         cursorInsideCell := false
 
         ; Get boundaries if subgrid is active
-        if (currentState == "SUBGRID_ACTIVE" && StateMap.Has('activeCellKey') && StateMap['activeCellKey'] != "" &&
-        IsObject(StateMap['currentOverlay'])) {
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(StateMap['activeCellKey'])
-            if (IsObject(boundaries)) {
-                activeCellBoundaries := boundaries
-                cursorInsideCell := (x >= boundaries.x && x < boundaries.x + boundaries.w && y >= boundaries.y && y <
-                    boundaries.y + boundaries.h)
-                ; --- CORE LOGGING START ---
-                FileAppend(Format("Timestamp: {} | TrackCursor: Subgrid Active. CellBounds=({},{},{},{}) | Inside={}",
-                    A_TickCount, boundaries.x, boundaries.y, boundaries.w, boundaries.h, cursorInsideCell) "`n",
-                "antimouse_core.log")
-                ; --- CORE LOGGING END ---
-            } else {
-                ; --- CORE LOGGING START ---
-                FileAppend(Format(
-                    "Timestamp: {} | TrackCursor: WARNING - Failed to get boundaries for activeCellKey '{}'",
-                    A_TickCount, StateMap['activeCellKey']) "`n", "antimouse_core.log")
-                ; --- CORE LOGGING END ---
+        if (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) {
+            if (StateMap.Has('activeCellKey') && StateMap['activeCellKey'] != "" && IsObject(subGrid)) {
+                boundaries := subGrid.GetCellBoundaries(StateMap['activeCellKey'])
+                if (IsObject(boundaries)) {
+                    activeCellBoundaries := boundaries
+                    cursorInsideCell := (x >= boundaries.x && x < boundaries.x + boundaries.w && y >= boundaries.y && y <
+                        boundaries.y + boundaries.h)
+                    ; --- CORE LOGGING START ---
+                    FileAppend(Format(
+                        "Timestamp: {} | TrackCursor: Subgrid Active. CellBounds=({},{},{},{}) | Inside={}",
+                        A_TickCount, boundaries.x, boundaries.y, boundaries.w, boundaries.h, cursorInsideCell) "`n",
+                    "antimouse_core.log")
+                    ; --- CORE LOGGING END ---
+                } else {
+                    ; --- CORE LOGGING START ---
+                    FileAppend(Format(
+                        "Timestamp: {} | TrackCursor: WARNING - Failed to get boundaries for activeCellKey '{}'",
+                        A_TickCount, StateMap['activeCellKey']) "`n", "antimouse_core.log")
+                    ; --- CORE LOGGING END ---
+                }
             }
         }
 
         ; --- Ultra-Fast Mode Check (Only when SUBGRID_ACTIVE) ---
         rowKeyIsHeld := false
         rowKeyHeldDuration := 0
-        if (currentState == "SUBGRID_ACTIVE" && enableUltraFast && StateMap['activeRowKey'] != "") {
+        if ((currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) && enableUltraFast &&
+        StateMap['activeRowKey'] != "") {
             if (GetKeyState(StateMap['activeRowKey'], "P")) { ; Check physical state
                 rowKeyIsHeld := true
                 rowKeyHeldDuration := A_TickCount - StateMap['rowKeyHeldTime']
@@ -102,7 +114,7 @@ TrackCursor() {
         }
 
         ; --- State Transition Logic based on Cursor Position ---
-        if (currentState == "SUBGRID_ACTIVE") {
+        if (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) {
             if (!cursorInsideCell) {
                 ; --- CORE LOGGING START ---
                 FileAppend(Format(
@@ -112,7 +124,7 @@ TrackCursor() {
                 ; Mouse moved outside the active subgrid cell's boundaries, reset to main grid selection
                 StartNewSelection("") ; Pass empty key as it's not a key press trigger
             }
-        } else if (currentState == "GRID_VISIBLE") {
+        } else if (currentState == State_GRID_VISIBLE) {
             ; <<< TASK 1.6 START: Implement Highlight Following >>>
             ; Ensure overlay and highlight objects are valid
             if (IsObject(StateMap['currentOverlay']) && IsObject(highlight)) {
@@ -171,6 +183,21 @@ TrackCursor() {
                     "Timestamp: {} | TrackCursor: WARNING - Overlay became invalid in GRID_VISIBLE state.", A_TickCount
                 ) "`n", "antimouse_core.log")
                 ; Consider calling Cleanup() here? Or just let the timer run?
+            }
+        }
+
+        ; Show Highlight based on state
+        if (highlight) {
+            if (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) {
+                ; In subgrid, only show highlight if a specific subcell is active
+                if (StateMap['activeSubCellKey'] != "") {
+                    highlight.Show()
+                }
+            } else if (currentState == State_GRID_VISIBLE) {
+                ; In grid mode, show highlight if a cell is potentially being targeted
+                if (StateMap['firstKey'] != "" || StateMap['activeCellKey'] != "") {
+                    highlight.Show()
+                }
             }
         }
 

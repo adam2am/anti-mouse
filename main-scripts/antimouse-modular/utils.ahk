@@ -2,8 +2,8 @@
 ; utils.ahk - General Utility Functions
 ; ==============================================================================
 
-; Access global config variables
-global showcaseDebug ; Import from config.ahk
+; Reference global variables defined in config.ahk
+global showcaseDebug ; Reference the variable defined in config.ahk
 
 ; --- Index Validation ---
 ; Helper function to ensure an index is within the valid range of an array's length.
@@ -73,7 +73,8 @@ IsNumber(value) {
 ; --- CapsLock Management ---
 ; Timer function to forcibly keep CapsLock turned off.
 ForceCapsLockOff() {
-    global showcaseDebug ; Explicitly declare global usage in function
+    ; Reference to global variable from config.ahk
+    global showcaseDebug
     static lastCheck := 0
     currentTime := A_TickCount
 

@@ -32,11 +32,30 @@ SetCapsLockState "AlwaysOff"    ; Ensure CapsLock starts (and stays) off
 ; --- project structure : -structure.md -
 
 ; Make functions globally available
+; Declare layout-specific key arrays globally
 global LoadSettings, LoadCellMemory, CapsLock_Q, Cleanup, ForceCloseAllGuis
+global activeColKeys, activeRowKeys
+; Export grid key handling functions for global use
+global HandleKey, HandleFirstKey, HandleSecondKey, StartNewSelection, ProcessStandardSubgridKey, HandleUltraFastKey,
+    GridValidateIndex
 
 ; --- Initialization ---
 ; Load settings and cell memory at script startup
 LoadSettings()
+
+; Set active key arrays based on the loaded layout
+; Check if selectedLayout exists in layoutConfigs, default to layout 1 if not
+if !layoutConfigs.Has(selectedLayout) {
+    if (showcaseDebug) {
+        ToolTip("Warning: selectedLayout '" selectedLayout "' not found in layoutConfigs. Defaulting to layout 1.")
+        Sleep 3000
+        ToolTip()
+    }
+    selectedLayout := 1 ; Fallback to a default layout ID
+}
+activeColKeys := layoutConfigs[selectedLayout].Get("colKeys")
+activeRowKeys := layoutConfigs[selectedLayout].Get("rowKeys")
+
 LoadCellMemory()
 
 ; Start the timer to periodically force CapsLock off

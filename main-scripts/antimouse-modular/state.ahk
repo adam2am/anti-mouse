@@ -3,7 +3,14 @@
 ; ==============================================================================
 
 ; --- Finite State Machine (FSM) ---
-global currentState := "IDLE"       ; Possible states: IDLE, GRID_VISIBLE, SUBGRID_ACTIVE, DRAGGING
+; Define distinct states for clarity
+global State_IDLE := "IDLE"
+global State_GRID_VISIBLE := "GRID_VISIBLE"
+global State_CELL_SELECTED := "CELL_SELECTED" ; Transient state after 2nd key, before subgrid/move
+global State_SUBGRID_STANDARD := "SUBGRID_STANDARD"
+global State_SUBGRID_ULTRAFAST := "SUBGRID_ULTRAFAST"
+
+global currentState := State_IDLE   ; Current state of the application (uses defined constants)
 global stateTransitionTime := 0     ; Timestamp of the last state transition
 global gridActivationInProgress := false  ; Flag to prevent double activation
 global gridActivationTime := 0      ; Timestamp of last grid activation attempt

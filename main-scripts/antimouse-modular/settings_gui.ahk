@@ -20,17 +20,18 @@ global SaveSettings ; For saving settings to INI file
 ; Creates and displays the GUI window for configuring AntiMouse settings.
 ShowSettingsGUI() {
     ; Access global variables needed for reading/writing settings
-    global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
+    global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping ; Reference variables from config.ahk
     global defaultTransparency, highlightColor, instaClickMode, settingsFile ; Need settingsFile for saving
     global StateMap, highlight ; Need StateMap and highlight to apply some settings live
     global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
+    global keepGridVisible ; Grid visibility option
 
     ; Create settings GUI window
     settingsGui := Gui("+AlwaysOnTop +Resize", "Anti-Mouse Settings")
     settingsGui.SetFont("s10", "Segoe UI")
 
     ; --- General Settings Group ---
-    settingsGui.Add("GroupBox", "x10 y10 w380 h130", "General Settings")
+    settingsGui.Add("GroupBox", "x10 y10 w380 h150", "General Settings")
 
     settingsGui.Add("Text", "x20 y30 w120 h20", "Layout:")
     ; Populate dropdown with layout names
@@ -58,18 +59,23 @@ ShowSettingsGUI() {
     instaClickCheckbox := settingsGui.Add("Checkbox", "x150 y100 w230 h20", "InstaClick (release CapsLock to click)")
     instaClickCheckbox.Value := instaClickMode
 
-    ; --- Ultra-Fast Subgrid Settings ---
-    settingsGui.Add("GroupBox", "x10 y150 w380 h85", "Ultra-Fast Subgrid Options")
+    settingsGui.Add("Text", "x20 y120 w120 h20", "Grid Visibility:")
+    keepGridVisibleCheckbox := settingsGui.Add("Checkbox", "x150 y120 w230 h20",
+        "Keep grid visible during subgrid navigation")
+    keepGridVisibleCheckbox.Value := keepGridVisible
 
-    settingsGui.Add("Text", "x20 y170 w120 h20", "Enable:")
-    ultraFastCheckbox := settingsGui.Add("Checkbox", "x150 y170 w230 h20", "Enable Ultra-Fast Subgrid mode")
+    ; --- Ultra-Fast Subgrid Settings ---
+    settingsGui.Add("GroupBox", "x10 y170 w380 h85", "Ultra-Fast Subgrid Options")
+
+    settingsGui.Add("Text", "x20 y190 w120 h20", "Enable:")
+    ultraFastCheckbox := settingsGui.Add("Checkbox", "x150 y190 w230 h20", "Enable Ultra-Fast Subgrid mode")
     ultraFastCheckbox.Value := enableUltraFast
 
-    settingsGui.Add("Text", "x20 y195 w120 h20", "Hold Threshold:")
-    holdThresholdSlider := settingsGui.Add("Slider", "x150 y195 w180 h20 Range50-500 TickInterval50",
+    settingsGui.Add("Text", "x20 y215 w120 h20", "Hold Threshold:")
+    holdThresholdSlider := settingsGui.Add("Slider", "x150 y215 w180 h20 Range50-500 TickInterval50",
         rowKeyHoldThreshold)
-    holdThresholdText := settingsGui.Add("Text", "x340 y195 w40 h20 Right", rowKeyHoldThreshold) ; Show value
-    settingsGui.Add("Text", "x150 y212 w230 h20 c777777", "Time in ms to hold row key before activation")
+    holdThresholdText := settingsGui.Add("Text", "x340 y215 w40 h20 Right", rowKeyHoldThreshold) ; Show value
+    settingsGui.Add("Text", "x150 y232 w230 h20 c777777", "Time in ms to hold row key before activation")
 
     ; Function to update the hold threshold text
     UpdateHoldThresholdText(*) {
@@ -78,7 +84,7 @@ ShowSettingsGUI() {
     holdThresholdSlider.OnEvent("Change", UpdateHoldThresholdText)
 
     ; --- Monitor Mapping Group ---
-    settingsGui.Add("GroupBox", "x10 y245 w380 h120", "Monitor Mapping (Physical -> Logical)")
+    settingsGui.Add("GroupBox", "x10 y265 w380 h120", "Monitor Mapping (Physical -> Logical)")
 
     mapInputs := [] ; Array to hold the Edit controls for mapping
     monitorCount := MonitorGetCount() ; Get actual monitor count
@@ -87,7 +93,7 @@ ShowSettingsGUI() {
     loop maxMonitors {
         i := A_Index
         currentMapping := monitorMapping.Has(i) ? monitorMapping[i] : i ; Default to physical index if not mapped
-        yPos := 265 + (i - 1) * 25
+        yPos := 285 + (i - 1) * 25
         settingsGui.Add("Text", "x20 y" yPos " w140 h20", "Physical Monitor " i ":")
         editCtrl := settingsGui.Add("Edit", "x170 y" yPos " w40 h20", currentMapping)
         settingsGui.Add("UpDown", "Range1-" maxMonitors, currentMapping) ; Allow mapping up to max monitors shown
@@ -95,8 +101,8 @@ ShowSettingsGUI() {
     }
 
     ; --- Appearance Group ---
-    settingsGui.Add("GroupBox", "x10 y" (265 + 25 * maxMonitors + 10) " w380 h80", "Appearance")
-    appearanceY := 265 + 25 * maxMonitors + 10 + 20 ; Calculate Y position based on monitor controls
+    settingsGui.Add("GroupBox", "x10 y" (285 + 25 * maxMonitors + 10) " w380 h80", "Appearance")
+    appearanceY := 285 + 25 * maxMonitors + 10 + 20 ; Calculate Y position based on monitor controls
 
     settingsGui.Add("Text", "x20 y" appearanceY " w130 h20", "Grid Transparency:")
     transparencySlider := settingsGui.Add("Slider", "x150 y" appearanceY " w180 h20 Range0-255 TickInterval20",
@@ -111,7 +117,6 @@ ShowSettingsGUI() {
 
     settingsGui.Add("Text", "x20 y" (appearanceY + 25) " w130 h20", "Highlight Color:")
     highlightColorEdit := settingsGui.Add("Edit", "x150 y" (appearanceY + 25) " w70 h20", highlightColor)
-    ; TODO: Add a color picker button?
 
     ; --- Buttons ---
     buttonY := appearanceY + 25 + 30 ; Y position for buttons
@@ -124,15 +129,17 @@ ShowSettingsGUI() {
     ; Apply and Save Settings
     ApplySettings(*) {
         ; Access globals needed to update
-        global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
+        global selectedLayout, storePerMonitor, showcaseDebug, monitorMapping ; Reference variables from config.ahk
         global defaultTransparency, highlightColor, instaClickMode, StateMap, highlight
         global settingsFile, enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast settings
+        global keepGridVisible ; Grid visibility option
 
         ; Update general settings from GUI controls
         selectedLayout := layoutDropdown.Value ; Get chosen index
         storePerMonitor := storePerMonitorCheckbox.Value
         showcaseDebug := debugCheckbox.Value
         instaClickMode := instaClickCheckbox.Value
+        keepGridVisible := keepGridVisibleCheckbox.Value
 
         ; Update Ultra-Fast Subgrid settings
         enableUltraFast := ultraFastCheckbox.Value
@@ -198,6 +205,7 @@ ShowSettingsGUI() {
         storePerMonitorCheckbox.Value := true
         debugCheckbox.Value := false
         instaClickCheckbox.Value := false
+        keepGridVisibleCheckbox.Value := true
 
         ; Reset Ultra-Fast Subgrid settings
         ultraFastCheckbox.Value := true

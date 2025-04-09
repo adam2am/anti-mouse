@@ -2,155 +2,104 @@
 ; core/key_processing.ahk - Key Processing Wrapper Logic
 ; ==============================================================================
 
+; Reference state constants defined in state.ahk
+global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST
+
 ; Central function called by hotkeys to route key presses to the appropriate handler based on the current state.
 ProcessKeyPress(key) {
-    global StateMap
+    global StateMap, currentState, showcaseDebug, g_firstKeyPressed ; Reference variables defined in state.ahk and config.ahk
+
     FileAppend(Format("Timestamp: {} | ProcessKeyPress START | key={} | currentState={}", A_TickCount, key,
-        currentState) "`n", "antimouse_core.log") ; <<< CORE LOGGING
-    global currentState, subGridKeys, instaClickMode,
-        g_ModifierState, StateMap, enableUltraFast, ultraFastSubGridKeys, showcaseDebug, g_firstKeyPressed
+        currentState) "`n", "antimouse_core.log")
 
-    ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-    FileAppend(Format(
-        "Timestamp: {} | DIAGNOSTIC | ProcessKeyPress | key='{}' | currentState='{}' | g_firstKeyPressed='{}' | activeCellKey='{}'",
-        A_TickCount, key, currentState, g_firstKeyPressed, StateMap['activeCellKey']) "`n", "antimouse_core.log")
-
-    ; Check if currentOverlay exists and is valid
-    if (IsObject(StateMap['currentOverlay'])) {
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | currentOverlay is valid object", A_TickCount) "`n",
-        "antimouse_core.log")
-    } else {
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | ERROR: currentOverlay is NOT a valid object", A_TickCount) "`n",
-        "antimouse_core.log")
+    ; Simple state-based routing with no variable assignments that could cause problems
+    if (currentState == State_GRID_VISIBLE) {
+        ; When in grid visible state, directly route to HandleKey with no checks
+        FileAppend(Format("Timestamp: {} | ProcessKeyPress: GRID_VISIBLE state - calling HandleKey for key='{}'",
+            A_TickCount, key) "`n", "antimouse_core.log")
+        HandleKey(key)
     }
-    ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
-    ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) {
-        ; Get physical key state
-        keyPhysicallyDown := GetKeyState(key, "P")
-        logMsg := Format(
-            "Timestamp: {} | ProcessKeyPress START | key={} | PhysicallyDown={} | currentState={} | rowKeyHeldTime={} | activeRowKey={}",
-            A_TickCount, key, keyPhysicallyDown ? "DOWN" : "UP", currentState, StateMap['rowKeyHeldTime'], StateMap[
-                'activeRowKey']
-        )
-        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-    }
-    ; <<< ADD LOGGING END >>>
-
-    ; Special handling for instaclick mode - allow key events even when CapsLock is held for the click
-    if (instaClickMode && g_ModifierState.inHoldMode) {
-        ; Allow processing even if CapsLock is physically down for the click release
-    }
-
-    if (currentState == "GRID_VISIBLE") {
-        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | Calling HandleKey with key='{}'", A_TickCount, key) "`n",
-        "antimouse_core.log")
-        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
-        HandleKey(key) ; Process as first or second grid key
-    } else if (currentState == "SUBGRID_ACTIVE") {
-        ; Check if key is the active row key that we're already tracking (for ultra-fast)
-        if (enableUltraFast && key == StateMap['activeRowKey']) {
-            ; We're already tracking this key being held, don't process it again
-            ; This prevents auto-repeat from disrupting the hold tracking
-            ; <<< ADD LOGGING START >>>
-            if (showcaseDebug) {
-                keyPhysicallyDown := GetKeyState(key, "P")
-                logMsg := Format(
-                    "Timestamp: {} | ProcessKeyPress: Ignoring repeat of active row key | key={} | PhysicallyDown={}",
-                    A_TickCount, key, keyPhysicallyDown ? "DOWN" : "UP"
-                )
-                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-            }
-            ; <<< ADD LOGGING END >>>
-            return
-        }
-
-        ; Check if we're in ultra-fast mode and key is valid for it
-        if (enableUltraFast && StateMap['inUltraFastMode']) {
-            for i, ultraKey in ultraFastSubGridKeys {
-                if (key == ultraKey) {
-                    HandleUltraFastKey(key)
-                    return ; Handled by ultra-fast logic
-                }
-            }
-            ; If it wasn't an ultra-fast key, but we are in ultra-fast mode, ignore the key.
-            ; (This prevents standard subgrid keys from working during ultra-fast mode).
-            ; <<< ADD LOGGING START >>>
-            if (showcaseDebug) {
-                logMsg := Format(
-                    "Timestamp: {} | ProcessKeyPress: Ignored key '{}' while in UltraFastMode (expected ultra-key or row-release).",
-                    A_TickCount, key)
-                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-            }
-            ; <<< ADD LOGGING END >>>
-            return
-        }
-
-        ; --- If NOT in ultra-fast mode, check for standard subgrid keys ---
-        isStandardSubGridKey := false
-        for i, subKey in subGridKeys {
-            if (key == subKey) {
-                isStandardSubGridKey := true
-                break
-            }
-        }
-
-        if (isStandardSubGridKey) {
-            HandleSubGridKey(key) ; Process standard subgrid selection
+    else if (currentState == State_SUBGRID_STANDARD) {
+        ; For subgrid states, check if key is a grid key first
+        if (CheckIfGridKey(key)) {
+            FileAppend(Format(
+                "Timestamp: {} | ProcessKeyPress: Grid key in SUBGRID_STANDARD - calling StartNewSelection",
+                A_TickCount) "`n", "antimouse_core.log")
+            StartNewSelection(key)
         } else {
-            ; --- FIX: Check if key is a valid grid key (column or row key) ---
-            isGridKey := false
-
-            ; Check column keys
-            for i, colKey in StateMap['activeColKeys'] {
-                if (key == colKey) {
-                    isGridKey := true
-                    break
-                }
-            }
-
-            ; Check row keys
-            if (!isGridKey) {
-                for i, rowKey in StateMap['activeRowKeys'] {
-                    if (key == rowKey) {
-                        isGridKey := true
-                        break
-                    }
-                }
-            }
-
-            ; If it's a grid key, call StartNewSelection to go back to grid selection mode
-            if (isGridKey) {
-                ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-                FileAppend(Format(
-                    "Timestamp: {} | DIAGNOSTIC | ProcessKeyPress: Detected grid key '{}' while in SUBGRID_ACTIVE. Calling StartNewSelection.",
-                    A_TickCount, key) "`n", "antimouse_core.log")
-                ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
-                StartNewSelection(key)
-                return
-            }
-
-            ; If it's neither a subgrid key nor a grid key, ignore it
-            ; <<< ADD LOGGING START >>>
-            if (showcaseDebug) {
-                logMsg := Format(
-                    "Timestamp: {} | ProcessKeyPress: Ignored key '{}' while in SUBGRID_ACTIVE (standard).",
-                    A_TickCount, key)
-                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-            }
-            ; <<< ADD LOGGING END >>>
-            ; --- ADD EXPLICIT RETURN ---
-            return ; Explicitly stop processing for this invalid key in this state.
+            FileAppend(Format(
+                "Timestamp: {} | ProcessKeyPress: Non-grid key in SUBGRID_STANDARD - calling HandleStandardSubgridKey",
+                A_TickCount) "`n", "antimouse_core.log")
+            HandleStandardSubgridKey(key)
         }
-    } else {
-        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | WARNING: Key press '{}' received in invalid state: '{}'",
-            A_TickCount, key, currentState) "`n", "antimouse_core.log")
-        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
     }
-    ; Do nothing if currentState is IDLE (should be handled by activation hotkeys)
+    else if (currentState == State_SUBGRID_ULTRAFAST) {
+        ; For ultra-fast subgrid, check if key is a grid key first
+        if (CheckIfGridKey(key)) {
+            FileAppend(Format(
+                "Timestamp: {} | ProcessKeyPress: Grid key in SUBGRID_ULTRAFAST - calling StartNewSelection",
+                A_TickCount) "`n", "antimouse_core.log")
+            StartNewSelection(key)
+        } else {
+            FileAppend(Format(
+                "Timestamp: {} | ProcessKeyPress: Non-grid key in SUBGRID_ULTRAFAST - calling HandleUltraFastKey",
+                A_TickCount) "`n", "antimouse_core.log")
+            HandleUltraFastKey(key)
+        }
+    }
+    else if (currentState == State_IDLE) {
+        FileAppend(Format("Timestamp: {} | ProcessKeyPress: Key press ignored in IDLE state",
+            A_TickCount) "`n", "antimouse_core.log")
+    }
+    else {
+        FileAppend(Format("Timestamp: {} | ProcessKeyPress: Unhandled state: '{}'",
+            A_TickCount, currentState) "`n", "antimouse_core.log")
+    }
+
+    FileAppend(Format("Timestamp: {} | ProcessKeyPress END | key={} | currentState={}", A_TickCount, key, currentState) "`n",
+    "antimouse_core.log")
 }
+
+; Helper function to check if a key is a grid key (column or row) - Used only in subgrid states
+CheckIfGridKey(key) {
+    global StateMap, showcaseDebug
+
+    ; Safety check for state map objects
+    if (!IsObject(StateMap) || !IsObject(StateMap['activeColKeys']) || !IsObject(StateMap['activeRowKeys'])) {
+        FileAppend(Format("Timestamp: {} | CheckIfGridKey: StateMap or key arrays not valid objects",
+            A_TickCount) "`n", "antimouse_core.log")
+        return false
+    }
+
+    ; Check column keys
+    for i, colKey in StateMap['activeColKeys'] {
+        if (key == colKey) {
+            return true
+        }
+    }
+
+    ; Check row keys
+    for i, rowKey in StateMap['activeRowKeys'] {
+        if (key == rowKey) {
+            return true
+        }
+    }
+
+    return false
+}
+
+; Original IsGridKey left intact for compatibility with any other callers
+IsGridKey(key) {
+    return CheckIfGridKey(key)
+}
+
+; Handler for standard subgrid key presses (GHBN)
+HandleStandardSubgridKey(key) {
+    ; Simply call our actual implementation with a different name to avoid conflicts
+    FileAppend(Format("Timestamp: {} | HandleStandardSubgridKey: Calling ProcessStandardSubgridKey for key='{}'",
+        A_TickCount, key) "`n",
+    "antimouse_core.log")
+    ProcessStandardSubgridKey(key)
+}
+
+; Note: The HandleUltraFastKey is defined in subgrid_keys.ahk

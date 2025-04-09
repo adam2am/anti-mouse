@@ -2,6 +2,11 @@
 ; core/subgrid_keys.ahk - Subgrid Key Handling Logic (Standard & Ultra-Fast)
 ; ==============================================================================
 
+; Reference state constants and variables defined in state.ahk and config.ahk
+global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST, State_CELL_SELECTED
+global StateMap, currentState, showcaseDebug
+
+; Legacy function - renamed to avoid conflicts
 HandleSubGridKey(subKey) {
     try {
         global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap,
@@ -12,7 +17,7 @@ HandleSubGridKey(subKey) {
             ; Process key normally, even though CapsLock is being held
         }
 
-        if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid)) {
+        if (currentState != State_SUBGRID_STANDARD || !IsObject(subGrid)) {
             return
         }
 
@@ -90,13 +95,124 @@ HandleSubGridKey(subKey) {
     }
 }
 
-; Handle key presses in Ultra-Fast mode
-HandleUltraFastKey(key) {
+; NEW FUNCTION WITH DIFFERENT NAME: This is the actual implementation for standard subgrid keys
+ProcessStandardSubgridKey(key) {
+    global currentState, StateMap, showcaseDebug, cellMemory, storePerMonitor, highlight
+
+    ; --- CORE LOGGING START ---
+    FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey START | key='{}'", A_TickCount, key) "`n",
+    "antimouse_core.log")
+    ; --- CORE LOGGING END ---
+
+    ; Get current time for logging
+    currentTime := A_TickCount
+
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey | key={} | currentState={}",
+            currentTime, key, currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING END >>>
+
+    ; Verify we're in the correct state
+    if (currentState != State_SUBGRID_STANDARD) {
+        FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey: Wrong state='{}', expected '{}'",
+            A_TickCount, currentState, State_SUBGRID_STANDARD) "`n", "antimouse_core.log")
+        return
+    }
+
+    ; Verify we have an active cell
+    if (!StateMap.Has('activeCellKey') || StateMap['activeCellKey'] == "") {
+        FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey: No active cell key", A_TickCount) "`n",
+        "antimouse_core.log")
+        return
+    }
+
+    ; Get the cell boundaries
+    boundaries := StateMap['currentOverlay'].GetCellBoundaries(StateMap['activeCellKey'])
+    if (!IsObject(boundaries)) {
+        FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey: Failed to get boundaries for cell '{}'",
+            A_TickCount, StateMap['activeCellKey']) "`n", "antimouse_core.log")
+        return
+    }
+
+    ; Calculate target position based on the GHBN key
+    targetX := 0
+    targetY := 0
+    validKey := true
+
+    ; Map GHBN keys to positions
+    if (key = "g") {
+        ; Upper left (1/4, 1/4)
+        targetX := boundaries.x + (boundaries.w // 4)
+        targetY := boundaries.y + (boundaries.h // 4)
+    } else if (key = "h") {
+        ; Upper right (3/4, 1/4)
+        targetX := boundaries.x + (boundaries.w * 3 // 4)
+        targetY := boundaries.y + (boundaries.h // 4)
+    } else if (key = "b") {
+        ; Lower left (1/4, 3/4)
+        targetX := boundaries.x + (boundaries.w // 4)
+        targetY := boundaries.y + (boundaries.h * 3 // 4)
+    } else if (key = "n") {
+        ; Lower right (3/4, 3/4)
+        targetX := boundaries.x + (boundaries.w * 3 // 4)
+        targetY := boundaries.y + (boundaries.h * 3 // 4)
+    } else {
+        validKey := false
+    }
+
+    ; If it's a valid subgrid key, move the mouse and update memory
+    if (validKey) {
+        ; Store subcell choice in memory
+        StateMap['activeSubCellKey'] := key
+
+        ; Create the key for cell memory
+        memoryKey := storePerMonitor ? StateMap['currentMonitorIndex'] . "_" . StateMap['activeCellKey'] : StateMap[
+            'activeCellKey']
+
+        ; Remember this subcell choice for this cell
+        cellMemory[memoryKey] := key
+
+        ; Move mouse to target position
+        MouseMove(targetX, targetY, 0)
+
+        ; Log the action
+        FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey: Moved to subkey='{}' at x={}, y={}",
+            A_TickCount, key, targetX, targetY) "`n", "antimouse_core.log")
+
+        ; Hide the subgrid after selection
+        TransitionToState(State_IDLE)
+    } else {
+        ; <<< ADD LOGGING START >>>
+        if (showcaseDebug) {
+            FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey: Invalid subgrid key '{}'",
+                currentTime, key) "`n", A_ScriptDir "\debugRapidRefresh.log")
+        }
+        ; <<< ADD LOGGING END >>>
+    }
+
+    ; --- CORE LOGGING END ---
+    FileAppend(Format("Timestamp: {} | ProcessStandardSubgridKey END | key='{}', validKey={}",
+        A_TickCount, key, validKey) "`n", "antimouse_core.log")
+}
+
+; Handle key presses in Ultra-Fast mode (this is the main implementation)
+ProcessUltraFastKey(key) {
     global currentState, subGrid, cellMemory, stateTransitionTime, stateTransitionDelay, storePerMonitor, StateMap,
         showcaseDebug, instaClickMode, g_ModifierState, highlight ; Added highlight global
 
+    ; --- CORE LOGGING START ---
+    FileAppend(Format("Timestamp: {} | ProcessUltraFastKey START | key='{}'", A_TickCount, key) "`n",
+    "antimouse_core.log")
+    ; --- CORE LOGGING END ---
+
     ; Only process in the correct state with a valid subgrid
-    if (currentState != "SUBGRID_ACTIVE" || !IsObject(subGrid) || !StateMap['inUltraFastMode']) {
+    if (currentState != State_SUBGRID_ULTRAFAST || !IsObject(subGrid) || !StateMap['inUltraFastMode']) {
+        ; Log the reason and return
+        FileAppend(Format(
+            "Timestamp: {} | ProcessUltraFastKey: Invalid state or missing objects - state='{}', subGrid={}, inUltraFastMode={}",
+            A_TickCount, currentState, IsObject(subGrid), StateMap['inUltraFastMode']) "`n", "antimouse_core.log")
         return
     }
 
@@ -118,7 +234,7 @@ HandleUltraFastKey(key) {
             ; Get boundaries directly from currentOverlay
             mainCellBoundaries := StateMap['currentOverlay'].GetCellBoundaries(StateMap['activeCellKey'])
             if (IsObject(mainCellBoundaries)) {
-                FileAppend(Format("Timestamp: {} | HandleUltraFastKey: Updating and Showing Highlight.", A_TickCount) "`n",
+                FileAppend(Format("Timestamp: {} | ProcessUltraFastKey: Updating and Showing Highlight.", A_TickCount) "`n",
                 "antimouse_core.log")
                 highlight.Update(mainCellBoundaries.x, mainCellBoundaries.y, mainCellBoundaries.w,
                     mainCellBoundaries.h
@@ -126,7 +242,7 @@ HandleUltraFastKey(key) {
             }
         } else {
             FileAppend(Format(
-                "Timestamp: {} | HandleUltraFastKey: WARNING - Highlight or currentOverlay object invalid.",
+                "Timestamp: {} | ProcessUltraFastKey: WARNING - Highlight or currentOverlay object invalid.",
                 A_TickCount) "`n", "antimouse_core.log")
         }
         ; -----------------------------------------------
@@ -171,6 +287,18 @@ HandleUltraFastKey(key) {
             ToolTip()
         }
     }
+
+    ; --- CORE LOGGING END ---
+    FileAppend(Format("Timestamp: {} | ProcessUltraFastKey END | key='{}'", A_TickCount, key) "`n",
+    "antimouse_core.log")
+}
+
+; Routing function - called by ProcessKeyPress to route to the main implementation
+HandleUltraFastKey(key) {
+    ; Simply call our actual implementation
+    FileAppend(Format("Timestamp: {} | HandleUltraFastKey: Calling ProcessUltraFastKey for key='{}'",
+        A_TickCount, key) "`n", "antimouse_core.log")
+    ProcessUltraFastKey(key)
 }
 
 ; Handles the release of a row key in Ultra-Fast mode, switching back to standard mode

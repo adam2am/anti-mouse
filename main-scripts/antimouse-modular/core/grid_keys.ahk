@@ -2,13 +2,19 @@
 ; core/grid_keys.ahk - Grid Key Handling Logic
 ; ==============================================================================
 
+; Reference state constants and variables defined in state.ahk and config.ahk
+global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST, State_CELL_SELECTED
+global StateMap, currentState, showcaseDebug
+
+; Handle a key press in GRID_VISIBLE state by either storing first key or completing cell selection
 HandleKey(key) {
-    global StateMap
     ; --- CORE LOGGING START ---
+    global StateMap
     initialFirstKey := StateMap.Has("firstKey") ? StateMap["firstKey"] : "<Not Set>"
     FileAppend(Format("Timestamp: {} | HandleKey: Function ENTRY. initialFirstKey='{}'", A_TickCount, initialFirstKey) "`n",
     "antimouse_core.log")
     ; --- CORE LOGGING END ---
+
     ; Access the dedicated global for first key tracking
     global g_firstKeyPressed
     ; Static variables for processing lock and auto-repeat prevention
@@ -55,7 +61,8 @@ HandleKey(key) {
     }
 
     ; Special check for active row key - ignore auto-repeat if we're tracking it
-    if (currentState == "SUBGRID_ACTIVE" && enableUltraFast && key == StateMap['activeRowKey']) {
+    if ((currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) && enableUltraFast && key ==
+    StateMap['activeRowKey']) {
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
         FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleKey: Ignoring auto-repeat of row key='{}'",
             A_TickCount, key) "`n", "antimouse_core.log")
@@ -75,10 +82,7 @@ HandleKey(key) {
     keyProcessingLock := true
 
     try {
-        ; currentTime already defined at the top of the function
-
         ; Check if the same key is being processed too rapidly (likely auto-repeat)
-        ; Note: This check might become less critical with the lock, but kept for safety
         if (key = lastKeyProcessed && (currentTime - lastKeyTime < ignoreThreshold)) {
             ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
             FileAppend(Format(
@@ -96,7 +100,6 @@ HandleKey(key) {
         }
 
         ; Update last key processed *before* handling the logic
-        ; Update time immediately
         lastKeyProcessed := key
         lastKeyTime := currentTime
 
@@ -119,7 +122,7 @@ HandleKey(key) {
         ; IMPROVEMENT: Temporarily disable TrackCursor to prevent interference
         SetTimer(TrackCursor, 0)
 
-        if (currentState != "GRID_VISIBLE" || !IsObject(StateMap['currentOverlay'])) { ; Use StateMap
+        if (currentState != State_GRID_VISIBLE || !IsObject(StateMap['currentOverlay'])) { ; Use StateMap
             ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
             FileAppend(Format(
                 "Timestamp: {} | DIAGNOSTIC | HandleKey: Invalid state/overlay. currentState='{}', IsObject(currentOverlay)={}",
@@ -159,6 +162,7 @@ HandleKey(key) {
             "Timestamp: {} | HandleKey: Key type check for key='{}'. isColKey={}, isRowKey={}. InvalidCheck={}",
             A_TickCount, key, isColKey, isRowKey, (!isColKey && !isRowKey)) "`n", "antimouse_core.log")
         ; --- CORE LOGGING END ---
+
         if (!isColKey && !isRowKey) {
             ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
             FileAppend(Format(
@@ -177,431 +181,308 @@ HandleKey(key) {
             return
         }
 
-        cellKey := ""
-        targetCellX := 0
-        targetCellY := 0
-        targetCellW := 0
-        targetCellH := 0
-        tooltipText := ""
-        proceedToSubgrid := false
-        updateFirstKeyOnly := false
-        secondKeyWasRow := false
-
         ; --- CORE LOGGING START ---
         FileAppend(Format("Timestamp: {} | HandleKey: Before firstKey check. Global g_firstKeyPressed='{}'",
             A_TickCount, g_firstKeyPressed) "`n", "antimouse_core.log")
         ; --- CORE LOGGING END ---
-        ; --- FIX: Check GLOBAL variable ---
+
+        ; Determine if this is the first key or the second key of a cell selection
         if (g_firstKeyPressed == "") {
-            ; --- First Key Press ---
-            ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-            FileAppend(Format(
-                "Timestamp: {} | DIAGNOSTIC | HandleKey: Processing FIRST key press. Setting g_firstKeyPressed='{}'",
-                A_TickCount, key) "`n", "antimouse_core.log")
-            ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
-            ; <<< ADD LOGGING START >>>
-            if (showcaseDebug) FileAppend(Format("Timestamp: {} | HandleKey: First Key Press | key={}", currentTime,
-                key) "`n", A_ScriptDir "\debugRapidRefresh.log")
-            ; <<< ADD LOGGING END >>>
-            ; *** ASSIGN GLOBAL g_firstKeyPressed ***
-                g_firstKeyPressed := key
-            local newlySetFirstKey := key ; Store locally to use in this block
-
-            ; --- CORE LOGGING START ---
-            FileAppend(Format("Timestamp: {} | HandleKey: Setting GLOBAL g_firstKeyPressed='{}'. Value is now '{}'",
-                A_TickCount, newlySetFirstKey, g_firstKeyPressed) "`n", "antimouse_core.log")
-            ; --- CORE LOGGING END ---
-
-            if (isColKey) {
-                ; First key is COLUMN
-                ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleKey: First key is COLUMN='{}'",
-                    A_TickCount, key) "`n", "antimouse_core.log")
-                ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
-                StateMap['currentColIndex'] := colIndex
-                targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1
-                targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
-                cellKey := newlySetFirstKey . StateMap['activeRowKeys'][targetRowIndex] ; Use local var
-                tooltipText := "First key: " newlySetFirstKey ". Select row."
-            } else { ; isRowKey
-                ; First key is ROW
-                ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleKey: First key is ROW='{}'",
-                    A_TickCount, key) "`n", "antimouse_core.log")
-                ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
-                StateMap['currentRowIndex'] := rowIndex
-                StateMap['lastSelectedRowIndex'] := rowIndex
-                targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap[
-                    'activeColKeys'
-                    ].Length / 2)
-                targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length)
-                cellKey := StateMap['activeColKeys'][targetColIndex] . newlySetFirstKey ; Use local var
-                tooltipText := "First key: " newlySetFirstKey ". Select column."
-            }
-
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
-            ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-            if (IsObject(boundaries)) {
-                FileAppend(Format(
-                    "Timestamp: {} | DIAGNOSTIC | HandleKey: Got cell boundaries for cellKey='{}'. x={}, y={}, w={}, h={}",
-                    A_TickCount, cellKey, boundaries.x, boundaries.y, boundaries.w, boundaries.h) "`n",
-                "antimouse_core.log")
-            } else {
-                FileAppend(Format(
-                    "Timestamp: {} | DIAGNOSTIC | HandleKey: ERROR - Failed to get boundaries for cellKey='{}'",
-                    A_TickCount, cellKey) "`n", "antimouse_core.log")
-            }
-            ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
-            if (IsObject(boundaries)) {
-                targetCellX := boundaries.x
-                targetCellY := boundaries.y
-                targetCellW := boundaries.w
-                targetCellH := boundaries.h
-            }
-
-            ; Center cursor and wait for second key
-            if (targetCellW > 0) {
-                highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
-                ; --- RE-ENABLE CURSOR SNAPPING (HandleKey - First Key) ---
-                MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
-                Sleep(10)
-                if (showcaseDebug) {
-                    ToolTip(tooltipText)
-                }
-            }
-            SetTimer(TrackCursor, 50)
-            ; --- CORE LOGGING START ---
-            FileAppend(Format("Timestamp: {} | HandleKey: END of firstKey block. GLOBAL g_firstKeyPressed is now '{}'",
-                A_TickCount, g_firstKeyPressed) "`n", "antimouse_core.log")
-            ; --- CORE LOGGING END ---
-            ; Ensure lock is released before returning
-            keyProcessingLock := false
-            return ; Wait for second key
-
+            ; This is the FIRST key press - handle it by calling the dedicated function
+            HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex)
         } else {
-            ; --- CORE LOGGING START ---
-            FileAppend(Format("Timestamp: {} | ENTERED second key 'else' block. GLOBAL g_firstKeyPressed='{}'",
-                A_TickCount, g_firstKeyPressed) "`n", "antimouse_core.log")
-            ; --- CORE LOGGING END ---
-            ; --- Second Key Press Logic Refactored ---
-            ; <<< ADD LOGGING START >>>
-            if (showcaseDebug) FileAppend(Format(
-                "Timestamp: {} | HandleKey: Second Key Press | key={} | static firstKeyPressed={}", currentTime, key,
-                firstKeyPressed) "`n", A_ScriptDir "\debugRapidRefresh.log")
-            ; <<< ADD LOGGING END >>>
-            ; --- FIX: Use static variable ---
-                local firstKey := firstKeyPressed ; Use local var derived from static
-            firstKeyWasCol := false
-            for colKeyCheck in StateMap['activeColKeys'] {
-                if (colKeyCheck = firstKey) {
-                    firstKeyWasCol := true
-                    break
-                }
-            }
-            firstKeyWasRow := !firstKeyWasCol
-            ; --- CORE LOGGING START ---
-            FileAppend(Format(
-                "Timestamp: {} | HandleKey: Before firstKeyWasCol loop. StateMap['activeColKeys'] type: {}",
-                A_TickCount, Type(StateMap['activeColKeys'])) "`n", "antimouse_core.log")
-            ; --- CORE LOGGING END ---
-            if (showcaseDebug) {
-                logMsg := Format("Timestamp: {} | Second Key Check: firstKeyWasCol={} | firstKeyWasRow={}", currentTime,
-                    firstKeyWasCol, firstKeyWasRow)
-                FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-            }
-
-            ; --- CORE LOGGING START ---
-            FileAppend(Format(
-                "Timestamp: {} | HandleKey: Before Col->Row check: firstKey='{}', key='{}', firstKeyWasCol={}, isRowKey={}",
-                A_TickCount, firstKey, key, firstKeyWasCol, isRowKey) "`n", "antimouse_core.log")
-            ; --- CORE LOGGING END ---
-            if (firstKeyWasCol && isRowKey) {
-                ; --- CORE LOGGING START ---
-                FileAppend(Format("Timestamp: {} | HandleKey: ENTERED Col->Row block.", A_TickCount) "`n",
-                "antimouse_core.log")
-                ; --- CORE LOGGING END ---
-                if (showcaseDebug) {
-                    logMsg := Format("Timestamp: {} | Branch: Col -> Row", currentTime)
-                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-
-                    ; Check if this row key is physically held down
-                    rowKeyIsPhysicallyDown := GetKeyState(key, "P")
-                    logMsg := Format("Timestamp: {} | Row key '{}' physical state: {}",
-                        currentTime, key, rowKeyIsPhysicallyDown ? "DOWN" : "UP")
-                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-                }
-                ; Valid: Col -> Row
-                ; --- CORE LOGGING START ---
-                FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Values before cellKey assignment (Col->Row): firstKey='{}', key='{}'.",
-                    A_TickCount, firstKey, key) "`n", "antimouse_core.log")
-                ; --- CORE LOGGING END ---
-                cellKey := firstKey . key
-                proceedToSubgrid := true
-                secondKeyWasRow := true
-                ; --- CORE LOGGING START ---
-                FileAppend(Format("Timestamp: {} | HandleKey: Determined Col->Row. proceedToSubgrid={}, cellKey={}",
-                    A_TickCount, proceedToSubgrid, cellKey) "`n", "antimouse_core.log")
-                ; --- CORE LOGGING END ---
-            } else if (firstKeyWasRow && isColKey) {
-                ; --- CORE LOGGING START ---
-                FileAppend(Format("Timestamp: {} | HandleKey: ENTERED Row->Col block.", A_TickCount) "`n",
-                "antimouse_core.log")
-                ; --- CORE LOGGING END ---
-                if (showcaseDebug) {
-                    logMsg := Format("Timestamp: {} | Branch: Row -> Col", currentTime)
-                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-                }
-                ; Valid: Row -> Col
-                ; --- CORE LOGGING START ---
-                FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Values before cellKey assignment (Row->Col): firstKey='{}', key='{}'.",
-                    A_TickCount, firstKey, key) "`n", "antimouse_core.log")
-                ; --- CORE LOGGING END ---
-                cellKey := key . firstKey
-                proceedToSubgrid := true
-                ; --- CORE LOGGING START ---
-                FileAppend(Format("Timestamp: {} | HandleKey: Determined Row->Col. proceedToSubgrid={}, cellKey={}",
-                    A_TickCount, proceedToSubgrid, cellKey) "`n", "antimouse_core.log")
-                ; --- CORE LOGGING END ---
-            } else if (firstKeyWasCol && isColKey) {
-                if (showcaseDebug) {
-                    logMsg := Format("Timestamp: {} | Branch: Col -> Col (Change Col)", currentTime)
-                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-                }
-                ; Update First Key: Col -> Col
-                ; --- FIX: Update static variable ---
-                firstKeyPressed := key
-                tooltipText := "Column changed to: " key ". Select row."
-                updateFirstKeyOnly := true
-            } else if (firstKeyWasRow && isRowKey) {
-                if (showcaseDebug) {
-                    logMsg := Format("Timestamp: {} | Branch: Row -> Row (Change Row)", currentTime)
-                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-                }
-                ; Update First Key: Row -> Row
-                ; --- FIX: Update static variable ---
-                firstKeyPressed := key
-                tooltipText := "Row changed to: " key ". Select column."
-                updateFirstKeyOnly := true
-            } else {
-                if (showcaseDebug) {
-                    logMsg := Format("Timestamp: {} | Branch: Invalid Sequence", currentTime)
-                    FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
-                }
-                ; Invalid sequence (e.g., firstKey wasn't found in either col/row keys somehow?)
-                ; --- FIX: Clear static variable ---
-                firstKeyPressed := ""
-                SetTimer(TrackCursor, 50)
-                ; Ensure lock is released before returning
-                keyProcessingLock := false
-                return
-            }
-
-            ; --- Handle Outcome of Second Key Press ---
-            if (updateFirstKeyOnly) {
-                ; Only update the preview, don't proceed to subgrid yet
-                ; <<< Re-enable mouse move for first key change preview >>>
-                if (targetCellW > 0) {
-                    highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
-                    MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
-                    Sleep(10)
-                    if (showcaseDebug) {
-                        ToolTip(tooltipText)
-                    }
-                }
-                SetTimer(TrackCursor, 50)
-                keyProcessingLock := false
-                return ; Wait for the *new* second key
-            }
+            ; This is the SECOND key press - handle it by calling the dedicated function
+            HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex)
         }
 
-        ; --- CORE LOGGING START ---
-        FileAppend(Format("Timestamp: {} | BEFORE subgrid block check. proceedToSubgrid={}, cellKey={}",
-            A_TickCount, proceedToSubgrid, cellKey) "`n", "antimouse_core.log")
-        ; --- CORE LOGGING END ---
-        ; --- Proceed to Subgrid State (Only if proceedToSubgrid is true) ---
-        if (proceedToSubgrid && cellKey != "") {
-            ; --- CORE LOGGING START ---
-            FileAppend(Format("Timestamp: {} | HandleKey: >>> ENTERING proceedToSubgrid block for cellKey='{}'",
-                A_TickCount, cellKey) "`n", "antimouse_core.log")
-            overlayObj := StateMap['currentOverlay']
-            overlayInfo := IsObject(overlayObj) ? "Type: " . Type(overlayObj) : "Not an object"
-            FileAppend(Format(
-                "Timestamp: {} | HandleKey: Current overlay info: {}. Attempting GetCellBoundaries...",
-                A_TickCount, overlayInfo) "`n", "antimouse_core.log")
-            ; --- CORE LOGGING END ---
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
-            ; <<< CORE LOGGING START >>>
-            FileAppend(Format("Timestamp: {} | HandleKey: IsObject(boundaries) result = {}. Boundaries=({},{},{},{})",
-                A_TickCount, IsObject(boundaries), boundaries.x, boundaries.y, boundaries.w, boundaries.h) "`n",
-            "antimouse_core.log")
-            ; <<< CORE LOGGING END >>>
-            if (IsObject(boundaries)) {
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Boundaries OK. Setting currentState=SUBGRID_ACTIVE (Before={})",
-                    A_TickCount, currentState) "`n", "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-                StateMap['activeCellKey'] := cellKey
-                stateTransitionTime := currentTime
-                currentState := "SUBGRID_ACTIVE"
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | HandleKey: Set currentState=SUBGRID_ACTIVE (After={}).", A_TickCount,
-                    currentState) "`n", "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
+        keyProcessingLock := false
 
-                ; Set ultra-fast tracking info *if applicable*
-                if (enableUltraFast && secondKeyWasRow) {
-                    ; Check if this row key is physically held down before setting track variables
-                    rowKeyIsPhysicallyDown := GetKeyState(key, "P")
-                    ; <<< ADD LOGGING START >>>
-                    if (showcaseDebug)
-                        FileAppend(Format(
-                            "Timestamp: {} | HandleKey: Setting UltraFast Vars | key={} | currentTime={} | PhysicallyDown={}",
-                            currentTime, key, currentTime, rowKeyIsPhysicallyDown) "`n", A_ScriptDir "\debugRapidRefresh.log"
-                        )
-                    ; <<< ADD LOGGING END >>>
-                    StateMap['rowKeyHeldTime'] := currentTime
-                    StateMap['activeRowKey'] := key
-                    ; <<< ADD LOGGING START >>>
-                    if (showcaseDebug)
-                        FileAppend(Format(
-                            "Timestamp: {} | HandleKey: Set UltraFast Vars | activeRowKey={} | rowKeyHeldTime={}",
-                            currentTime, StateMap['activeRowKey'], StateMap['rowKeyHeldTime']) "`n", A_ScriptDir "\debugRapidRefresh.log"
-                        )
-                    ; <<< ADD LOGGING END >>>
-                }
-
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | HandleKey: Attempting MouseMove to ({}, {})...", A_TickCount,
-                    boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2)) "`n", "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-                Sleep(40)
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | HandleKey: Attempting subGrid.Update({}, {}, {}, {})...",
-                    A_TickCount, boundaries.x, boundaries.y, boundaries.w, boundaries.h) "`n", "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | HandleKey: Attempting subGrid.Show()...", A_TickCount) "`n",
-                "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-                subGrid.Show()
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Called subGrid.Show(). Current state: {}. Attempting PostMessage redraw...",
-                    A_TickCount, currentState) "`n", "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-
-                ; Force redraw
-                try {
-                    if (WinExist("SubGrid ahk_class AutoHotkeyGUI")) {
-                        winHnd := WinGetID("SubGrid ahk_class AutoHotkeyGUI")
-                        if (winHnd) {
-                            PostMessage(0x000F, 0, 0, , "ahk_id " winHnd)  ; WM_PAINT message
-                        }
-                    }
-                } catch {
-                }
-
-                ; <<< ADD LOGGING START >>>
-                FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Clearing static firstKeyPressed (Before). Current value = '{}'",
-                    A_TickCount, firstKeyPressed) "`n", "antimouse_core.log")
-                if (showcaseDebug) FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Clearing static firstKeyPressed (Before) | firstKeyPressed={}",
-                    currentTime, firstKeyPressed) "`n", A_ScriptDir "\debugRapidRefresh.log")
-                ; <<< ADD LOGGING END >>>
-                ; --- FIX: Clear static variable ---
-                    firstKeyPressed := ""
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | HandleKey: Cleared static firstKeyPressed. Checking cell memory...",
-                    A_TickCount) "`n", "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-                ; Check if we have a remembered subcell for this cell
-                cellFound := false
-
-                ; First check monitor-specific key if enabled
-                if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
-                    monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . cellKey
-                    if (cellMemory.Has(monitorCellKey)) {
-                        rememberedSubCell := cellMemory[monitorCellKey]
-                        cellFound := true
-                        if (showcaseDebug) {
-                            ToolTip("Found monitor-specific subcell: " monitorCellKey " -> " rememberedSubCell)
-                            Sleep(500)
-                        }
-                    }
-                }
-
-                ; Fall back to general cell key if no monitor-specific key found
-                if (!cellFound && cellMemory.Has(cellKey)) {
-                    rememberedSubCell := cellMemory[cellKey]
-                    cellFound := true
-                    if (showcaseDebug) {
-                        ToolTip("Found general subcell: " cellKey " -> " rememberedSubCell)
-                        Sleep(500)
-                    }
-                }
-
-                ; Move to the remembered subcell position if found
-                if (cellFound && rememberedSubCell != "") {
-                    HandleSubGridKey(rememberedSubCell)
-                } else if (showcaseDebug) {
-                    ToolTip("No saved subcell found for " cellKey)
-                    Sleep(500)
-                }
-
-                if (showcaseDebug) {
-                    ToolTip("Cell '" cellKey "' targeted. Use b-h.")
-                }
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format("Timestamp: {} | HandleKey: END of proceedToSubgrid block.", A_TickCount) "`n",
-                "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-            } else {
-                ; Failed to get boundaries
-                ; <<< CORE LOGGING START >>>
-                FileAppend(Format(
-                    "Timestamp: {} | HandleKey: FAILED to get boundaries for cellKey='{}'. Resetting static firstKeyPressed.",
-                    A_TickCount, cellKey) "`n", "antimouse_core.log")
-                ; <<< CORE LOGGING END >>>
-                ; --- FIX: Clear static variable ---
-                firstKeyPressed := ""
-                if (showcaseDebug && proceedToSubgrid && cellKey == "") {
-                    ToolTip("Error: Proceeding to subgrid but cellKey is empty")
-                }
-            }
-        } else {
-            ; This case should ideally not be reached if logic is sound, but reset firstKey as safety
-            ; --- FIX: Clear static variable ---
-            firstKeyPressed := ""
-            if (showcaseDebug && proceedToSubgrid && cellKey == "") {
-                ToolTip("Error: Proceeding to subgrid but cellKey is empty")
-            }
+    } catch Error as e {
+        ; Log error information
+        if (showcaseDebug) {
+            errMsg := Format("Timestamp: {} | HandleKey ERROR: {} at line {}. File: {}",
+                A_TickCount, e.Message, e.Line, e.File)
+            FileAppend(errMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
         }
-
+        ; Ensure lock is released in case of error
+        keyProcessingLock := false
+        ; Re-enable cursor tracking
         SetTimer(TrackCursor, 50)
-
-        ; --- CORE LOGGING START ---
-        FileAppend(Format("Timestamp: {} | TrackCursor: Reached end of try block BEFORE catch/finally.", currentTime) "`n",
-        "antimouse_core.log")
-        ; --- CORE LOGGING END ---
-    } catch as e {
-        ; --- CORE LOGGING START ---
-        FileAppend(Format("Timestamp: {} | TrackCursor: **** ERROR **** {}", A_TickCount, e.Message) "`n",
-        "antimouse_core.log")
-        ; --- CORE LOGGING END ---
-        ; Attempt to cleanup on error
-        Cleanup()
-    } finally {
-        ; Ensure the lock is always released
-        trackingInProgress := false
     }
+}
+
+; Handle the first key press of a cell selection (column or row)
+HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex) {
+    global g_firstKeyPressed, StateMap, currentState, showcaseDebug
+    currentTime := A_TickCount
+
+    ; --- CORE LOGGING START ---
+    FileAppend(Format("Timestamp: {} | HandleFirstKey START | key='{}', isColKey={}, isRowKey={}",
+        A_TickCount, key, isColKey, isRowKey) "`n", "antimouse_core.log")
+    ; --- CORE LOGGING END ---
+
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | HandleFirstKey: First Key Press | key={}", currentTime, key) "`n",
+        A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING END >>>
+
+    ; Store the first key - critical for two-step selection process
+    g_firstKeyPressed := key
+
+    ; Cell highlight logic based on whether it's a column or row key
+    cellKey := ""
+    tooltipText := ""
+
+    if (isColKey) {
+        ; First key is COLUMN
+        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
+        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleFirstKey: First key is COLUMN='{}'",
+            A_TickCount, key) "`n", "antimouse_core.log")
+        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
+
+        StateMap['currentColIndex'] := colIndex
+        targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1
+        targetRowIndex := GridValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
+        cellKey := key . StateMap['activeRowKeys'][targetRowIndex]
+        tooltipText := "First key: " key ". Select row."
+    } else { ; isRowKey
+        ; First key is ROW
+        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
+        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleFirstKey: First key is ROW='{}'",
+            A_TickCount, key) "`n", "antimouse_core.log")
+        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
+
+        StateMap['currentRowIndex'] := rowIndex
+        StateMap['lastSelectedRowIndex'] := rowIndex
+        targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'].Length /
+            2)
+        targetColIndex := GridValidateIndex(targetColIndex, StateMap['activeColKeys'].Length)
+        cellKey := StateMap['activeColKeys'][targetColIndex] . key
+        tooltipText := "First key: " key ". Select column."
+    }
+
+    ; Get the boundaries of the highlighted cell
+    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+
+    ; Update highlight with these boundaries
+    if (IsObject(highlight) && IsObject(boundaries)) {
+        try {
+            highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            highlight.Show()
+        }
+    }
+
+    ; Show tooltip if debug is enabled
+    if (showcaseDebug) {
+        ToolTip(tooltipText)
+    }
+
+    ; Re-enable cursor tracking
+    SetTimer(TrackCursor, 50)
+
+    ; --- CORE LOGGING START ---
+    FileAppend(Format("Timestamp: {} | HandleFirstKey END | g_firstKeyPressed='{}', cellKey='{}'",
+        A_TickCount, g_firstKeyPressed, cellKey) "`n", "antimouse_core.log")
+    ; --- CORE LOGGING END ---
+}
+
+; Handle the second key press, completing cell selection and transitioning to appropriate state
+HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
+    global g_firstKeyPressed, StateMap, currentState, highlight, subGrid, cellMemory, storePerMonitor, showcaseDebug
+    currentTime := A_TickCount
+
+    ; --- CORE LOGGING START ---
+    FileAppend(Format(
+        "Timestamp: {} | HandleSecondKey START | key='{}', g_firstKeyPressed='{}', isColKey={}, isRowKey={}",
+        A_TickCount, key, g_firstKeyPressed, isColKey, isRowKey) "`n", "antimouse_core.log")
+    ; --- CORE LOGGING END ---
+
+    ; <<< ADD LOGGING START >>>
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | HandleSecondKey: Second Key Press | key={} | firstKey={}",
+            currentTime, key, g_firstKeyPressed) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING END >>>
+
+    ; Local variable to track if this was a row key (important for later subgrid activation)
+    secondKeyWasRow := isRowKey
+
+    ; Determine the cell key based on order of key presses
+    cellKey := ""
+    if (isColKey) {
+        ; If first key was a row key and second key is a column key
+        if (RowKeyCheck(g_firstKeyPressed)) {
+            cellKey := key . g_firstKeyPressed
+        } else {
+            ; Both keys are column keys - invalid selection
+            FileAppend(Format("Timestamp: {} | HandleSecondKey: Invalid - both keys are column keys",
+                A_TickCount) "`n", "antimouse_core.log")
+            g_firstKeyPressed := key  ; Treat this as a new first key
+            HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex)
+            return
+        }
+    } else { ; isRowKey
+        ; If first key was a column key and second key is a row key
+        if (ColKeyCheck(g_firstKeyPressed)) {
+            cellKey := g_firstKeyPressed . key
+        } else {
+            ; Both keys are row keys - invalid selection
+            FileAppend(Format("Timestamp: {} | HandleSecondKey: Invalid - both keys are row keys",
+                A_TickCount) "`n", "antimouse_core.log")
+            g_firstKeyPressed := key  ; Treat this as a new first key
+            HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex)
+            return
+        }
+    }
+
+    ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
+    FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleSecondKey: Computed cellKey='{}'",
+        A_TickCount, cellKey) "`n", "antimouse_core.log")
+    ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
+
+    ; Store the selected cell key in StateMap
+    StateMap['activeCellKey'] := cellKey
+
+    ; Get cell boundaries for positioning
+    FileAppend(Format(
+        "Timestamp: {} | DEBUG: HandleSecondKey - Getting boundaries for cellKey='{}'. currentOverlay IsObject={}",
+        A_TickCount, cellKey, IsObject(StateMap['currentOverlay'])) "`n", "antimouse_core.log")
+    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+    FileAppend(Format("Timestamp: {} | DEBUG: HandleSecondKey - Got boundaries. IsObject(boundaries)={}",
+        A_TickCount, IsObject(boundaries)) "`n", "antimouse_core.log")
+
+    ; Update highlight with these boundaries
+    FileAppend(Format("Timestamp: {} | DEBUG: HandleSecondKey - Checking highlight object. IsObject(highlight)={}",
+        A_TickCount, IsObject(highlight)) "`n", "antimouse_core.log")
+    if (IsObject(highlight) && IsObject(boundaries)) {
+        FileAppend(Format("Timestamp: {} | DEBUG: HandleSecondKey - Updating highlight.", A_TickCount) "`n",
+        "antimouse_core.log")
+        try {
+            highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+        } catch as e {
+            FileAppend(Format("Timestamp: {} | ERROR: HandleSecondKey - highlight.Update failed: {}", A_TickCount, e.Message
+            ) "`n", "antimouse_core.log")
+        }
+        FileAppend(Format(
+            "Timestamp: {} | DEBUG: HandleSecondKey - Highlight update completed (Show is part of Update).",
+            A_TickCount) "`n",
+        "antimouse_core.log")
+    } else {
+        FileAppend(Format(
+            "Timestamp: {} | DEBUG: HandleSecondKey - Skipping highlight update (highlight or boundaries invalid).",
+            A_TickCount) "`n", "antimouse_core.log")
+    }
+
+    ; --- Actions moved from CELL_SELECTED entry ---
+    if (IsObject(boundaries)) {
+        ; Position mouse in the center of the cell
+        targetX := boundaries.x + (boundaries.w // 2)
+        targetY := boundaries.y + (boundaries.h // 2)
+        FileAppend(Format("Timestamp: {} | DEBUG: HandleSecondKey - Moving mouse to x={}, y={}",
+            A_TickCount, targetX, targetY) "`n", "antimouse_core.log")
+        MouseMove(targetX, targetY, 0)
+
+        ; Configure subgrid with the cell boundaries
+        if (IsObject(subGrid)) {
+            FileAppend(Format(
+                "Timestamp: {} | DEBUG: HandleSecondKey - Updating subGrid with boundaries x={}, y={}, w={}, h={}",
+                A_TickCount, boundaries.x, boundaries.y, boundaries.w, boundaries.h) "`n", "antimouse_core.log")
+            subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            FileAppend(Format("Timestamp: {} | DEBUG: HandleSecondKey - subGrid.Update completed successfully",
+                A_TickCount) "`n", "antimouse_core.log")
+        } else {
+            FileAppend(Format(
+                "Timestamp: {} | ERROR: HandleSecondKey - subGrid is not a valid object when trying to update",
+                A_TickCount) "`n", "antimouse_core.log")
+        }
+    } else {
+        FileAppend(Format(
+            "Timestamp: {} | DEBUG: HandleSecondKey - Skipping MouseMove/subGrid.Update (boundaries invalid).",
+            A_TickCount) "`n", "antimouse_core.log")
+    }
+    ; --- End of moved actions ---
+
+    ; Check cell memory for remembered subcell if available
+    local memoryKey := storePerMonitor ? StateMap['currentMonitorIndex'] . "_" . cellKey : cellKey
+    local subCellFromMemory := ""
+    if (cellMemory.Has(memoryKey)) {
+        subCellFromMemory := cellMemory[memoryKey]
+    }
+
+    ; Save that the second key was a row key (important for ultrafast mode)
+    if (secondKeyWasRow) {
+        StateMap['activeRowKey'] := key
+    } else {
+        StateMap['activeRowKey'] := ""
+    }
+
+    ; Reset first key as selection is now complete
+    g_firstKeyPressed := ""
+
+    ; --- Determine target state (Standard for now, Ultra-Fast TBD) ---
+    finalTargetState := State_SUBGRID_STANDARD
+    ; TODO: Add logic here later to check for row key hold and set finalTargetState = State_SUBGRID_ULTRAFAST if needed
+
+    FileAppend(Format(
+        "Timestamp: {} | DEBUG: HandleSecondKey - About to transition directly to state '{}' with cellKey='{}'",
+        A_TickCount, finalTargetState, cellKey) "`n", "antimouse_core.log")
+
+    ; Transition directly to the determined subgrid state
+    TransitionToState(finalTargetState)
+
+    ; Remove transition to CELL_SELECTED and related debug logs
+    ; ENHANCED DEBUG: Add before transition to CELL_SELECTED
+    ; FileAppend(Format(
+    ;     "Timestamp: {} | DEBUG: HandleSecondKey - About to transition to CELL_SELECTED state with cellKey='{}'",
+    ;     A_TickCount, cellKey) "`n", "antimouse_core.log")
+
+    ; Transition to CELL_SELECTED state
+    ; TransitionToState(State_CELL_SELECTED)
+
+    ; ENHANCED DEBUG: Add after transition to CELL_SELECTED
+    ; FileAppend(Format("Timestamp: {} | DEBUG: HandleSecondKey - After transition to CELL_SELECTED, currentState='{}'",
+    ;     A_TickCount, currentState) "`n", "antimouse_core.log")
+
+    ; Re-enable cursor tracking
+    SetTimer(TrackCursor, 50)
+
+    ; --- CORE LOGGING START ---
+    FileAppend(Format("Timestamp: {} | HandleSecondKey END | cellKey='{}', secondKeyWasRow={}, activeRowKey='{}'",
+        A_TickCount, cellKey, secondKeyWasRow, StateMap['activeRowKey']) "`n", "antimouse_core.log")
+    ; --- CORE LOGGING END ---
+}
+
+; Helper function to check if a key is a column key
+ColKeyCheck(keyToCheck) {
+    global StateMap
+    for i, colKey in StateMap['activeColKeys'] {
+        if (colKey = keyToCheck) {
+            return true
+        }
+    }
+    return false
+}
+
+; Helper function to check if a key is a row key
+RowKeyCheck(keyToCheck) {
+    global StateMap
+    for i, rowKey in StateMap['activeRowKeys'] {
+        if (rowKey = keyToCheck) {
+            return true
+        }
+    }
+    return false
+}
+
+; Validate index to ensure it's within valid bounds (grid-specific version)
+GridValidateIndex(index, maxLength) {
+    if (!index || index < 1) {
+        return 1
+    }
+    if (index > maxLength) {
+        return maxLength
+    }
+    return index
 }

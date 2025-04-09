@@ -4,7 +4,7 @@
 
 ; Access global config variables
 global settingsFile, cellMemoryFile, layoutConfigs ; Import from config.ahk
-global showcaseDebug ; For debug messages
+global showcaseDebug ; Reference the variable defined in config.ahk
 
 ; --- Cell Memory Management ---
 
@@ -113,6 +113,7 @@ LoadSettings() {
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
     global defaultTransparency, highlightColor, instaClickMode
     global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
+    global keepGridVisible ; Grid visibility option
 
     try {
         if (FileExist(settingsFile)) {
@@ -126,6 +127,7 @@ LoadSettings() {
             storePerMonitor := IniRead(settingsFile, "General", "StorePerMonitor", storePerMonitor)
             showcaseDebug := IniRead(settingsFile, "General", "Debug", showcaseDebug)
             instaClickMode := IniRead(settingsFile, "General", "InstaClickMode", instaClickMode)
+            keepGridVisible := IniRead(settingsFile, "General", "KeepGridVisible", keepGridVisible)
 
             ; Load Ultra-Fast Subgrid settings
             enableUltraFast := IniRead(settingsFile, "UltraFast", "Enable", enableUltraFast)
@@ -171,6 +173,7 @@ SaveSettings() {
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
     global defaultTransparency, highlightColor, instaClickMode
     global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
+    global keepGridVisible ; Grid visibility option
 
     try {
         ; Ensure the directory exists before writing
@@ -184,6 +187,7 @@ SaveSettings() {
         IniWrite(storePerMonitor, settingsFile, "General", "StorePerMonitor")
         IniWrite(showcaseDebug, settingsFile, "General", "Debug")
         IniWrite(instaClickMode, settingsFile, "General", "InstaClickMode")
+        IniWrite(keepGridVisible, settingsFile, "General", "KeepGridVisible")
 
         ; Save Ultra-Fast Subgrid settings
         IniWrite(enableUltraFast, settingsFile, "UltraFast", "Enable")

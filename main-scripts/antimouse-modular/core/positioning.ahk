@@ -4,7 +4,7 @@
 
 ; Determines the cell key (e.g., "qj") at given absolute screen coordinates (x, y).
 GetCellAtPosition(x, y) {
-    global StateMap, showcaseDebug ; Access global state
+    global StateMap, showcaseDebug ; Reference variables defined in state.ahk and config.ahk
 
     ; Ensure we have a valid current overlay
     if (!IsObject(StateMap['currentOverlay'])) {

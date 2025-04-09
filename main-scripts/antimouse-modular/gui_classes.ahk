@@ -331,8 +331,22 @@ class SubGridOverlay {
     }
 
     Show() {
-        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
-        WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+        try {
+            FileAppend(Format(
+                "Timestamp: {} | SubGridOverlay.Show: Attempting to show GUI with parameters x={}, y={}, w={}, h={}",
+                A_TickCount, this.x, this.y, this.width, this.height) "`n", "antimouse_core.log")
+
+            this.gui.Show(Format("x{} y{} w{} h{} NoActivate", this.x, this.y, this.width, this.height))
+            FileAppend(Format("Timestamp: {} | SubGridOverlay.Show: GUI.Show() succeeded", A_TickCount) "`n",
+            "antimouse_core.log")
+
+            WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+            FileAppend(Format("Timestamp: {} | SubGridOverlay.Show: WinSetAlwaysOnTop succeeded", A_TickCount) "`n",
+            "antimouse_core.log")
+        } catch as e {
+            FileAppend(Format("Timestamp: {} | ERROR in SubGridOverlay.Show: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+        }
     }
 
     Hide() {

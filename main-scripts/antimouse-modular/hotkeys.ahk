@@ -5,7 +5,8 @@
 ; --- CONSOLIDATED HOTKEYS for GRID_VISIBLE or SUBGRID_ACTIVE ---
 ; These hotkeys are active only when the grid or subgrid is visible.
 ; They call the ProcessKeyPress function (from core_logic.ahk) to handle the input based on the current state.
-#HotIf currentState == "GRID_VISIBLE" || currentState == "SUBGRID_ACTIVE"
+#HotIf currentState == State_GRID_VISIBLE || currentState == State_SUBGRID_STANDARD || currentState ==
+    State_SUBGRID_ULTRAFAST
 q:: ProcessKeyPress("q")
 w:: ProcessKeyPress("w")
 e:: ProcessKeyPress("e")
@@ -50,8 +51,42 @@ SC030:: ProcessKeyPress("b") ; B
 
 ; Add Escape key to trigger Cleanup (Context-Specific)
 Escape:: {
-    FileAppend(Format("Timestamp: {} | Context Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
-    Cleanup() ; Call Cleanup() from core_logic.ahk (or activation.ahk)
+    FileAppend(Format("Timestamp: {} | Global Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
+    ; Access global state and config needed
+    global currentState, showcaseDebug, highlight, subGrid, StateMap ; Reference showcaseDebug from config.ahk
+
+    ; Safely call Cleanup (function from activation.ahk / core_logic.ahk)
+    try {
+        Cleanup()
+    } catch as e {
+        if (showcaseDebug)
+            ToolTip("Error during standard Escape cleanup: " e.Message)
+        ; If standard cleanup failed, attempt a more forceful cleanup
+        try {
+            currentState := State_IDLE ; Force state
+            ForceCloseAllGuis()    ; Force close GUIs (function from utils.ahk)
+            ; Reset object references manually as a last resort
+            highlight := ""
+            subGrid := ""
+            if (IsSet(StateMap)) {
+                StateMap['overlays'] := Map()
+                StateMap['currentOverlay'] := ""
+            }
+            ToolTip() ; Clear tooltips
+            SetTimer(TrackCursor, 0) ; Ensure tracking timer is off
+            SetCapsLockState "AlwaysOff"
+            if (showcaseDebug)
+                ToolTip("Forced cleanup executed.")
+            Sleep 500
+            if (showcaseDebug)
+                ToolTip()
+        } catch as force_e {
+            ; Ignore errors during forced cleanup, maybe just basic tooltip clear
+            ToolTip("CRITICAL ERROR during forced cleanup: " force_e.Message)
+            Sleep 1000
+            ToolTip()
+        }
+    }
 }
 
 ; Monitor switching hotkeys (active when grid is visible)
@@ -59,11 +94,11 @@ Escape:: {
 2:: SwitchMonitor(2)
 3:: SwitchMonitor(3)
 4:: SwitchMonitor(4)
-#HotIf ; End context for grid/subgrid active state
+#HotIf
 
 ; --- HOTKEYS FOR IDLE STATE (Activation with CapsLock + Key) ---
 ; These activate the grid *and* potentially perform an initial action.
-#HotIf GetKeyState('CapsLock', 'P') && (currentState == "IDLE")
+#HotIf GetKeyState('CapsLock', 'P') && (currentState == State_IDLE)
 q:: {
     ; Access global state needed for this specific hotkey logic
     global currentState, StateMap, highlight, showcaseDebug
@@ -78,7 +113,7 @@ q:: {
     CapsLock_Q()
 
     ; If grid activation was successful, immediately snap to the 'q' column
-    if (currentState == "GRID_VISIBLE") {
+    if (currentState == State_GRID_VISIBLE) {
         ; Find 'q' column index in the currently active layout keys
         qColIndex := 0
         for i, colKey in StateMap['activeColKeys'] {
@@ -148,7 +183,7 @@ q:: {
     ; Set inHoldMode so releasing CapsLock triggers a click (handled in CapsLock Up)
     g_ModifierState.inHoldMode := true
 }
-#HotIf ; End context for IDLE state activation
+#HotIf
 
 ; --- HOTKEYS FOR CAPSLOCK HELD (Monitor Switch Activation/Switching) ---
 ; These handle CapsLock + Number keys.
@@ -159,7 +194,7 @@ q:: {
     global currentState, g_ModifierState ; Access state
     SetCapsLockState "AlwaysOff"
     SetTimer(TrackCursor, 0) ; Stop tracking during switch
-    if (currentState == "IDLE") {
+    if (currentState == State_IDLE) {
         CapsLock_Q() ; Activate grid (function from activation.ahk)
         Sleep(100) ; Allow grid time to initialize fully
     }
@@ -171,7 +206,7 @@ q:: {
     global currentState, g_ModifierState
     SetCapsLockState "AlwaysOff"
     SetTimer(TrackCursor, 0)
-    if (currentState == "IDLE") {
+    if (currentState == State_IDLE) {
         CapsLock_Q()
         Sleep(100)
     }
@@ -183,7 +218,7 @@ q:: {
     global currentState, g_ModifierState
     SetCapsLockState "AlwaysOff"
     SetTimer(TrackCursor, 0)
-    if (currentState == "IDLE") {
+    if (currentState == State_IDLE) {
         CapsLock_Q()
         Sleep(100)
     }
@@ -195,7 +230,7 @@ q:: {
     global currentState, g_ModifierState
     SetCapsLockState "AlwaysOff"
     SetTimer(TrackCursor, 0)
-    if (currentState == "IDLE") {
+    if (currentState == State_IDLE) {
         CapsLock_Q()
         Sleep(100)
     }
@@ -203,15 +238,15 @@ q:: {
     g_ModifierState.inHoldMode := true
     SetTimer(TrackCursor, 50)
 }
-#HotIf ; End context for CapsLock held
+#HotIf
 
 ; --- HOTKEYS FOR CAPSLOCK HELD (NON-INSTACLICK HOLD MODE, GRID ACTIVE) ---
 ; These use the CapsLock & syntax. They trigger when Caps is held, grid is active,
 ; *and* we are NOT in the specific `inHoldMode` (which is set by double-tap or activation keys).
 ; This allows CapsLock+Key to function as navigation when CapsLock is simply held down
 ; without the intention of performing an InstaClick on release.
-#HotIf GetKeyState('CapsLock', 'P') && (currentState == "GRID_VISIBLE" || currentState == "SUBGRID_ACTIVE") && !
-g_ModifierState.inHoldMode
+#HotIf GetKeyState('CapsLock', 'P') && (currentState == State_GRID_VISIBLE || currentState == State_SUBGRID_STANDARD ||
+    currentState == State_SUBGRID_ULTRAFAST) && !g_ModifierState.inHoldMode
 
 ; Monitor switching (using CapsLock & N when active but not intending an InstaClick)
 ; Note: These implicitly set inHoldMode upon execution because CapsLock & Key implies a hold intention.
@@ -283,11 +318,11 @@ CapsLock & SC023:: ProcessKeyPress("h") ; H
 CapsLock & SC031:: ProcessKeyPress("n") ; N
 CapsLock & SC030:: ProcessKeyPress("b") ; B
 
-#HotIf ; End context for CapsLock held (non-InstaClick mode)
+#HotIf
 
 ; --- Other Hotkeys (Space, Escape, Tab) ---
 ; These apply whenever the grid is active (GRID_VISIBLE or SUBGRID_ACTIVE).
-#HotIf currentState != "IDLE"
+#HotIf currentState != State_IDLE
 Space:: {
     ; Access global state and config needed
     global currentState, highlight, subGrid, StateMap, showcaseDebug
@@ -298,7 +333,7 @@ Space:: {
 
         ; Stop tracking and change state immediately to prevent race conditions
         SetTimer(TrackCursor, 0)
-        currentState := "IDLE" ; Set state first
+        currentState := State_IDLE ; Set state first
 
         ; Explicitly remove tooltips
         ToolTip()
@@ -352,7 +387,7 @@ Tab:: {
     ; Re-enable cursor tracking
     SetTimer(TrackCursor, 50)
 }
-#HotIf ; End context for grid active state
+#HotIf
 
 ; --- CapsLock Handling (Single/Double Tap, Hold/Release) ---
 ; This handles the core logic for activating/deactivating the grid via CapsLock
@@ -392,7 +427,7 @@ CapsLock:: {
             g_ModifierState.inHoldMode := true ; Set hold mode on successful double-tap
             if (showcaseDebug) ToolTip("CapsLock double-tap - hold mode active")
             ; Activate grid immediately on the second press (if not already active)
-                if (currentState == "IDLE") {
+                if (currentState == State_IDLE) {
                     try {
                         CapsLock_Q() ; Function from activation.ahk
                     } catch as e {
@@ -439,7 +474,7 @@ CapsLock Up:: {
 
     ; --- InstaClick Handling ---
     ; Perform click if we were in hold mode (set by double-tap or Caps+Key activation)
-    if (g_ModifierState.inHoldMode && currentState != "IDLE") {
+    if (g_ModifierState.inHoldMode && currentState != State_IDLE) {
         if (showcaseDebug) ToolTip("InstaClick: Clicking & Cleaning up")
             try {
                 ; Save mouse position before cleanup potentially moves it
@@ -447,7 +482,7 @@ CapsLock Up:: {
 
                 ; Stop tracking and set state to IDLE immediately
                 SetTimer(TrackCursor, 0)
-                currentState := "IDLE"
+                currentState := State_IDLE
 
                 ; Hide UI elements quickly
                 if (IsObject(highlight)) {
@@ -487,7 +522,7 @@ CapsLock Up:: {
     } else {
         ; --- Single Tap Handling ---
         ; If not in hold mode, check if this release corresponds to a single tap
-        if (!g_ModifierState.inHoldMode && currentState != "IDLE") {
+        if (!g_ModifierState.inHoldMode && currentState != State_IDLE) {
             ; Check if enough time has passed since the first press to rule out a double-tap starting
             if (g_ModifierState.capsPressedFirstTime > 0 && (currentTime - g_ModifierState.capsPressedFirstTime
             ) > doubleCapsThreshold) {
@@ -511,7 +546,7 @@ CapsLock Up:: {
         }
 
         ; Reset hold mode flag if it wasn't already reset by click handling
-        if (g_ModifierState.inHoldMode && currentState == "IDLE") {
+        if (g_ModifierState.inHoldMode && currentState == State_IDLE) {
             g_ModifierState.inHoldMode := false
             g_ModifierState.capsPressedFirstTime := 0
             g_ModifierState.capsPressedSecondTime := 0
@@ -526,7 +561,7 @@ CapsLock Up:: {
 ; :*:;settings:: ShowSettingsGUI()
 
 ; --- ROW KEY UP EVENTS FOR ULTRA-FAST SUBGRID MODE ---
-#HotIf currentState == "SUBGRID_ACTIVE" && StateMap['inUltraFastMode']
+#HotIf currentState == State_SUBGRID_STANDARD && StateMap['inUltraFastMode']
 
 ; Function to handle row key releases in ultra-fast mode
 CheckRowKeyUpForUltraFast(key) {
@@ -552,66 +587,68 @@ SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
 
 ; --- GLOBAL HOTKEYS (Always Active) ---
 
-; Failsafe Escape handler - attempts standard cleanup first, then forces.
-Escape:: {
-    FileAppend(Format("Timestamp: {} | Global Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
-    ; Access global state and config needed
-    global currentState, showcaseDebug, highlight, subGrid, StateMap
-
-    ; Safely call Cleanup (function from activation.ahk / core_logic.ahk)
-    try {
-        Cleanup()
-    } catch as e {
-        if (showcaseDebug)
-            ToolTip("Error during standard Escape cleanup: " e.Message)
-        ; If standard cleanup failed, attempt a more forceful cleanup
-        try {
-            currentState := "IDLE" ; Force state
-            ForceCloseAllGuis()    ; Force close GUIs (function from utils.ahk)
-            ; Reset object references manually as a last resort
-            highlight := ""
-            subGrid := ""
-            if (IsSet(StateMap)) {
-                StateMap['overlays'] := Map()
-                StateMap['currentOverlay'] := ""
-            }
-            ToolTip() ; Clear tooltips
-            SetTimer(TrackCursor, 0) ; Ensure tracking timer is off
-            SetCapsLockState "AlwaysOff"
-            if (showcaseDebug)
-                ToolTip("Forced cleanup executed.")
-            Sleep 500
-            if (showcaseDebug)
-                ToolTip()
-        } catch as force_e {
-            ; Ignore errors during forced cleanup, maybe just basic tooltip clear
-            ToolTip("CRITICAL ERROR during forced cleanup: " force_e.Message)
-            Sleep 1000
-            ToolTip()
-        }
+; If Shift is held, deactivate (like Caps Up)
+#HotIf WinActive("ahk_group AntiMouseOverlays") && GetKeyState("Shift", "P")
+*~$CapsLock:: {
+    global showcaseDebug ; Reference variable from config.ahk
+    currentTime := A_TickCount
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | CapsLock+Shift Hotkey: Deactivating via Shift", currentTime) "`n",
+        A_ScriptDir "\debugRapidRefresh.log")
     }
-}
-
-; Tab key cycles through monitors when the grid is active
-#HotIf currentState == "GRID_VISIBLE" || currentState == "SUBGRID_ACTIVE"
-Tab:: {
-    ; Access global objects needed
-    global subGrid, highlight
-
-    ; Temporarily disable TrackCursor completely during cycle
-    SetTimer(TrackCursor, 0)
-
-    ; Hide subgrid and highlight before switching to prevent visual artifacts
-    if (IsObject(subGrid)) subGrid.Hide()
-        if (IsObject(highlight)) highlight.Hide()
-            Sleep(20) ; Small delay
-
-    ; Cycle to the next monitor (function from core_logic.ahk)
-    CycleToNextMonitor()
-
-    Sleep(30) ; Small delay before re-enabling tracking
-
-    ; Re-enable cursor tracking
-    SetTimer(TrackCursor, 50)
+    TransitionToState(State_IDLE) ; Set state first
+    DeactivateGrid(true) ; Force deactivation
 }
 #HotIf
+
+; Deactivation Hotkey (Escape)
+#HotIf WinActive("ahk_group AntiMouseOverlays")
+~$Escape:: {
+    global showcaseDebug ; Reference variable from config.ahk
+    currentTime := A_TickCount
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | Escape Hotkey: Deactivating", currentTime) "`n", A_ScriptDir "\debugRapidRefresh.log"
+        )
+    }
+    ; <<< ADD LOGGING START >>>
+    FileAppend(Format("Timestamp: {} | Escape pressed, calling DeactivateGrid", A_TickCount) "`n", "antimouse_core.log"
+    )
+    ; <<< ADD LOGGING END >>>
+    TransitionToState(State_IDLE)
+    DeactivateGrid(true)
+}
+
+; Mouse Click Deactivation
+; Left Mouse Button
+#HotIf WinActive("ahk_group AntiMouseOverlays")
+*~$LButton:: {
+    global showcaseDebug ; Reference variable from config.ahk
+    currentTime := A_TickCount
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | LButton Hotkey: Deactivating", currentTime) "`n", A_ScriptDir "\debugRapidRefresh.log"
+        )
+    }
+    ; <<< ADD LOGGING START >>>
+    FileAppend(Format("Timestamp: {} | LButton pressed, calling DeactivateGrid", A_TickCount) "`n",
+    "antimouse_core.log")
+    ; <<< ADD LOGGING END >>>
+    TransitionToState(State_IDLE) ; Force state
+    DeactivateGrid(true) ; Force deactivation
+}
+
+; Right Mouse Button
+#HotIf WinActive("ahk_group AntiMouseOverlays")
+*~$RButton:: {
+    global showcaseDebug ; Reference variable from config.ahk
+    currentTime := A_TickCount
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | RButton Hotkey: Deactivating", currentTime) "`n", A_ScriptDir "\debugRapidRefresh.log"
+        )
+    }
+    ; <<< ADD LOGGING START >>>
+    FileAppend(Format("Timestamp: {} | RButton pressed, calling DeactivateGrid", A_TickCount) "`n",
+    "antimouse_core.log")
+    ; <<< ADD LOGGING END >>>
+    TransitionToState(State_IDLE) ; Force state
+    DeactivateGrid(true) ; Force deactivation
+}

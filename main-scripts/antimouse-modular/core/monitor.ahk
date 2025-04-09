@@ -2,10 +2,13 @@
 ; core/monitor.ahk - Monitor Switching Logic
 ; ==============================================================================
 
+; Reference state constants defined in state.ahk
+global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST
+
 ; Switches focus and cursor to a specific monitor number.
 SwitchMonitor(monitorNum) {
-    ; Access global state and config
-    global currentState, highlight, subGrid, monitorMapping, storePerMonitor, StateMap, showcaseDebug
+    ; Access global state and config variables defined in state.ahk and config.ahk
+    global currentState, highlight, subGrid, monitorMapping, storePerMonitor, StateMap, showcaseDebug, cellMemory
 
     ; Apply monitor mapping from config
     if (!monitorMapping.Has(monitorNum)) {
@@ -15,8 +18,8 @@ SwitchMonitor(monitorNum) {
     mappedMonitor := monitorMapping[monitorNum]
 
     ; Check if mapped monitor index is valid and grid is active
-    if (mappedMonitor > StateMap['overlays'].Length || currentState == "IDLE") {
-        if (showcaseDebug && currentState != "IDLE") {
+    if (mappedMonitor > StateMap['overlays'].Length || currentState == State_IDLE) {
+        if (showcaseDebug && currentState != State_IDLE) {
             ToolTip("Invalid mapped monitor index: " mappedMonitor)
         }
         return
@@ -38,7 +41,7 @@ SwitchMonitor(monitorNum) {
     ; Remember current position state before switching
     rememberedColIndex := StateMap['currentColIndex']
     rememberedRowIndex := StateMap['currentRowIndex']
-    wasInSubgrid := currentState == "SUBGRID_ACTIVE"
+    wasInSubgrid := (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST)
     rememberedCellKey := StateMap['activeCellKey'] ; Remember the full cell key
 
     ; Hide UI elements during transition to prevent visual artifacts
@@ -87,7 +90,7 @@ SwitchMonitor(monitorNum) {
             ; If we were in subgrid mode, update and potentially restore subgrid position
             if (wasInSubgrid && IsObject(subGrid)) {
                 subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                currentState := "SUBGRID_ACTIVE" ; Ensure state is correct
+                TransitionToState(State_SUBGRID_STANDARD) ; Tentative: Restore to standard subgrid. May need refinement for ultra-fast.
 
                 ; Check for remembered subcell (monitor-specific first, then general)
                 rememberedSubCell := ""
@@ -135,11 +138,11 @@ SwitchMonitor(monitorNum) {
 
 ; Cycles focus and cursor to the next available monitor.
 CycleToNextMonitor() {
-    ; Access global state
-    global currentState, StateMap, monitorMapping ; Ensure monitorMapping is global here too
+    ; Access global state variables defined in state.ahk
+    global currentState, StateMap, monitorMapping
 
     ; Don't cycle if idle or only one monitor overlay exists
-    if (currentState == "IDLE" || StateMap['overlays'].Length <= 1) {
+    if (currentState == State_IDLE || StateMap['overlays'].Length <= 1) {
         return
     }
 

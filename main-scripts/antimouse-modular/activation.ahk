@@ -44,7 +44,7 @@ CapsLock_Q() {
     gridActivationTime := currentTime
 
     ; If already active, clean up and exit
-    if (currentState != "IDLE") {
+    if (currentState != State_IDLE) {
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
         FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: State not IDLE (state='{}'), calling Cleanup()",
             A_TickCount, currentState) "`n", "antimouse_core.log")
@@ -155,9 +155,19 @@ CapsLock_Q() {
 
         ; Initialize reusable GUI elements
         try {
+            FileAppend(Format("Timestamp: {} | DEBUG: About to initialize highlight and subGrid", A_TickCount) "`n",
+            "antimouse_core.log")
+
             highlight := HighlightOverlay()
+            FileAppend(Format("Timestamp: {} | DEBUG: HighlightOverlay created successfully", A_TickCount) "`n",
+            "antimouse_core.log")
+
             subGrid := SubGridOverlay()
+            FileAppend(Format("Timestamp: {} | DEBUG: SubGridOverlay created successfully, IsObject(subGrid)={}",
+                A_TickCount, IsObject(subGrid)) "`n", "antimouse_core.log")
         } catch as e {
+            FileAppend(Format("Timestamp: {} | ERROR: Failed to initialize GUI: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
             ToolTip("Error initializing GUI: " e.Message)
             Sleep(2000)
             ToolTip()
@@ -213,130 +223,30 @@ CapsLock_Q() {
         if (StateMap['overlays'].Length > 0 && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
             FileAppend(Format("Timestamp: {} | CapsLock_Q: Condition TRUE. Grid activated. Attempting instant subgrid.",
                 A_TickCount) "`n", "antimouse_core.log") ; <<< CORE LOGGING (Adjusted)
-            currentState := "GRID_VISIBLE" ; Set temporarily
+
+            ; Replace direct assignment with TransitionToState
+            TransitionToState(State_GRID_VISIBLE) ; Use transition function instead of direct assignment
 
             ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-            FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Set currentState = 'GRID_VISIBLE'",
+            FileAppend(Format(
+                "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Set currentState via TransitionToState to 'GRID_VISIBLE'",
                 A_TickCount) "`n", "antimouse_core.log")
             ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
-            ; --- BEGIN INSTANT SUBGRID LOGIC ---
-            initialCellKey := GetCellAtPosition(startX, startY)
-            FileAppend(Format("Timestamp: {} | CapsLock_Q: Cell at initial cursor ({},{}): '{}'", A_TickCount, startX,
-                startY, initialCellKey) "`n", "antimouse_core.log")
-
-            if (initialCellKey != "") {
-                boundaries := StateMap['currentOverlay'].GetCellBoundaries(initialCellKey)
-                if (IsObject(boundaries)) {
-                    FileAppend(Format(
-                        "Timestamp: {} | CapsLock_Q: Got boundaries for initial cell. Updating & Showing Subgrid.",
-                        A_TickCount) "`n", "antimouse_core.log")
-                    StateMap['activeCellKey'] := initialCellKey
-                    stateTransitionTime := A_TickCount ; Use current time for transition
-
-                    ; Update and show subgrid
-                    subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                    subGrid.Show()
-
-                    ; --- Isolate Highlight calls ---
-                    try {
-                        FileAppend(Format("Timestamp: {} | CapsLock_Q: Attempting highlight.Update/Show.", A_TickCount) "`n",
-                        "antimouse_core.log")
-                        highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                    } catch as e {
-                        FileAppend(Format("Timestamp: {} | CapsLock_Q: **** ERROR during highlight.Update/Show: {}",
-                            A_TickCount, e.Message) "`n", "antimouse_core.log")
-                    }
-                    ; ----------------------------
-
-                    ; Update state to SUBGRID_ACTIVE
-                    ; --- Isolate state assignment ---
-                    try {
-                        FileAppend(Format(
-                            "Timestamp: {} | CapsLock_Q: Attempting to set currentState = SUBGRID_ACTIVE.", A_TickCount
-                        ) "`n", "antimouse_core.log")
-                        currentState := "SUBGRID_ACTIVE"
-                        FileAppend(Format("Timestamp: {} | CapsLock_Q: Successfully set currentState = {}.",
-                            A_TickCount, currentState) "`n", "antimouse_core.log")
-                    } catch as state_e {
-                        FileAppend(Format(
-                            "Timestamp: {} | CapsLock_Q: **** ERROR setting currentState = SUBGRID_ACTIVE: {}.",
-                            A_TickCount, state_e.Message) "`n", "antimouse_core.log")
-                        ; Allow script to continue to see if memory check also errors
-                    }
-                    ; ---------------------------------
-                    ; FileAppend(Format("Timestamp: {} | CapsLock_Q: Set state to SUBGRID_ACTIVE for cell '{}'", A_TickCount, initialCellKey) "`n", "antimouse_core.log") ; Moved inside try block
-
-                    ; Optional: Check cell memory
-                    try {
-                        rememberedSubCell := ""
-                        cellFound := false
-                        if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
-                            monitorCellKey := StateMap['currentOverlay'].monitorIndex . "_" . initialCellKey
-                            if (cellMemory.Has(monitorCellKey)) {
-                                rememberedSubCell := cellMemory[monitorCellKey]
-                                cellFound := true
-                            }
-                        }
-                        if (!cellFound && cellMemory.Has(initialCellKey)) {
-                            rememberedSubCell := cellMemory[initialCellKey]
-                            cellFound := true
-                        }
-                        if (cellFound && rememberedSubCell != "") {
-                            FileAppend(Format(
-                                "Timestamp: {} | CapsLock_Q: Found remembered subcell '{}'. Preparing to call handler.",
-                                A_TickCount, rememberedSubCell) "`n", "antimouse_core.log")
-                            ; --- FIX: Handle ultra: prefix ---
-                            if (SubStr(rememberedSubCell, 1, 6) == "ultra:") {
-                                actualSubCellKey := SubStr(rememberedSubCell, 7)
-                                HandleUltraFastKey(actualSubCellKey)
-                            } else {
-                                HandleSubGridKey(rememberedSubCell) ; Handle standard subcell
-                            }
-                            ; --- END FIX ---
-                        } else {
-                            ; If no memory, just move cursor to center of main cell
-                            FileAppend(Format("Timestamp: {} | CapsLock_Q: No remembered subcell. Moving to center.",
-                                A_TickCount) "`n", "antimouse_core.log")
-                            ; --- REMOVED CURSOR SNAPPING (Activation - No Memory) ---
-                            ; MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-                        }
-                    } catch as mem_e {
-                        FileAppend(Format(
-                            "Timestamp: {} | CapsLock_Q: **** ERROR during cell memory check/call: {}. Staying SUBGRID_ACTIVE.",
-                            A_TickCount, mem_e.Message) "`n", "antimouse_core.log")
-                        ; Don't cleanup here, allow state to persist for debugging
-                    }
-                    ; ---------------------------------------------------------
-
-                } else {
-                    FileAppend(Format(
-                        "Timestamp: {} | CapsLock_Q: Failed to get boundaries for initial cell '{}'. Staying GRID_VISIBLE.",
-                        A_TickCount, initialCellKey) "`n", "antimouse_core.log")
-                    currentState := "GRID_VISIBLE" ; Revert if boundary fails
-                }
-            } else {
-                FileAppend(Format(
-                    "Timestamp: {} | CapsLock_Q: No initial cell found under cursor. Staying GRID_VISIBLE.",
-                    A_TickCount) "`n", "antimouse_core.log")
-                currentState := "GRID_VISIBLE" ; Stay in grid mode if no cell found
-            }
-            ; --- END INSTANT SUBGRID LOGIC ---
-
-            ; --- Isolate SetTimer call ---
+            ; Enable cursor tracking timer AFTER grid is fully set up
             try {
-                FileAppend(Format("Timestamp: {} | CapsLock_Q: Attempting SetTimer(TrackCursor, 50).", A_TickCount) "`n",
-                "antimouse_core.log")
+                FileAppend(Format("Timestamp: {} | CapsLock_Q: Attempting SetTimer(TrackCursor, 50).", A_TickCount)
+                "`n", "antimouse_core.log")
                 SetTimer(TrackCursor, 50)
                 FileAppend(Format("Timestamp: {} | CapsLock_Q: SetTimer(TrackCursor, 50) called successfully.",
                     A_TickCount) "`n", "antimouse_core.log")
-            } catch as timer_e {
-                FileAppend(Format(
-                    "Timestamp: {} | CapsLock_Q: **** ERROR calling SetTimer(TrackCursor): {}. Staying SUBGRID_ACTIVE.",
-                    A_TickCount, timer_e.Message) "`n", "antimouse_core.log")
-                ; Don't cleanup
+            } catch as e {
+                FileAppend(Format("Timestamp: {} | CapsLock_Q: ERROR setting TrackCursor timer: {}", A_TickCount,
+                    e.Message) "`n", "antimouse_core.log")
+                if (showcaseDebug) {
+                    ToolTip("Error starting cursor tracker: " e.Message)
+                }
             }
-            ; -----------------------------
 
             gridActivationInProgress := false
         } else {
@@ -381,7 +291,7 @@ Cleanup() {
     A_ScriptDir "\debugRapidRefresh.log")
     ; <<< ADD LOGGING END >>>
     ; Prevent cleanup if already idle (avoids redundant actions)
-        if (currentState == "IDLE") {
+        if (currentState == State_IDLE) {
             gridActivationInProgress := false ; Still ensure this flag is reset
             return
         }
@@ -390,7 +300,7 @@ Cleanup() {
     ; Stop cursor tracking first to prevent interference
     SetTimer(TrackCursor, 0)
     ; Set state to IDLE immediately to prevent re-entry or conflicts
-    currentState := "IDLE"
+    TransitionToState(State_IDLE) ; Use the transition function
     FileAppend(Format("Timestamp: {} | Cleanup: Set currentState = {}. Attempting short Sleep...", A_TickCount,
         currentState) "`n", "antimouse_core.log") ; <<< CORE LOGGING (Adjusted)
     Sleep(10) ; Attempt to allow AHK to process state change
@@ -452,7 +362,6 @@ Cleanup() {
     try {
         if (IsObject(highlight)) {
             highlight.Destroy()
-            highlight := ""
         }
     } catch { ; Ignore error
     }
@@ -491,4 +400,94 @@ Cleanup() {
     Sleep(10) ; Final small delay
     if (showcaseDebug)
         ToolTip("Cleanup complete. State: IDLE")
+}
+
+; Deactivate the grid and clean up
+DeactivateGrid(forced := false) {
+    global subGrid, highlight, currentState, StateMap, gridActivationTime, stateTransitionDelay,
+        g_ModifierState, saveMemoryOnExit, cellMemory,
+        showcaseDebug
+
+    currentTime := A_TickCount
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | DeactivateGrid START | forced={} | currentState={}", currentTime, forced,
+            currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
+    ; <<< ADD LOGGING START >>>
+    FileAppend(Format("Timestamp: {} | DeactivateGrid called | forced={}, currentState={}", A_TickCount, forced,
+        currentState) "`n", "antimouse_core.log")
+    ; <<< ADD LOGGING END >>>
+
+    ; Check if deactivation is happening too quickly after activation
+    ; Use stateTransitionDelay to prevent accidental immediate closure
+    if (!forced && (currentTime - gridActivationTime < stateTransitionDelay)) {
+        if (showcaseDebug) {
+            FileAppend(Format("Timestamp: {} | DeactivateGrid: Debounced (Activation too recent)", currentTime) "`n",
+            A_ScriptDir "\debugRapidRefresh.log")
+        }
+        FileAppend(Format("Timestamp: {} | DeactivateGrid debounced.", A_TickCount) "`n", "antimouse_core.log")
+        return
+    }
+
+    ; Stop cursor tracking
+    SetTimer(TrackCursor, 0)
+
+    ; Destroy overlays - use StateMap consistently
+    if (IsObject(StateMap["overlays"])) {
+        for _, overlay in StateMap["overlays"] {
+            if (IsObject(overlay)) {
+                overlay.Destroy()
+            }
+        }
+    }
+    StateMap["overlays"] := [] ; Clear the array
+    StateMap["currentOverlay"] := ""
+
+    ; Destroy subgrid and highlight if they exist
+    if (IsObject(subGrid)) {
+        subGrid.Destroy()
+        subGrid := ""
+    }
+    if (IsObject(highlight)) {
+        highlight.Destroy()
+        highlight := ""
+    }
+
+    ; Reset StateMap values
+    StateMap["firstKey"] := ""
+    StateMap["activeCellKey"] := ""
+    StateMap["activeSubCellKey"] := ""
+    StateMap["currentColIndex"] := 0
+    StateMap["currentRowIndex"] := 0
+    StateMap["rowKeyHeldTime"] := 0
+    StateMap['inUltraFastMode'] := false
+    StateMap['activeRowKey'] := ""
+
+    ; Reset CapsLock hold mode state
+    g_ModifierState.inHoldMode := false
+
+    ; Reset state
+    TransitionToState(State_IDLE)
+
+    ; Save cell memory if needed
+    if (saveMemoryOnExit) {
+        SaveCellMemory()
+    }
+    if (showcaseDebug) {
+        FileAppend(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
+        A_ScriptDir "\debugRapidRefresh.log")
+    }
+    FileAppend(Format("Timestamp: {} | DeactivateGrid finished, state is now {}", A_TickCount, currentState) "`n",
+    "antimouse_core.log")
+
+    ; Restore CapsLock state if needed (TBD)
+}
+
+; Activates the grid overlay for the current monitor
+ActivateGrid() {
+    ; Explicitly list required global variables
+    global currentState, highlight, subGrid, cellMemory, StateMap
+    global selectedLayout, layoutConfigs, showcaseDebug, storePerMonitor ; Config-related globals
+    global gridActivationInProgress, gridActivationTime, g_ModifierState ; State tracking globals
+    global g_firstKeyPressed ; Add explicit global reference
 }
