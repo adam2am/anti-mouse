@@ -48,6 +48,12 @@ SC023:: ProcessKeyPress("h") ; H
 SC031:: ProcessKeyPress("n") ; N
 SC030:: ProcessKeyPress("b") ; B
 
+; Add Escape key to trigger Cleanup (Context-Specific)
+Escape:: {
+    FileAppend(Format("Timestamp: {} | Context Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
+    Cleanup() ; Call Cleanup() from core_logic.ahk (or activation.ahk)
+}
+
 ; Monitor switching hotkeys (active when grid is visible)
 1:: SwitchMonitor(1) ; Function from core_logic.ahk
 2:: SwitchMonitor(2)
@@ -325,31 +331,6 @@ Space:: {
     }
 }
 
-Escape:: {
-    ; Access global state and config needed
-    global currentState, showcaseDebug
-
-    ; Safely call Cleanup (function from activation.ahk)
-    try {
-        Cleanup()
-    } catch as e {
-        if (showcaseDebug) ToolTip("Error during Escape cleanup: " e.Message)
-        ; If standard cleanup failed, attempt a more forceful cleanup
-            try {
-                currentState := "IDLE" ; Force state
-                ForceCloseAllGuis()    ; Force close GUIs (function from utils.ahk)
-                ; Reset object references manually as a last resort
-                highlight := ""
-                subGrid := ""
-                StateMap['overlays'] := []
-                StateMap['currentOverlay'] := ""
-                ToolTip() ; Clear tooltips
-            } catch {
-                ; Ignore errors during forced cleanup
-            }
-    }
-}
-
 ; Tab key cycles through monitors when the grid is active
 Tab:: {
     ; Access global objects needed
@@ -567,4 +548,70 @@ SC033 up:: CheckRowKeyUpForUltraFast(",") ; Comma
 SC034 up:: CheckRowKeyUpForUltraFast(".") ; Period
 SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
 
+#HotIf
+
+; --- GLOBAL HOTKEYS (Always Active) ---
+
+; Failsafe Escape handler - attempts standard cleanup first, then forces.
+Escape:: {
+    FileAppend(Format("Timestamp: {} | Global Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
+    ; Access global state and config needed
+    global currentState, showcaseDebug, highlight, subGrid, StateMap
+
+    ; Safely call Cleanup (function from activation.ahk / core_logic.ahk)
+    try {
+        Cleanup()
+    } catch as e {
+        if (showcaseDebug)
+            ToolTip("Error during standard Escape cleanup: " e.Message)
+        ; If standard cleanup failed, attempt a more forceful cleanup
+        try {
+            currentState := "IDLE" ; Force state
+            ForceCloseAllGuis()    ; Force close GUIs (function from utils.ahk)
+            ; Reset object references manually as a last resort
+            highlight := ""
+            subGrid := ""
+            if (IsSet(StateMap)) {
+                StateMap['overlays'] := Map()
+                StateMap['currentOverlay'] := ""
+            }
+            ToolTip() ; Clear tooltips
+            SetTimer(TrackCursor, 0) ; Ensure tracking timer is off
+            SetCapsLockState "AlwaysOff"
+            if (showcaseDebug)
+                ToolTip("Forced cleanup executed.")
+            Sleep 500
+            if (showcaseDebug)
+                ToolTip()
+        } catch as force_e {
+            ; Ignore errors during forced cleanup, maybe just basic tooltip clear
+            ToolTip("CRITICAL ERROR during forced cleanup: " force_e.Message)
+            Sleep 1000
+            ToolTip()
+        }
+    }
+}
+
+; Tab key cycles through monitors when the grid is active
+#HotIf currentState == "GRID_VISIBLE" || currentState == "SUBGRID_ACTIVE"
+Tab:: {
+    ; Access global objects needed
+    global subGrid, highlight
+
+    ; Temporarily disable TrackCursor completely during cycle
+    SetTimer(TrackCursor, 0)
+
+    ; Hide subgrid and highlight before switching to prevent visual artifacts
+    if (IsObject(subGrid)) subGrid.Hide()
+        if (IsObject(highlight)) highlight.Hide()
+            Sleep(20) ; Small delay
+
+    ; Cycle to the next monitor (function from core_logic.ahk)
+    CycleToNextMonitor()
+
+    Sleep(30) ; Small delay before re-enabling tracking
+
+    ; Re-enable cursor tracking
+    SetTimer(TrackCursor, 50)
+}
 #HotIf

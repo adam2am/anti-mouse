@@ -190,6 +190,7 @@ CapsLock_Q() {
 
 ; Cleans up all GUI elements and resets the state to IDLE.
 Cleanup() {
+    FileAppend(Format("Timestamp: {} | Cleanup() Function START", A_TickCount) "`n", "antimouse_core.log") ; <<< CORE LOGGING
     ; Access global state
     global currentState, highlight, subGrid, StateMap, g_ModifierState, gridActivationInProgress, showcaseDebug
 

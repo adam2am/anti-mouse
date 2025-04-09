@@ -492,53 +492,63 @@ HandleKey(key) {
 
         ; --- Proceed to Subgrid State (Only if proceedToSubgrid is true) ---
         if (proceedToSubgrid && cellKey != "") {
-            ; <<< ADD LOGGING START >>>
-            if (showcaseDebug) FileAppend(Format("Timestamp: {} | HandleKey: Proceeding to Subgrid | cellKey={}",
-                currentTime, cellKey) "`n", A_ScriptDir "\debugRapidRefresh.log")
-            ; <<< ADD LOGGING END >>>
-                boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+            ; <<< CORE LOGGING START >>>
+            FileAppend(Format("Timestamp: {} | HandleKey: Attempting GetCellBoundaries for cellKey={}", A_TickCount,
+                cellKey) "`n", "antimouse_core.log")
+            ; <<< CORE LOGGING END >>>
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+            ; <<< CORE LOGGING START >>>
+            FileAppend(Format("Timestamp: {} | HandleKey: IsObject(boundaries) result = {}", A_TickCount, IsObject(
+                boundaries)) "`n", "antimouse_core.log")
+            ; <<< CORE LOGGING END >>>
             if (IsObject(boundaries)) {
-                ; <<< ADD LOGGING START >>>
-                if (showcaseDebug) FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Setting currentState=SUBGRID_ACTIVE (Before)", currentTime) "`n",
-                A_ScriptDir "\debugRapidRefresh.log")
-                ; <<< ADD LOGGING END >>>
-                    StateMap['activeCellKey'] := cellKey
+                ; <<< CORE LOGGING START >>>
+                FileAppend(Format(
+                    "Timestamp: {} | HandleKey: Boundaries OK. Setting currentState=SUBGRID_ACTIVE (Before)",
+                    A_TickCount) "`n", "antimouse_core.log")
+                ; <<< CORE LOGGING END >>>
+                StateMap['activeCellKey'] := cellKey
                 stateTransitionTime := currentTime
                 currentState := "SUBGRID_ACTIVE"
 
-                ; <<< ADD LOGGING START >>>
-                if (showcaseDebug) FileAppend(Format(
-                    "Timestamp: {} | HandleKey: Set currentState=SUBGRID_ACTIVE (After) | activeCellKey={}",
-                    currentTime, StateMap['activeCellKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
-                ; <<< ADD LOGGING END >>>
                 ; Set ultra-fast tracking info *if applicable*
-                    if (enableUltraFast && secondKeyWasRow) {
-                        ; Check if this row key is physically held down before setting track variables
-                        rowKeyIsPhysicallyDown := GetKeyState(key, "P")
-                        ; <<< ADD LOGGING START >>>
-                        if (showcaseDebug)
-                            FileAppend(Format(
-                                "Timestamp: {} | HandleKey: Setting UltraFast Vars | key={} | currentTime={} | PhysicallyDown={}",
-                                currentTime, key, currentTime, rowKeyIsPhysicallyDown) "`n", A_ScriptDir "\debugRapidRefresh.log"
-                            )
-                        ; <<< ADD LOGGING END >>>
-                        StateMap['rowKeyHeldTime'] := currentTime
-                        StateMap['activeRowKey'] := key
-                        ; <<< ADD LOGGING START >>>
-                        if (showcaseDebug)
-                            FileAppend(Format(
-                                "Timestamp: {} | HandleKey: Set UltraFast Vars | activeRowKey={} | rowKeyHeldTime={}",
-                                currentTime, StateMap['activeRowKey'], StateMap['rowKeyHeldTime']) "`n", A_ScriptDir "\debugRapidRefresh.log"
-                            )
-                        ; <<< ADD LOGGING END >>>
-                    }
+                if (enableUltraFast && secondKeyWasRow) {
+                    ; Check if this row key is physically held down before setting track variables
+                    rowKeyIsPhysicallyDown := GetKeyState(key, "P")
+                    ; <<< ADD LOGGING START >>>
+                    if (showcaseDebug)
+                        FileAppend(Format(
+                            "Timestamp: {} | HandleKey: Setting UltraFast Vars | key={} | currentTime={} | PhysicallyDown={}",
+                            currentTime, key, currentTime, rowKeyIsPhysicallyDown) "`n", A_ScriptDir "\debugRapidRefresh.log"
+                        )
+                    ; <<< ADD LOGGING END >>>
+                    StateMap['rowKeyHeldTime'] := currentTime
+                    StateMap['activeRowKey'] := key
+                    ; <<< ADD LOGGING START >>>
+                    if (showcaseDebug)
+                        FileAppend(Format(
+                            "Timestamp: {} | HandleKey: Set UltraFast Vars | activeRowKey={} | rowKeyHeldTime={}",
+                            currentTime, StateMap['activeRowKey'], StateMap['rowKeyHeldTime']) "`n", A_ScriptDir "\debugRapidRefresh.log"
+                        )
+                    ; <<< ADD LOGGING END >>>
+                }
 
-                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
                 MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
                 Sleep(40)
+                ; <<< CORE LOGGING START >>>
+                FileAppend(Format("Timestamp: {} | HandleKey: Calling subGrid.Update()", A_TickCount) "`n",
+                "antimouse_core.log")
+                ; <<< CORE LOGGING END >>>
                 subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                ; <<< CORE LOGGING START >>>
+                FileAppend(Format("Timestamp: {} | HandleKey: Calling subGrid.Show()", A_TickCount) "`n",
+                "antimouse_core.log")
+                ; <<< CORE LOGGING END >>>
                 subGrid.Show()
+                ; <<< CORE LOGGING START >>>
+                FileAppend(Format("Timestamp: {} | HandleKey: Called subGrid.Show(). Current state: {}", A_TickCount,
+                    currentState) "`n", "antimouse_core.log")
+                ; <<< CORE LOGGING END >>>
 
                 ; Force redraw
                 try {
@@ -564,8 +574,7 @@ HandleKey(key) {
                         'firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
                 ; <<< ADD LOGGING END >>>
                 ; Check if we have a remembered subcell for this cell
-                    rememberedSubCell := ""
-                cellFound := false
+                    cellFound := false
 
                 ; First check monitor-specific key if enabled
                 if (storePerMonitor && IsObject(StateMap['currentOverlay'])) {
