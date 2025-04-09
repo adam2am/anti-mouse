@@ -4,13 +4,14 @@
 
 ; --- General Behavior ---
 global showcaseDebug := false       ; Enable debug tooltips and delays
+global enableVerboseLogging := true ; Enable detailed FileAppend logging (set false for release)
 global selectedLayout := 2            ; Layout options: 1=User QWERTY/ASDF, 2=ergonomics for diff hands, 3=WASD/QWER
 global storePerMonitor := true      ; Store subcell positions per monitor
 global instaClickMode := false      ; Track if we're in instaclick mode (hold-release click)
 global doubleCapsThreshold := 400   ; Time in ms for double CapsLock detection
 global stateTransitionDelay := 50   ; Minimum time (ms) between state transitions to prevent leakage
 global saveMemoryOnExit := true     ; Save cell memory when deactivating grid
-global keepGridVisible := false     ; Keep grid visible when showing subgrid for easier multi-cell navigation
+global keepGridVisible := true      ; Grid always remains visible when subgrid is active (fixed behavior)
 
 ; --- Ultra-Fast Subgrid Settings ---
 global enableUltraFast := true      ; Enable/disable Ultra-Fast Subgrid mode

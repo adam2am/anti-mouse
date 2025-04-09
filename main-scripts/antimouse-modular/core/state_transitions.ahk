@@ -5,11 +5,11 @@
 ; Reference state constants and variables defined in state.ahk and config.ahk
 global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST, State_CELL_SELECTED
 global StateMap, currentState, showcaseDebug
+global enableVerboseLogging
 
 ; Central function to handle all state transitions
 TransitionToState(newState) {
     global currentState, stateTransitionTime, showcaseDebug, StateMap, subGrid, enableUltraFast, rowKeyHoldThreshold
-    global keepGridVisible
     local oldState
     static transitionInProgress := false  ; Static variable to detect recursive transitions
     static transitionStack := []  ; Track transition stack for debugging
@@ -28,10 +28,12 @@ TransitionToState(newState) {
 
     ; Check for recursive transitions
     if (transitionInProgress) {
-        FileAppend(Format("Timestamp: {} | WARNING: Recursive TransitionToState detected! Attempted '{}'->'{}'",
-            A_TickCount, currentState, newState) "`n", "antimouse_core.log")
-        FileAppend(Format("Timestamp: {} | Current transition stack: {}", A_TickCount,
-            ArrayToString(transitionStack)) "`n", "antimouse_core.log")
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | WARNING: Recursive TransitionToState detected! Attempted '{}'->'{}'",
+                A_TickCount, currentState, newState) "`n", "antimouse_core.log")
+            FileAppend(Format("Timestamp: {} | Current transition stack: {}", A_TickCount,
+                ArrayToString(transitionStack)) "`n", "antimouse_core.log")
+        }
         return  ; Prevent the recursive transition
     }
 
@@ -57,11 +59,18 @@ TransitionToState(newState) {
         FileAppend(Format("Timestamp: {} | TransitionToState: From '{}' -> To '{}'", currentTime, oldState, newState) "`n",
         A_ScriptDir "\debugRapidRefresh.log")
     }
-    FileAppend(Format("Timestamp: {} | CORE | TransitionToState: From '{}' -> To '{}'", currentTime, oldState, newState
-    ) "`n", "antimouse_core.log")
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | CORE | TransitionToState: From '{}' -> To '{}'", currentTime, oldState,
+            newState
+        ) "`n", "antimouse_core.log")
+    }
     ; <<< LOGGING END >>>
 
-    ; --- Perform Exit Actions for oldState ---
+    ; --- Exit actions for the OLD state ---
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | Task: 2.0 | DIAGNOSTIC | Exiting state: {}", A_TickCount, oldState) "`n",
+        "antimouse_core.log")
+    }
     if (oldState == State_GRID_VISIBLE) {
         ; Hide main grid overlays ONLY when exiting back to IDLE state
         ; Hiding when going to subgrids will be handled by subgrid entry actions.
@@ -107,109 +116,173 @@ TransitionToState(newState) {
     currentState := newState
     stateTransitionTime := currentTime
 
-    ; --- Perform Entry Actions for newState ---
-    if (newState == State_GRID_VISIBLE) {
-        ; Show main grid overlays when entering GRID_VISIBLE state
+    ; --- Entry actions for the NEW state ---
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | Task: 2.0 | DIAGNOSTIC | Entering state: {}", A_TickCount, newState) "`n",
+        "antimouse_core.log")
+    }
+    if (newState == State_IDLE) {
+        ; Hide main grid overlays
         if (IsObject(StateMap["overlays"])) {
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 2.14 | GUI | Hiding main grid overlays (Entering IDLE)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
             for _, overlay in StateMap["overlays"] {
                 if (IsObject(overlay)) {
-                    try overlay.Show()
+                    overlay.Hide()
                 }
             }
+        }
+        ; Hide highlight
+        if (IsObject(highlight)) {
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 2.14 | GUI | Hiding highlight (Entering IDLE)", A_TickCount) "`n",
+                "antimouse_core.log")
+            }
+            highlight.Hide()
+        }
+        ; Subgrid should already be hidden by exit actions, but hide again just in case
+        if (IsObject(subGrid)) {
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 2.14 | GUI | Hiding subGrid (Entering IDLE - safety)",
+                    A_TickCount
+                ) "`n", "antimouse_core.log")
+            }
+            subGrid.Hide()
         }
     }
-    /* --- Remove the entire CELL_SELECTED block --- */
-    ; else if (newState == State_CELL_SELECTED) {
-    ;     ; ... (entire block commented out) ...
-    ; }
-    /* --- End of removed block --- */
-    else if (newState == State_SUBGRID_STANDARD) {
-        ; Hide main grid if configured *before* showing subgrid
-        if (!keepGridVisible) {
-            if (IsObject(StateMap["overlays"])) {
-                for _, overlay in StateMap["overlays"] {
-                    if (IsObject(overlay)) {
-                        try overlay.Hide()
-                    }
-                }
-                ; Log hiding action
-                if (showcaseDebug) {
-                    FileAppend(Format(
-                        "Timestamp: {} | TransitionToState: Hiding main grid on entry to SUBGRID_STANDARD (keepGridVisible=false)",
-                        A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
-                }
-            }
-        } else {
-            ; Log NOT hiding action
-            if (showcaseDebug) {
+    else if (newState == State_GRID_VISIBLE) {
+        ; Show main grid overlays
+        if (IsObject(StateMap["overlays"])) {
+            if (enableVerboseLogging) {
                 FileAppend(Format(
-                    "Timestamp: {} | TransitionToState: NOT Hiding main grid on entry to SUBGRID_STANDARD (keepGridVisible=true)",
-                    A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
+                    "Timestamp: {} | Task: 1.1 | GUI | Showing main grid overlays (Entering GRID_VISIBLE)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+            for _, overlay in StateMap["overlays"] {
+                if (IsObject(overlay)) {
+                    overlay.Show()
+                }
             }
         }
-
-        ; ENHANCED DEBUG: Check if subgrid exists before showing
-        FileAppend(Format("Timestamp: {} | DEBUG: Entering SUBGRID_STANDARD, subGrid IsObject={}",
-            A_TickCount, IsObject(subGrid)) "`n", "antimouse_core.log")
-
-        ; Show standard subgrid when entering this state
+        ; Hide highlight and subgrid initially
+        if (IsObject(highlight)) {
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 1.1 | GUI | Hiding highlight (Entering GRID_VISIBLE)",
+                    A_TickCount
+                ) "`n", "antimouse_core.log")
+            }
+            highlight.Hide()
+        }
         if (IsObject(subGrid)) {
-            try {
-                FileAppend(Format("Timestamp: {} | DEBUG: About to show subGrid", A_TickCount) "`n",
-                "antimouse_core.log")
-                subGrid.Show()
-                FileAppend(Format("Timestamp: {} | DEBUG: subGrid.Show() completed successfully", A_TickCount) "`n",
-                "antimouse_core.log")
-            } catch as e {
-                FileAppend(Format("Timestamp: {} | ERROR: Failed to show subgrid: {}", A_TickCount, e.Message) "`n",
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 1.1 | GUI | Hiding subGrid (Entering GRID_VISIBLE)",
+                    A_TickCount) "`n",
                 "antimouse_core.log")
             }
+            subGrid.Hide()
+        }
+    }
+    else if (newState == State_SUBGRID_STANDARD) {
+        ; --- Task: 4.4 Start: Optionally hide main grid ---
+        ; <<< REMOVED keepGridVisible check and main grid hiding logic >>>
+        ; --- Task: 4.4 End ---
+
+        ; Ensure highlight is visible (should be updated by HandleSecondKey)
+        if (IsObject(highlight)) {
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 2.1 | GUI | Ensuring highlight is shown (Entering SUBGRID_STANDARD)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+            ; highlight.Show()
+        }
+        ; Show subgrid
+        if (IsObject(subGrid)) {
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 2.11 | GUI | Showing subGrid (Entering SUBGRID_STANDARD)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+            subGrid.Show()
         } else {
-            FileAppend(Format("Timestamp: {} | ERROR: subGrid is not a valid object when entering SUBGRID_STANDARD",
-                A_TickCount) "`n", "antimouse_core.log")
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 2.11 | WARNING | Cannot show subGrid - IsObject=false (Entering SUBGRID_STANDARD)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
         }
     }
     else if (newState == State_SUBGRID_ULTRAFAST) {
-        ; Hide main grid if configured *before* showing subgrid
+        ; Similar logic to SUBGRID_STANDARD for main grid visibility
         if (!keepGridVisible) {
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 4.4 | GUI | Hiding main grid (keepGridVisible=false, Entering SUBGRID_ULTRAFAST)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
             if (IsObject(StateMap["overlays"])) {
                 for _, overlay in StateMap["overlays"] {
                     if (IsObject(overlay)) {
-                        try overlay.Hide()
+                        overlay.Hide()
                     }
                 }
-                ; Log hiding action
-                if (showcaseDebug) {
-                    FileAppend(Format(
-                        "Timestamp: {} | TransitionToState: Hiding main grid on entry to SUBGRID_ULTRAFAST (keepGridVisible=false)",
-                        A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
-                }
+            }
+        } else {
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 4.4 | GUI | Keeping main grid visible (keepGridVisible=true, Entering SUBGRID_ULTRAFAST)",
+                    A_TickCount) "`n", "antimouse_core.log")
             }
         }
-
-        ; Show subgrid when entering ultra-fast state
+        ; Ensure highlight is visible
+        if (IsObject(highlight)) {
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 2.12 | GUI | Ensuring highlight is shown (Entering SUBGRID_ULTRAFAST)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+            highlight.Show()
+        }
+        ; Subgrid itself isn't shown in ultra-fast mode, only the highlight
         if (IsObject(subGrid)) {
-            ; TODO: Ensure subGrid is configured/updated for the ultra-fast layout before showing
-            ; This will likely happen in Phase 3 logic that *triggers* this state transition.
-            try subGrid.Show()
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 2.12 | GUI | Hiding subGrid (Entering SUBGRID_ULTRAFAST)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+            subGrid.Hide()
         }
     }
+
+    ; --- CORE LOGGING START --- Task: 2.0
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | Task: 2.0 | CORE | TransitionToState END | newState='{}'", A_TickCount,
+            newState
+        ) "`n", "antimouse_core.log")
+    }
+    ; --- CORE LOGGING END ---
 
     transitionInProgress := false  ; Reset the flag before returning
 }
 
 ; Function to start a new selection cycle
 StartNewSelection(key) {
-    FileAppend(Format("Timestamp: {} | StartNewSelection START | key={}", A_TickCount, key) "`n", "antimouse_core.log") ; <<< CORE LOGGING
-    global currentState, subGrid, highlight, StateMap, enableUltraFast, showcaseDebug, g_firstKeyPressed
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | StartNewSelection START | key={}", A_TickCount, key) "`n",
+        "antimouse_core.log")
+    }
+    global currentState, subGrid, highlight, StateMap, enableUltraFast, showcaseDebug, g_firstKeyPressed,
+        enableVerboseLogging
 
     ; Define currentTime at the beginning
     currentTime := A_TickCount
 
     ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-    FileAppend(Format(
-        "Timestamp: {} | DIAGNOSTIC | StartNewSelection: key='{}', currentState='{}', g_firstKeyPressed='{}'",
-        A_TickCount, key, currentState, g_firstKeyPressed) "`n", "antimouse_core.log")
+    if (enableVerboseLogging) {
+        FileAppend(Format(
+            "Timestamp: {} | DIAGNOSTIC | StartNewSelection: key='{}', currentState='{}', g_firstKeyPressed='{}'",
+            A_TickCount, key, currentState, g_firstKeyPressed) "`n", "antimouse_core.log")
+    }
     ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
     ; <<< ADD LOGGING START >>>
@@ -280,8 +353,10 @@ StartNewSelection(key) {
     StateMap['firstKey'] := ""
 
     ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-    FileAppend(Format("Timestamp: {} | DIAGNOSTIC | StartNewSelection: Resetting g_firstKeyPressed from '{}' to ''",
-        A_TickCount, g_firstKeyPressed) "`n", "antimouse_core.log")
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | StartNewSelection: Resetting g_firstKeyPressed from '{}' to ''",
+            A_TickCount, g_firstKeyPressed) "`n", "antimouse_core.log")
+    }
     ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
     ; Explicitly reset g_firstKeyPressed to ensure new key selection works
@@ -295,25 +370,33 @@ StartNewSelection(key) {
         StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     ; <<< ADD LOGGING END >>>
     ; <<< STATE TRANSITION >>>
-    ; Transition to GRID_VISIBLE *before* calling HandleKey for the new selection
+    ; Transition to GRID_VISIBLE *before* processing the new key
         TransitionToState(State_GRID_VISIBLE)
-
-    ; Force a small delay to ensure state transitions properly
-    Sleep(10)
 
     ; Call HandleKey to process the key press - ONLY if key is not empty
     if (key != "") {
-        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | StartNewSelection: Calling HandleKey('{}') in new state '{}'",
-            A_TickCount, key, currentState) "`n", "antimouse_core.log")
-        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
+        ; <<< TASK 5.1 FIX START: Defer HandleKey call >>>
+        ; Use SetTimer with a negative delay (-10) to run HandleKey ASAP after current thread finishes,
+        ; allowing TransitionToState to complete its GUI updates (showing overlays).
+        if (enableVerboseLogging) {
+            FileAppend(Format(
+                "Timestamp: {} | Task: 5.1 | DIAGNOSTIC | StartNewSelection: Scheduling deferred HandleKey('{}')",
+                A_TickCount, key) "`n", "antimouse_core.log")
+        }
+        SetTimer(() => HandleKey(key), -10) ; Defer HandleKey execution
+        ; <<< TASK 5.1 FIX END >>>
 
-        HandleKey(key)
+        ; HandleKey(key) ; <<< REMOVED direct call
     } else {
         ; If key was empty (called from TrackCursor), just ensure state is GRID_VISIBLE and restart tracker
         ; TransitionToState(State_GRID_VISIBLE) ; Already transitioned above
+        if (enableVerboseLogging) {
+            FileAppend(Format(
+                "Timestamp: {} | Task: 5.1 | DIAGNOSTIC | StartNewSelection: Key was empty, restarting TrackCursor directly.",
+                A_TickCount) "`n", "antimouse_core.log")
+        }
         SetTimer(TrackCursor, 50)
     }
 
-    ; TrackCursor re-enabled in HandleKey OR above
+    ; TrackCursor re-enabled either by deferred HandleKey or directly above for empty key
 }

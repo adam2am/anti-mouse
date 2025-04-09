@@ -21,7 +21,8 @@ TrackCursor() {
 
     try {
         ; Access global state and configuration
-        global currentState, highlight, subGrid, StateMap, showcaseDebug, enableUltraFast, rowKeyHoldThreshold
+        global currentState, highlight, subGrid, StateMap, showcaseDebug, enableUltraFast, rowKeyHoldThreshold,
+            enableVerboseLogging
 
         ; Get current mouse position
         MouseGetPos(&x, &y)
@@ -202,14 +203,20 @@ TrackCursor() {
         }
 
     } catch as e {
-        ; --- CORE LOGGING START ---
-        FileAppend(Format("Timestamp: {} | TrackCursor: **** ERROR **** {}", A_TickCount, e.Message) "`n",
-        "antimouse_core.log")
-        ; --- CORE LOGGING END ---
-        ; Attempt to cleanup on error
+        ; <<< TASK 5.2 START: Add verbose logging check >>>
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | TrackCursor: **** ERROR **** {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+        }
+        ; <<< TASK 5.2 END >>>
         Cleanup()
     } finally {
-        ; Ensure the lock is always released
         trackingInProgress := false
+        ; <<< TASK 5.2 START: Add verbose logging check >>>
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | TrackCursor: END | trackingInProgress=false", A_TickCount) "`n",
+            "antimouse_core.log")
+        }
+        ; <<< TASK 5.2 END >>>
     }
 }

@@ -11,33 +11,34 @@ CapsLock_Q() {
     global selectedLayout, layoutConfigs, showcaseDebug ; Also ensure these are global
     global gridActivationInProgress, gridActivationTime ; For preventing double activation
     global g_firstKeyPressed ; Add explicit global reference
+    global enableVerboseLogging ; Added enableVerboseLogging
 
     ; Define currentTime at the beginning for all code paths
     currentTime := A_TickCount
 
-    ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-    FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q START | currentState='{}' | g_firstKeyPressed='{}'",
-        A_TickCount, currentState, g_firstKeyPressed) "`n", "antimouse_core.log")
-    ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
     ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) FileAppend(Format("Timestamp: {} | CapsLock_Q START | currentState={}", currentTime,
-        currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    if (showcaseDebug)
+        FileAppend(Format("Timestamp: {} | CapsLock_Q START | currentState={} | firstKey={}", A_TickCount,
+            currentState, StateMap['firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    if (enableVerboseLogging) { ; <<< WRAPPED
+        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q START | currentState='{}' | g_firstKeyPressed='{}'",
+            A_TickCount, currentState, g_firstKeyPressed) "`n", "antimouse_core.log")
+    }
     ; <<< ADD LOGGING END >>>
     ; Protect against double activation
-        if (gridActivationInProgress || (currentTime - gridActivationTime < 300)) {
-            ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-            FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Activation already in progress, ignoring",
-                A_TickCount) "`n", "antimouse_core.log")
-            ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
+    if (gridActivationInProgress || (currentTime - gridActivationTime < 300)) {
+        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
+        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Activation already in progress, ignoring",
+            A_TickCount) "`n", "antimouse_core.log")
+        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
-            if (showcaseDebug) {
-                ToolTip("Grid activation already in progress, ignoring duplicate request")
-                Sleep(200)
-                ToolTip()
-            }
-            return
+        if (showcaseDebug) {
+            ToolTip("Grid activation already in progress, ignoring duplicate request")
+            Sleep(200)
+            ToolTip()
         }
+        return
+    }
 
     ; Set activation flag and timestamp
     gridActivationInProgress := true
@@ -282,6 +283,7 @@ Cleanup() {
     FileAppend(Format("Timestamp: {} | Cleanup() Function START", A_TickCount) "`n", "antimouse_core.log") ; <<< CORE LOGGING
     ; Access global state
     global currentState, highlight, subGrid, StateMap, g_ModifierState, gridActivationInProgress, showcaseDebug
+    global enableVerboseLogging ; Added enableVerboseLogging
 
     ; Define currentTime at the beginning for all code paths
     currentTime := A_TickCount
@@ -289,12 +291,16 @@ Cleanup() {
     ; <<< ADD LOGGING START >>>
     if (showcaseDebug) FileAppend(Format("Timestamp: {} | Cleanup START | currentState={}", currentTime, currentState) "`n",
     A_ScriptDir "\debugRapidRefresh.log")
+        if (enableVerboseLogging) { ; <<< WRAPPED
+            FileAppend(Format("Timestamp: {} | Cleanup START | currentState={}", currentTime, currentState) "`n",
+            "antimouse_core.log")
+        }
     ; <<< ADD LOGGING END >>>
     ; Prevent cleanup if already idle (avoids redundant actions)
-        if (currentState == State_IDLE) {
-            gridActivationInProgress := false ; Still ensure this flag is reset
-            return
-        }
+    if (currentState == State_IDLE) {
+        gridActivationInProgress := false ; Still ensure this flag is reset
+        return
+    }
 
     ; --- Immediate State Reset ---
     ; Stop cursor tracking first to prevent interference
@@ -314,8 +320,15 @@ Cleanup() {
         "Timestamp: {} | Cleanup: Resetting State (Before) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
         currentTime, StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log"
     )
+        if (enableVerboseLogging) { ; <<< WRAPPED
+            FileAppend(Format(
+                "Timestamp: {} | Cleanup: Resetting State (Before) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
+                currentTime, StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n",
+            A_ScriptDir "\debugRapidRefresh.log"
+            )
+        }
     ; <<< ADD LOGGING END >>>
-        StateMap['firstKey'] := "" ; Clear partial selections
+    StateMap['firstKey'] := "" ; Clear partial selections
 
     ; --- Reset Ultra-Fast Mode State ---
     StateMap['inUltraFastMode'] := false ; Ensure ultra-fast mode is deactivated
@@ -326,9 +339,16 @@ Cleanup() {
         "Timestamp: {} | Cleanup: Reset State (After) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
         currentTime, StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log"
     )
+        if (enableVerboseLogging) { ; <<< WRAPPED
+            FileAppend(Format(
+                "Timestamp: {} | Cleanup: Reset State (After) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
+                currentTime, StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n",
+            A_ScriptDir "\debugRapidRefresh.log"
+            )
+        }
     ; <<< ADD LOGGING END >>>
     ; Clear any lingering tooltips
-        ToolTip()
+    ToolTip()
 
     ; --- Hide GUI Elements (Best Effort) ---
     ; Use try/catch for each element as they might already be destroyed or invalid
@@ -405,8 +425,7 @@ Cleanup() {
 ; Deactivate the grid and clean up
 DeactivateGrid(forced := false) {
     global subGrid, highlight, currentState, StateMap, gridActivationTime, stateTransitionDelay,
-        g_ModifierState, saveMemoryOnExit, cellMemory,
-        showcaseDebug
+        g_ModifierState, saveMemoryOnExit, cellMemory, showcaseDebug, enableVerboseLogging ; Added enableVerboseLogging
 
     currentTime := A_TickCount
     if (showcaseDebug) {
@@ -414,8 +433,10 @@ DeactivateGrid(forced := false) {
             currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
     }
     ; <<< ADD LOGGING START >>>
-    FileAppend(Format("Timestamp: {} | DeactivateGrid called | forced={}, currentState={}", A_TickCount, forced,
-        currentState) "`n", "antimouse_core.log")
+    if (enableVerboseLogging) { ; <<< WRAPPED
+        FileAppend(Format("Timestamp: {} | DeactivateGrid called | forced={}, currentState={}", A_TickCount, forced,
+            currentState) "`n", "antimouse_core.log")
+    }
     ; <<< ADD LOGGING END >>>
 
     ; Check if deactivation is happening too quickly after activation
@@ -425,7 +446,9 @@ DeactivateGrid(forced := false) {
             FileAppend(Format("Timestamp: {} | DeactivateGrid: Debounced (Activation too recent)", currentTime) "`n",
             A_ScriptDir "\debugRapidRefresh.log")
         }
-        FileAppend(Format("Timestamp: {} | DeactivateGrid debounced.", A_TickCount) "`n", "antimouse_core.log")
+        if (enableVerboseLogging) { ; <<< WRAPPED
+            FileAppend(Format("Timestamp: {} | DeactivateGrid debounced.", A_TickCount) "`n", "antimouse_core.log")
+        }
         return
     }
 
@@ -471,14 +494,20 @@ DeactivateGrid(forced := false) {
 
     ; Save cell memory if needed
     if (saveMemoryOnExit) {
+        if (enableVerboseLogging) { ; <<< WRAPPED
+            FileAppend(Format("Timestamp: {} | DeactivateGrid: Saving cell memory.", A_TickCount) "`n",
+            "antimouse_core.log")
+        }
         SaveCellMemory()
     }
     if (showcaseDebug) {
         FileAppend(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
         A_ScriptDir "\debugRapidRefresh.log")
     }
-    FileAppend(Format("Timestamp: {} | DeactivateGrid finished, state is now {}", A_TickCount, currentState) "`n",
-    "antimouse_core.log")
+    if (enableVerboseLogging) { ; <<< WRAPPED
+        FileAppend(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
+        "antimouse_core.log")
+    }
 
     ; Restore CapsLock state if needed (TBD)
 }
@@ -491,3 +520,9 @@ ActivateGrid() {
     global gridActivationInProgress, gridActivationTime, g_ModifierState ; State tracking globals
     global g_firstKeyPressed ; Add explicit global reference
 }
+
+; --- Cell Memory Management --- START ---
+; <<< REMOVE START >>>
+; ... existing code ...
+; <<< REMOVE END >>>
+; --- Cell Memory Management --- END ---

@@ -51,18 +51,28 @@ SC030:: ProcessKeyPress("b") ; B
 
 ; Add Escape key to trigger Cleanup (Context-Specific)
 Escape:: {
-    FileAppend(Format("Timestamp: {} | Global Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | Global Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
+    }
     ; Access global state and config needed
-    global currentState, showcaseDebug, highlight, subGrid, StateMap ; Reference showcaseDebug from config.ahk
+    global currentState, showcaseDebug, highlight, subGrid, StateMap, enableVerboseLogging
 
-    ; Safely call Cleanup (function from activation.ahk / core_logic.ahk)
+    ; Safely call Cleanup (function from activation.ahk)
     try {
         Cleanup()
     } catch as e {
         if (showcaseDebug)
             ToolTip("Error during standard Escape cleanup: " e.Message)
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | **** ERROR in Escape Hotkey Cleanup: {} ****", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+        }
         ; If standard cleanup failed, attempt a more forceful cleanup
         try {
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Escape Hotkey: Attempting forced cleanup...", A_TickCount) "`n",
+                "antimouse_core.log")
+            }
             currentState := State_IDLE ; Force state
             ForceCloseAllGuis()    ; Force close GUIs (function from utils.ahk)
             ; Reset object references manually as a last resort
@@ -80,8 +90,16 @@ Escape:: {
             Sleep 500
             if (showcaseDebug)
                 ToolTip()
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Escape Hotkey: Forced cleanup finished.", A_TickCount) "`n",
+                "antimouse_core.log")
+            }
         } catch as force_e {
             ; Ignore errors during forced cleanup, maybe just basic tooltip clear
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | **** CRITICAL ERROR during forced Escape cleanup: {} ****",
+                    A_TickCount, force_e.Message) "`n", "antimouse_core.log")
+            }
             ToolTip("CRITICAL ERROR during forced cleanup: " force_e.Message)
             Sleep 1000
             ToolTip()

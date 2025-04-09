@@ -5,6 +5,7 @@
 ; Access global config variables
 global settingsFile, cellMemoryFile, layoutConfigs ; Import from config.ahk
 global showcaseDebug ; Reference the variable defined in config.ahk
+global enableVerboseLogging := true ; Enable detailed FileAppend logging
 
 ; --- Cell Memory Management ---
 
@@ -113,21 +114,21 @@ LoadSettings() {
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
     global defaultTransparency, highlightColor, instaClickMode
     global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
-    global keepGridVisible ; Grid visibility option
 
     try {
         if (FileExist(settingsFile)) {
             ; Load general settings, providing current value as default
             loadedLayout := IniRead(settingsFile, "General", "Layout", selectedLayout)
             ; Validate loaded layout
-            if (IsInteger(loadedLayout) && loadedLayout >= 1 && loadedLayout <= layoutConfigs.Length) {
-                selectedLayout := loadedLayout
+            if (IsObject(layoutConfigs)) {
+                if (IsInteger(loadedLayout) && loadedLayout >= 1 && loadedLayout <= layoutConfigs.Length) {
+                    selectedLayout := loadedLayout
+                }
             }
 
             storePerMonitor := IniRead(settingsFile, "General", "StorePerMonitor", storePerMonitor)
             showcaseDebug := IniRead(settingsFile, "General", "Debug", showcaseDebug)
             instaClickMode := IniRead(settingsFile, "General", "InstaClickMode", instaClickMode)
-            keepGridVisible := IniRead(settingsFile, "General", "KeepGridVisible", keepGridVisible)
 
             ; Load Ultra-Fast Subgrid settings
             enableUltraFast := IniRead(settingsFile, "UltraFast", "Enable", enableUltraFast)
@@ -162,7 +163,7 @@ LoadSettings() {
         }
         ; No error if file doesn't exist, just use default values
     } catch as e {
-        MsgBox("Error loading settings: " e.Message, "Load Error", "IconError")
+        MsgBox("Error loading settings: " e.Message, "Load Error", "Icon!")
         ; Continue with default settings if loading fails
     }
 }
@@ -173,7 +174,6 @@ SaveSettings() {
     global settingsFile, selectedLayout, storePerMonitor, showcaseDebug, monitorMapping
     global defaultTransparency, highlightColor, instaClickMode
     global enableUltraFast, rowKeyHoldThreshold ; Ultra-Fast Subgrid settings
-    global keepGridVisible ; Grid visibility option
 
     try {
         ; Ensure the directory exists before writing
@@ -187,7 +187,6 @@ SaveSettings() {
         IniWrite(storePerMonitor, settingsFile, "General", "StorePerMonitor")
         IniWrite(showcaseDebug, settingsFile, "General", "Debug")
         IniWrite(instaClickMode, settingsFile, "General", "InstaClickMode")
-        IniWrite(keepGridVisible, settingsFile, "General", "KeepGridVisible")
 
         ; Save Ultra-Fast Subgrid settings
         IniWrite(enableUltraFast, settingsFile, "UltraFast", "Enable")
@@ -210,7 +209,7 @@ SaveSettings() {
 
         return true ; Indicate success
     } catch as e {
-        MsgBox("Error saving settings: " e.Message, "Save Error", "IconError")
+        MsgBox("Error saving settings: " e.Message, "Save Error", "Icon!")
         return false ; Indicate failure
     }
 }
