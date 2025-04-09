@@ -139,6 +139,13 @@ TransitionToState(newState) {
                         A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
                 }
             }
+        } else {
+            ; Log NOT hiding action
+            if (showcaseDebug) {
+                FileAppend(Format(
+                    "Timestamp: {} | TransitionToState: NOT Hiding main grid on entry to SUBGRID_STANDARD (keepGridVisible=true)",
+                    A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
+            }
         }
 
         ; ENHANCED DEBUG: Check if subgrid exists before showing

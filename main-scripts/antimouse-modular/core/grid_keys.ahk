@@ -213,77 +213,89 @@ HandleKey(key) {
 
 ; Handle the first key press of a cell selection (column or row)
 HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex) {
-    global g_firstKeyPressed, StateMap, currentState, showcaseDebug
+    global g_firstKeyPressed, StateMap, currentState, showcaseDebug, highlight
     currentTime := A_TickCount
 
-    ; --- CORE LOGGING START ---
-    FileAppend(Format("Timestamp: {} | HandleFirstKey START | key='{}', isColKey={}, isRowKey={}",
-        A_TickCount, key, isColKey, isRowKey) "`n", "antimouse_core.log")
-    ; --- CORE LOGGING END ---
-
-    ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) {
-        FileAppend(Format("Timestamp: {} | HandleFirstKey: First Key Press | key={}", currentTime, key) "`n",
-        A_ScriptDir "\debugRapidRefresh.log")
-    }
-    ; <<< ADD LOGGING END >>>
-
-    ; Store the first key - critical for two-step selection process
+    ; Store the first key pressed
     g_firstKeyPressed := key
+    StateMap['firstKey'] := key
 
-    ; Cell highlight logic based on whether it's a column or row key
     cellKey := ""
+    targetCellX := 0
+    targetCellY := 0
+    targetCellW := 0
+    targetCellH := 0
     tooltipText := ""
 
     if (isColKey) {
         ; First key is COLUMN
-        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleFirstKey: First key is COLUMN='{}'",
-            A_TickCount, key) "`n", "antimouse_core.log")
-        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
         StateMap['currentColIndex'] := colIndex
+        ; Guess the row based on last selected or default to 1
         targetRowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 1
-        targetRowIndex := GridValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
+        targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
+        ; Construct the guessed cell key (Col + Guessed Row)
         cellKey := key . StateMap['activeRowKeys'][targetRowIndex]
         tooltipText := "First key: " key ". Select row."
+        FileAppend(Format(
+            "Timestamp: {} | DIAGNOSTIC | HandleFirstKey: First key is COLUMN='{}', guessing cellKey='{}'", A_TickCount,
+            key, cellKey) "`n", "antimouse_core.log")
     } else { ; isRowKey
         ; First key is ROW
-        ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleFirstKey: First key is ROW='{}'",
-            A_TickCount, key) "`n", "antimouse_core.log")
-        ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
-
         StateMap['currentRowIndex'] := rowIndex
-        StateMap['lastSelectedRowIndex'] := rowIndex
+        StateMap['lastSelectedRowIndex'] := rowIndex ; Remember last row
+        ; Guess the column based on last selected or default to middle
         targetColIndex := StateMap['currentColIndex'] ? StateMap['currentColIndex'] : Ceil(StateMap['activeColKeys'].Length /
             2)
-        targetColIndex := GridValidateIndex(targetColIndex, StateMap['activeColKeys'].Length)
+        targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length)
+        ; Construct the guessed cell key (Guessed Col + Row)
         cellKey := StateMap['activeColKeys'][targetColIndex] . key
         tooltipText := "First key: " key ". Select column."
+        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | HandleFirstKey: First key is ROW='{}', guessing cellKey='{}'",
+            A_TickCount, key, cellKey) "`n", "antimouse_core.log")
     }
 
-    ; Get the boundaries of the highlighted cell
-    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+    ; --- RESTORED MouseMove and Highlight logic ---
+    boundaries := ""
+    if (IsObject(StateMap['currentOverlay'])) {
+        boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+    }
 
-    ; Update highlight with these boundaries
-    if (IsObject(highlight) && IsObject(boundaries)) {
-        try {
-            highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-            highlight.Show()
+    if (IsObject(boundaries)) {
+        targetCellX := boundaries.x
+        targetCellY := boundaries.y
+        targetCellW := boundaries.w
+        targetCellH := boundaries.h
+
+        ; Update highlight and move mouse to center of guessed cell
+        if (IsObject(highlight) && targetCellW > 0) {
+            highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
+            MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
+            Sleep(10) ; Short delay for visual update
+
+            if (showcaseDebug) {
+                ToolTip(tooltipText)
+            }
+        } else {
+            FileAppend(Format(
+                "Timestamp: {} | WARNING | HandleFirstKey: Could not update highlight (highlight object: {}, targetCellW: {})",
+                A_TickCount, IsObject(highlight), targetCellW) "`n", "antimouse_core.log")
         }
+    } else {
+        FileAppend(Format("Timestamp: {} | WARNING | HandleFirstKey: Could not get boundaries for guessed cellKey '{}'",
+            A_TickCount, cellKey) "`n", "antimouse_core.log")
+        ; Optionally hide highlight if boundaries fail?
+        ; if (IsObject(highlight)) {
+        ;     highlight.Hide()
+        ; }
     }
-
-    ; Show tooltip if debug is enabled
-    if (showcaseDebug) {
-        ToolTip(tooltipText)
-    }
+    ; --- END RESTORED LOGIC ---
 
     ; Re-enable cursor tracking
     SetTimer(TrackCursor, 50)
 
     ; --- CORE LOGGING START ---
-    FileAppend(Format("Timestamp: {} | HandleFirstKey END | g_firstKeyPressed='{}', cellKey='{}'",
+    ; Log the stored first key and the *guessed* cell key
+    FileAppend(Format("Timestamp: {} | HandleFirstKey END | Stored g_firstKeyPressed='{}', Guessed cellKey='{}'",
         A_TickCount, g_firstKeyPressed, cellKey) "`n", "antimouse_core.log")
     ; --- CORE LOGGING END ---
 }
