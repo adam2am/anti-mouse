@@ -181,6 +181,22 @@ TrackCursor() {
                 StartNewSelection("") ; Pass empty key as it's not a key press trigger
             }
         } else if (currentState == State_GRID_VISIBLE) {
+            ; --- Task 2.17: Trigger Subgrid Transition based on DetectCellFunc --- START ---
+            ; Check if DetectCellFunc has set an active cell key
+            if (StateMap.Has('activeCellKey') && StateMap['activeCellKey'] != "") {
+                if (enableVerboseLogging) {
+                    FileAppend(Format(
+                        "Timestamp: {} | Task 2.17 | TrackCursor: activeCellKey '{}' found in GRID_VISIBLE state. Transitioning to SUBGRID_STANDARD.",
+                        A_TickCount, StateMap['activeCellKey']) "`n", "antimouse_core.log")
+                }
+                ; Transition to subgrid now that the grid should be stable
+                TransitionToState(State_SUBGRID_STANDARD)
+                ; Don't do the highlight following logic below if we just transitioned
+                trackingInProgress := false ; Reset flag before returning
+                return
+            }
+            ; --- Task 2.17 --- END ---
+
             ; <<< TASK 1.6 START: Implement Highlight Following >>>
             ; Ensure overlay and highlight objects are valid
             if (IsObject(StateMap['currentOverlay']) && IsObject(highlight)) {

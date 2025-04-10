@@ -45,8 +45,13 @@ DetectCellFunc() {
                 ; highlight.Show() ; Removed - Show is handled by Update() in HighlightOverlay
             }
 
-            ; Transition to subgrid state
-            TransitionToState(State_SUBGRID_STANDARD)
+            ; Transition to subgrid state -- REMOVED, will be handled by TrackCursor
+            ; TransitionToState(State_SUBGRID_STANDARD)
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Set activeCellKey='{}', highlight updated. Transition deferred to TrackCursor.",
+                    A_TickCount, cellKey) "`n", "antimouse_core.log")
+            }
         } else {
             if (enableVerboseLogging) {
                 FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Failed to get boundaries for cell '{}'",
@@ -257,7 +262,7 @@ TransitionToState(newState) {
         ; --- TASK 2.17: Automatic Subgrid Detection ---
         ; Use a standard AHK v2 timer function to detect cells
         DetectCellTimer := DetectCellFunc.Bind()
-        SetTimer(DetectCellTimer, -200)  ; 200ms delay, run once - Re-enabled
+        SetTimer(DetectCellTimer, -1)  ; Run ASAP after current thread finishes
     }
     else if (newState == State_SUBGRID_STANDARD) {
         ; --- Task: 4.4 Start: Optionally hide main grid ---
