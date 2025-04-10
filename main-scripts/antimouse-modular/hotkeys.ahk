@@ -52,7 +52,7 @@ SC030:: ProcessKeyPress("b") ; B
 ; Add Escape key to trigger Cleanup (Context-Specific)
 Escape:: {
     if (enableVerboseLogging) {
-        FileAppend(Format("Timestamp: {} | Global Escape Hotkey Fired", A_TickCount) "`n", "antimouse_core.log")
+        LogToFile(Format("Timestamp: {} | Global Escape Hotkey Fired", A_TickCount), "antimouse_core.log")
     }
     ; Access global state and config needed
     global currentState, showcaseDebug, highlight, subGrid, StateMap, enableVerboseLogging
@@ -64,13 +64,13 @@ Escape:: {
         if (showcaseDebug)
             ToolTip("Error during standard Escape cleanup: " e.Message)
         if (enableVerboseLogging) {
-            FileAppend(Format("Timestamp: {} | **** ERROR in Escape Hotkey Cleanup: {} ****", A_TickCount, e.Message) "`n",
+            LogToFile(Format("Timestamp: {} | **** ERROR in Escape Hotkey Cleanup: {} ****", A_TickCount, e.Message),
             "antimouse_core.log")
         }
         ; If standard cleanup failed, attempt a more forceful cleanup
         try {
             if (enableVerboseLogging) {
-                FileAppend(Format("Timestamp: {} | Escape Hotkey: Attempting forced cleanup...", A_TickCount) "`n",
+                LogToFile(Format("Timestamp: {} | Escape Hotkey: Attempting forced cleanup...", A_TickCount),
                 "antimouse_core.log")
             }
             currentState := State_IDLE ; Force state
@@ -91,14 +91,14 @@ Escape:: {
             if (showcaseDebug)
                 ToolTip()
             if (enableVerboseLogging) {
-                FileAppend(Format("Timestamp: {} | Escape Hotkey: Forced cleanup finished.", A_TickCount) "`n",
+                LogToFile(Format("Timestamp: {} | Escape Hotkey: Forced cleanup finished.", A_TickCount),
                 "antimouse_core.log")
             }
         } catch as force_e {
             ; Ignore errors during forced cleanup, maybe just basic tooltip clear
             if (enableVerboseLogging) {
-                FileAppend(Format("Timestamp: {} | **** CRITICAL ERROR during forced Escape cleanup: {} ****",
-                    A_TickCount, force_e.Message) "`n", "antimouse_core.log")
+                LogToFile(Format("Timestamp: {} | **** CRITICAL ERROR during forced Escape cleanup: {} ****",
+                    A_TickCount, force_e.Message), "antimouse_core.log")
             }
             ToolTip("CRITICAL ERROR during forced cleanup: " force_e.Message)
             Sleep 1000
@@ -609,7 +609,7 @@ CapsLock Up:: {
 ; :*:;settings:: ShowSettingsGUI()
 
 ; --- ROW KEY UP EVENTS FOR ULTRA-FAST SUBGRID MODE ---
-#HotIf currentState == State_SUBGRID_STANDARD && StateMap['inUltraFastMode']
+#HotIf currentState == State_SUBGRID_STANDARD && StateMap.Get("inUltraFastMode", false)
 
 ; Function to handle row key releases in ultra-fast mode
 CheckRowKeyUpForUltraFast(key) {
@@ -641,7 +641,7 @@ SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
     global showcaseDebug ; Reference variable from config.ahk
     currentTime := A_TickCount
     if (showcaseDebug) {
-        FileAppend(Format("Timestamp: {} | CapsLock+Shift Hotkey: Deactivating via Shift", currentTime) "`n",
+        LogToFile(Format("Timestamp: {} | CapsLock+Shift Hotkey: Deactivating via Shift", currentTime),
         A_ScriptDir "\debugRapidRefresh.log")
     }
     TransitionToState(State_IDLE) ; Set state first
@@ -654,14 +654,8 @@ SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
 ~$Escape:: {
     global showcaseDebug ; Reference variable from config.ahk
     currentTime := A_TickCount
-    if (showcaseDebug) {
-        FileAppend(Format("Timestamp: {} | Escape Hotkey: Deactivating", currentTime) "`n", A_ScriptDir "\debugRapidRefresh.log"
-        )
-    }
-    ; <<< ADD LOGGING START >>>
-    FileAppend(Format("Timestamp: {} | Escape pressed, calling DeactivateGrid", A_TickCount) "`n", "antimouse_core.log"
+    LogToFile(Format("Timestamp: {} | Escape pressed, calling DeactivateGrid", A_TickCount), "antimouse_core.log"
     )
-    ; <<< ADD LOGGING END >>>
     TransitionToState(State_IDLE)
     DeactivateGrid(true)
 }
@@ -672,14 +666,8 @@ SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
 *~$LButton:: {
     global showcaseDebug ; Reference variable from config.ahk
     currentTime := A_TickCount
-    if (showcaseDebug) {
-        FileAppend(Format("Timestamp: {} | LButton Hotkey: Deactivating", currentTime) "`n", A_ScriptDir "\debugRapidRefresh.log"
-        )
-    }
-    ; <<< ADD LOGGING START >>>
-    FileAppend(Format("Timestamp: {} | LButton pressed, calling DeactivateGrid", A_TickCount) "`n",
+    LogToFile(Format("Timestamp: {} | LButton pressed, calling DeactivateGrid", A_TickCount),
     "antimouse_core.log")
-    ; <<< ADD LOGGING END >>>
     TransitionToState(State_IDLE) ; Force state
     DeactivateGrid(true) ; Force deactivation
 }
@@ -689,14 +677,8 @@ SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
 *~$RButton:: {
     global showcaseDebug ; Reference variable from config.ahk
     currentTime := A_TickCount
-    if (showcaseDebug) {
-        FileAppend(Format("Timestamp: {} | RButton Hotkey: Deactivating", currentTime) "`n", A_ScriptDir "\debugRapidRefresh.log"
-        )
-    }
-    ; <<< ADD LOGGING START >>>
-    FileAppend(Format("Timestamp: {} | RButton pressed, calling DeactivateGrid", A_TickCount) "`n",
+    LogToFile(Format("Timestamp: {} | RButton pressed, calling DeactivateGrid", A_TickCount),
     "antimouse_core.log")
-    ; <<< ADD LOGGING END >>>
     TransitionToState(State_IDLE) ; Force state
     DeactivateGrid(true) ; Force deactivation
 }

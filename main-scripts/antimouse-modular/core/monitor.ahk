@@ -15,7 +15,7 @@ SwitchMonitor(monitorNum) {
         enableVerboseLogging ; Added enableVerboseLogging
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | SwitchMonitor START | monitorNum={} | currentState={}", A_TickCount,
+        LogToFile(Format("Timestamp: {} | SwitchMonitor START | monitorNum={} | currentState={}", A_TickCount,
             monitorNum,
             currentState) "`n", "antimouse_core.log")
     }
@@ -24,7 +24,7 @@ SwitchMonitor(monitorNum) {
     if (!monitorMapping.Has(monitorNum)) {
         if (showcaseDebug) ToolTip("Invalid physical monitor number: " monitorNum)
             if (enableVerboseLogging) { ; <<< WRAPPED
-                FileAppend(Format("Timestamp: {} | SwitchMonitor: Invalid physical monitor number {}. Exiting.",
+                LogToFile(Format("Timestamp: {} | SwitchMonitor: Invalid physical monitor number {}. Exiting.",
                     A_TickCount,
                     monitorNum) "`n", "antimouse_core.log")
             }
@@ -32,7 +32,7 @@ SwitchMonitor(monitorNum) {
     }
     mappedMonitor := monitorMapping[monitorNum]
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | SwitchMonitor: Mapped physical monitor {} to logical monitor {}.",
+        LogToFile(Format("Timestamp: {} | SwitchMonitor: Mapped physical monitor {} to logical monitor {}.",
             A_TickCount,
             monitorNum, mappedMonitor) "`n", "antimouse_core.log")
     }
@@ -43,7 +43,7 @@ SwitchMonitor(monitorNum) {
             ToolTip("Invalid mapped monitor index: " mappedMonitor)
         }
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | SwitchMonitor: Invalid mapped index {} or grid not active (State={}). Exiting.",
                 A_TickCount, mappedMonitor, currentState) "`n", "antimouse_core.log")
         }
@@ -53,7 +53,7 @@ SwitchMonitor(monitorNum) {
     ; Check if already on the target monitor
     if (IsObject(StateMap['currentOverlay']) && StateMap['currentOverlay'].monitorIndex == mappedMonitor) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | SwitchMonitor: Already on target monitor {}. Exiting.", A_TickCount,
+            LogToFile(Format("Timestamp: {} | SwitchMonitor: Already on target monitor {}. Exiting.", A_TickCount,
                 mappedMonitor) "`n", "antimouse_core.log")
         }
         return ; Already on the correct monitor
@@ -69,7 +69,7 @@ SwitchMonitor(monitorNum) {
             ToolTip("Target overlay object not found for monitor " mappedMonitor)
         }
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | SwitchMonitor: ERROR - Target overlay object not found for monitor {}. Aborting switch.",
                 A_TickCount, mappedMonitor) "`n", "antimouse_core.log")
         }
@@ -97,7 +97,7 @@ SwitchMonitor(monitorNum) {
     ; Update current overlay reference
     StateMap['currentOverlay'] := newOverlay
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | SwitchMonitor: Set currentOverlay to Monitor {}.", A_TickCount,
+        LogToFile(Format("Timestamp: {} | SwitchMonitor: Set currentOverlay to Monitor {}.", A_TickCount,
             mappedMonitor)
         "`n", "antimouse_core.log")
     }
@@ -105,7 +105,7 @@ SwitchMonitor(monitorNum) {
     ; --- Show elements on the NEW monitor --- (Before moving mouse)
     newOverlay.Show()
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | SwitchMonitor: Shown overlay for Monitor {}.", A_TickCount, mappedMonitor) "`n",
+        LogToFile(Format("Timestamp: {} | SwitchMonitor: Shown overlay for Monitor {}.", A_TickCount, mappedMonitor) "`n",
         "antimouse_core.log")
     }
 
@@ -116,7 +116,7 @@ SwitchMonitor(monitorNum) {
     centerY := monY + (monH // 2)
     MouseMove(centerX, centerY, 0)
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | SwitchMonitor: Moved mouse to center of Monitor {}: ({}, {}).", A_TickCount,
+        LogToFile(Format("Timestamp: {} | SwitchMonitor: Moved mouse to center of Monitor {}: ({}, {}).", A_TickCount,
             mappedMonitor, centerX, centerY) "`n", "antimouse_core.log")
     }
 
@@ -132,7 +132,7 @@ SwitchMonitor(monitorNum) {
     ; This ensures the grid is shown correctly, and subgrids/highlights are hidden initially.
     TransitionToState(State_GRID_VISIBLE)
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | SwitchMonitor: Transitioned to GRID_VISIBLE on new monitor.", A_TickCount) "`n",
+        LogToFile(Format("Timestamp: {} | SwitchMonitor: Transitioned to GRID_VISIBLE on new monitor.", A_TickCount) "`n",
         "antimouse_core.log")
     }
 
@@ -145,7 +145,7 @@ SwitchMonitor(monitorNum) {
     SetTimer(TrackCursor, 50)
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | SwitchMonitor END | New Monitor={} | State={}", A_TickCount, mappedMonitor,
+        LogToFile(Format("Timestamp: {} | SwitchMonitor END | New Monitor={} | State={}", A_TickCount, mappedMonitor,
             currentState) "`n", "antimouse_core.log")
     }
 }

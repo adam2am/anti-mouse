@@ -84,7 +84,7 @@ ForceCapsLockOff() {
 
     lastCheck := currentTime
 
-    ; Force CapsLock off if it gets turned on somehow
+    ; Force CapsLock off if it gets turned on someahow
     if (GetKeyState("CapsLock", "T")) { ; Check toggle state
         SetCapsLockState "AlwaysOff"
         if (showcaseDebug) ; Use global config
@@ -161,8 +161,10 @@ ProcessLogQueue() {
     } catch as e {
         ; Emergency fallback logging for queue processor errors
         try {
-            FileAppend(Format("Timestamp: {} | CRITICAL: Error in ProcessLogQueue: {}`n",
-                A_TickCount, e.Message), "antimouse_error.log")
+            if (enableVerboseLogging) {
+                LogToFile(Format("Timestamp: {} | CRITICAL: Error in ProcessLogQueue: {}`n",
+                    A_TickCount, e.Message), "antimouse_error.log")
+            }
         } catch {
             ; Silently fail if even this fails
         }

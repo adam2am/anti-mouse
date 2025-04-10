@@ -18,17 +18,17 @@ CapsLock_Q() {
 
     ; <<< ADD LOGGING START >>>
     if (showcaseDebug)
-        FileAppend(Format("Timestamp: {} | CapsLock_Q START | currentState={} | firstKey={}", A_TickCount,
+        LogToFile(Format("Timestamp: {} | CapsLock_Q START | currentState={} | firstKey={}", A_TickCount,
             currentState, StateMap['firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q START | currentState='{}' | g_firstKeyPressed='{}'",
+        LogToFile(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q START | currentState='{}' | g_firstKeyPressed='{}'",
             A_TickCount, currentState, g_firstKeyPressed) "`n", "antimouse_core.log")
     }
     ; <<< ADD LOGGING END >>>
     ; Protect against double activation
     if (gridActivationInProgress || (currentTime - gridActivationTime < 300)) {
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Activation already in progress, ignoring",
+        LogToFile(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Activation already in progress, ignoring",
             A_TickCount) "`n", "antimouse_core.log")
         ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
@@ -47,12 +47,12 @@ CapsLock_Q() {
     ; If already active, clean up and exit
     if (currentState != State_IDLE) {
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: State not IDLE (state='{}'), calling Cleanup()",
+        LogToFile(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: State not IDLE (state='{}'), calling Cleanup()",
             A_TickCount, currentState) "`n", "antimouse_core.log")
         ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
         ; <<< ADD LOGGING START >>>
-        if (showcaseDebug) FileAppend(Format("Timestamp: {} | CapsLock_Q: Already Active, Calling Cleanup", currentTime
+        if (showcaseDebug) LogToFile(Format("Timestamp: {} | CapsLock_Q: Already Active, Calling Cleanup", currentTime
         ) "`n", A_ScriptDir "\debugRapidRefresh.log")
         ; <<< ADD LOGGING END >>>
             Cleanup()
@@ -64,13 +64,13 @@ CapsLock_Q() {
     try {
         ; IMPROVEMENT: Explicitly reset all state variables using StateMap
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format(
+        LogToFile(Format(
             "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Resetting state variables. Before: firstKey='{}', g_firstKeyPressed='{}'",
             A_TickCount, StateMap['firstKey'], g_firstKeyPressed) "`n", "antimouse_core.log")
         ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
         ; <<< ADD LOGGING START >>>
-        if (showcaseDebug) FileAppend(Format(
+        if (showcaseDebug) LogToFile(Format(
             "Timestamp: {} | CapsLock_Q: Resetting State (Before) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
             currentTime, StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log"
         )
@@ -95,13 +95,13 @@ CapsLock_Q() {
         StateMap['rowKeyHeldTime'] := 0
 
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-        FileAppend(Format(
+        LogToFile(Format(
             "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: State variables reset. After: firstKey='{}', g_firstKeyPressed='{}'",
             A_TickCount, StateMap['firstKey'], g_firstKeyPressed) "`n", "antimouse_core.log")
         ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
         ; <<< ADD LOGGING START >>>
-        if (showcaseDebug) FileAppend(Format(
+        if (showcaseDebug) LogToFile(Format(
             "Timestamp: {} | CapsLock_Q: Reset State (After) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
             currentTime, StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log"
         )
@@ -126,7 +126,7 @@ CapsLock_Q() {
         if (IsObject(currentConfig) && currentConfig.Has("colKeys") && currentConfig.Has("rowKeys") &&
         IsObject(currentConfig["colKeys"]) && IsObject(currentConfig["rowKeys"])) {
             ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Setting active keys from config. Cols={}, Rows={}",
                 A_TickCount, currentConfig["colKeys"].Length, currentConfig["rowKeys"].Length) "`n",
             "antimouse_core.log")
@@ -137,7 +137,7 @@ CapsLock_Q() {
         } else {
             ; Fallback to a basic layout if config is invalid
             ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-            FileAppend(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Using fallback layout",
+            LogToFile(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Using fallback layout",
                 A_TickCount) "`n", "antimouse_core.log")
             ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
@@ -156,18 +156,18 @@ CapsLock_Q() {
 
         ; Initialize reusable GUI elements
         try {
-            FileAppend(Format("Timestamp: {} | DEBUG: About to initialize highlight and subGrid", A_TickCount) "`n",
+            LogToFile(Format("Timestamp: {} | DEBUG: About to initialize highlight and subGrid", A_TickCount) "`n",
             "antimouse_core.log")
 
             highlight := HighlightOverlay()
-            FileAppend(Format("Timestamp: {} | DEBUG: HighlightOverlay created successfully", A_TickCount) "`n",
+            LogToFile(Format("Timestamp: {} | DEBUG: HighlightOverlay created successfully", A_TickCount) "`n",
             "antimouse_core.log")
 
             subGrid := SubGridOverlay()
-            FileAppend(Format("Timestamp: {} | DEBUG: SubGridOverlay created successfully, IsObject(subGrid)={}",
+            LogToFile(Format("Timestamp: {} | DEBUG: SubGridOverlay created successfully, IsObject(subGrid)={}",
                 A_TickCount, IsObject(subGrid)) "`n", "antimouse_core.log")
         } catch as e {
-            FileAppend(Format("Timestamp: {} | ERROR: Failed to initialize GUI: {}", A_TickCount, e.Message) "`n",
+            LogToFile(Format("Timestamp: {} | ERROR: Failed to initialize GUI: {}", A_TickCount, e.Message) "`n",
             "antimouse_core.log")
             ToolTip("Error initializing GUI: " e.Message)
             Sleep(2000)
@@ -180,28 +180,28 @@ CapsLock_Q() {
         loop monitorCount {
             try {
                 MonitorGet(A_Index, &Left, &Top, &Right, &Bottom)
-                FileAppend(Format("Timestamp: {} | CapsLock_Q: Creating OverlayGUI for Monitor {}", A_TickCount,
+                LogToFile(Format("Timestamp: {} | CapsLock_Q: Creating OverlayGUI for Monitor {}", A_TickCount,
                     A_Index) "`n", "antimouse_core.log") ; <<< CORE LOGGING
                 overlay := OverlayGUI(A_Index, Left, Top, Right, Bottom, StateMap['activeColKeys'], StateMap[
                     'activeRowKeys']) ; Use StateMap
-                FileAppend(Format("Timestamp: {} | CapsLock_Q: OverlayGUI created. IsObject(overlay) = {}", A_TickCount,
+                LogToFile(Format("Timestamp: {} | CapsLock_Q: OverlayGUI created. IsObject(overlay) = {}", A_TickCount,
                     IsObject(overlay)) "`n", "antimouse_core.log") ; <<< CORE LOGGING
                 if (IsObject(overlay)) { ; Only proceed if overlay created successfully
                     overlay.Show()
                     StateMap['overlays'].Push(overlay) ; Use StateMap
 
                     containsPointResult := overlay.ContainsPoint(startX, startY)
-                    FileAppend(Format("Timestamp: {} | CapsLock_Q: Monitor {} ContainsPoint({}, {}) = {}", A_TickCount,
+                    LogToFile(Format("Timestamp: {} | CapsLock_Q: Monitor {} ContainsPoint({}, {}) = {}", A_TickCount,
                         A_Index, startX, startY, containsPointResult) "`n", "antimouse_core.log") ; <<< CORE LOGGING
                     if (containsPointResult) {
                         StateMap['currentOverlay'] := overlay ; Use StateMap
                         foundMonitor := true
-                        FileAppend(Format("Timestamp: {} | CapsLock_Q: Set currentOverlay to Monitor {}", A_TickCount,
+                        LogToFile(Format("Timestamp: {} | CapsLock_Q: Set currentOverlay to Monitor {}", A_TickCount,
                             A_Index) "`n", "antimouse_core.log") ; <<< CORE LOGGING
                     }
                 }
             } catch as e {
-                FileAppend(Format("Timestamp: {} | CapsLock_Q: ERROR creating overlay for Monitor {}: {}", A_TickCount,
+                LogToFile(Format("Timestamp: {} | CapsLock_Q: ERROR creating overlay for Monitor {}: {}", A_TickCount,
                     A_Index, e.Message) "`n", "antimouse_core.log") ; <<< CORE LOGGING
                 if (showcaseDebug) {
                     ToolTip("Error creating overlay for monitor " A_Index ": " e.Message)
@@ -218,18 +218,18 @@ CapsLock_Q() {
         }
 
         ; Only continue if overlay creation was successful
-        FileAppend(Format(
+        LogToFile(Format(
             "Timestamp: {} | CapsLock_Q: Checking condition: overlays.Length={}, IsObject(currentOverlay)={}",
             A_TickCount, StateMap['overlays'].Length, IsObject(StateMap['currentOverlay'])) "`n", "antimouse_core.log") ; <<< CORE LOGGING
         if (StateMap['overlays'].Length > 0 && IsObject(StateMap['currentOverlay'])) { ; Use StateMap
-            FileAppend(Format("Timestamp: {} | CapsLock_Q: Condition TRUE. Grid activated. Attempting instant subgrid.",
+            LogToFile(Format("Timestamp: {} | CapsLock_Q: Condition TRUE. Grid activated. Attempting instant subgrid.",
                 A_TickCount) "`n", "antimouse_core.log") ; <<< CORE LOGGING (Adjusted)
 
             ; Replace direct assignment with TransitionToState
             TransitionToState(State_GRID_VISIBLE) ; Use transition function instead of direct assignment
 
             ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Set currentState via TransitionToState to 'GRID_VISIBLE'",
                 A_TickCount) "`n", "antimouse_core.log")
             ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
@@ -240,7 +240,7 @@ CapsLock_Q() {
                 initialBoundaries := StateMap["currentOverlay"].GetCellBoundaries(initialCellKey)
                 if (IsObject(initialBoundaries)) {
                     if (enableVerboseLogging) {
-                        FileAppend(Format(
+                        LogToFile(Format(
                             "Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: Initial cell '{}' detected. boundaries=({},{},{},{}). Updating highlight & subgrid, then transitioning.",
                             A_TickCount, initialCellKey, initialBoundaries.x, initialBoundaries.y, initialBoundaries.w,
                             initialBoundaries.h) "`n", "antimouse_core.log")
@@ -256,21 +256,21 @@ CapsLock_Q() {
                         subGrid.Update(initialBoundaries.x, initialBoundaries.y, initialBoundaries.w, initialBoundaries
                             .h)
                         if (enableVerboseLogging) {
-                            FileAppend(Format("Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: subGrid updated.",
+                            LogToFile(Format("Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: subGrid updated.",
                                 A_TickCount) "`n", "antimouse_core.log")
                         }
                     }
                     TransitionToState(State_SUBGRID_STANDARD)
                 } else {
                     if (enableVerboseLogging) {
-                        FileAppend(Format(
+                        LogToFile(Format(
                             "Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: Failed to get boundaries for initial cell '{}'.",
                             A_TickCount, initialCellKey) "`n", "antimouse_core.log")
                     }
                 }
             } else {
                 if (enableVerboseLogging) {
-                    FileAppend(Format(
+                    LogToFile(Format(
                         "Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: No initial cell detected under cursor.",
                         A_TickCount) "`n", "antimouse_core.log")
                 }
@@ -279,13 +279,13 @@ CapsLock_Q() {
 
             ; Enable cursor tracking timer AFTER grid is fully set up
             try {
-                FileAppend(Format("Timestamp: {} | CapsLock_Q: Attempting SetTimer(TrackCursor, 50).", A_TickCount)
+                LogToFile(Format("Timestamp: {} | CapsLock_Q: Attempting SetTimer(TrackCursor, 50).", A_TickCount)
                 "`n", "antimouse_core.log")
                 SetTimer(TrackCursor, 50)
-                FileAppend(Format("Timestamp: {} | CapsLock_Q: SetTimer(TrackCursor, 50) called successfully.",
+                LogToFile(Format("Timestamp: {} | CapsLock_Q: SetTimer(TrackCursor, 50) called successfully.",
                     A_TickCount) "`n", "antimouse_core.log")
             } catch as e {
-                FileAppend(Format("Timestamp: {} | CapsLock_Q: ERROR setting TrackCursor timer: {}", A_TickCount,
+                LogToFile(Format("Timestamp: {} | CapsLock_Q: ERROR setting TrackCursor timer: {}", A_TickCount,
                     e.Message) "`n", "antimouse_core.log")
                 if (showcaseDebug) {
                     ToolTip("Error starting cursor tracker: " e.Message)
@@ -294,7 +294,7 @@ CapsLock_Q() {
 
             gridActivationInProgress := false
         } else {
-            FileAppend(Format("Timestamp: {} | CapsLock_Q: Condition FALSE. Calling Cleanup().", A_TickCount) "`n",
+            LogToFile(Format("Timestamp: {} | CapsLock_Q: Condition FALSE. Calling Cleanup().", A_TickCount) "`n",
             "antimouse_core.log") ; <<< CORE LOGGING
             ; Clean up and show error if unsuccessful
             Cleanup()
@@ -315,7 +315,7 @@ CapsLock_Q() {
             ToolTip()
         }
     }
-    FileAppend(Format("Timestamp: {} | CapsLock_Q FINISHED | currentState={}", A_TickCount, currentState) "`n",
+    LogToFile(Format("Timestamp: {} | CapsLock_Q FINISHED | currentState={}", A_TickCount, currentState) "`n",
     "antimouse_core.log") ; <<< CORE LOGGING
 }
 
@@ -370,13 +370,23 @@ Cleanup() {
 
     LogToFile(Format(
         "Cleanup: Resetting State (Before) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
-        StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']), "antimouse_core.log")
+        StateMap.Get("firstKey", "[N/A]"),
+        StateMap.Get("inUltraFastMode", "[N/A]"),
+        StateMap.Get("activeRowKey", "[N/A]")
+    ), "antimouse_core.log")
 
     ; --- TASK 5.6: Ensure we reset all state variables ---
     StateMap['firstKey'] := "" ; Clear partial selections
     g_firstKeyPressed := "" ; Also reset the global tracking variable
     StateMap['activeCellKey'] := "" ; Clear the active cell
     StateMap['activeSubCellKey'] := "" ; Clear the active subcell
+
+    ; --- TASK 5.8: Clear any preserved row information ---
+    if (StateMap.Has("preservedRowKey")) {
+        LogToFile("Task 5.8: Clearing preservedRowKey in Cleanup", "antimouse_core.log")
+        StateMap.Delete("preservedRowKey")
+    }
+    ; --- END TASK 5.8 ---
 
     ; --- Reset Ultra-Fast Mode State ---
     StateMap['inUltraFastMode'] := false ; Ensure ultra-fast mode is deactivated
@@ -568,17 +578,17 @@ DeactivateGrid(forced := false) {
     ; Save cell memory if needed
     if (saveMemoryOnExit) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | DeactivateGrid: Saving cell memory.", A_TickCount) "`n",
+            LogToFile(Format("Timestamp: {} | DeactivateGrid: Saving cell memory.", A_TickCount) "`n",
             "antimouse_core.log")
         }
         SaveCellMemory()
     }
     if (showcaseDebug) {
-        FileAppend(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
+        LogToFile(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
         A_ScriptDir "\debugRapidRefresh.log")
     }
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
+        LogToFile(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
         "antimouse_core.log")
     }
 

@@ -24,7 +24,7 @@ global enableVerboseLogging
 ;     if (cellKey != "") {
 ;         ; Cell found, transition to subgrid
 ;         if (enableVerboseLogging) {
-;             FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor in cell '{}', activating subgrid",
+;             LogToFile(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor in cell '{}', activating subgrid",
 ;                 A_TickCount, cellKey) "`n", "antimouse_core.log")
 ;         }
 ;
@@ -36,7 +36,7 @@ global enableVerboseLogging
 ;             StateMap["activeCellKey"] := cellKey
 ;
 ;             if (enableVerboseLogging) {
-;                 FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Mouse magnetism REMOVED.", A_TickCount) "`n",
+;                 LogToFile(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Mouse magnetism REMOVED.", A_TickCount) "`n",
 ;                 "antimouse_core.log")
 ;             }
 ;
@@ -49,19 +49,19 @@ global enableVerboseLogging
 ;             ; Transition to subgrid state -- REMOVED, will be handled by TrackCursor
 ;             ; TransitionToState(State_SUBGRID_STANDARD)
 ;             if (enableVerboseLogging) {
-;                 FileAppend(Format(
+;                 LogToFile(Format(
 ;                     "Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Set activeCellKey='{}', highlight updated. Transition deferred to TrackCursor.",
 ;                     A_TickCount, cellKey) "`n", "antimouse_core.log")
 ;             }
 ;         } else {
 ;             if (enableVerboseLogging) {
-;                 FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Failed to get boundaries for cell '{}'",
+;                 LogToFile(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Failed to get boundaries for cell '{}'",
 ;                     A_TickCount, cellKey) "`n", "antimouse_core.log")
 ;             }
 ;         }
 ;     } else {
 ;         if (enableVerboseLogging) {
-;             FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor not in any cell",
+;             LogToFile(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor not in any cell",
 ;                 A_TickCount) "`n", "antimouse_core.log")
 ;         }
 ;     }
@@ -318,6 +318,16 @@ TransitionToState(newState) {
             }
             subGrid.Show()
         }
+
+        ; TODO: Check if ultra-fast mode is pending and switch layout?
+        subGrid.SwitchToStandard() ; Ensure standard layout
+        if (enableVerboseLogging) {
+            ; SAFE ACCESS for logging
+            safeActiveCellKey := StateMap.Get("activeCellKey", "<N/A>")
+            LogToFile(Format(
+                "Task: 2.12 | GUI | Activating standard subgrid (2x2) | activeCellKey={}",
+                safeActiveCellKey), "antimouse_core.log")
+        }
     }
     else if (newState == State_SUBGRID_ULTRAFAST) {
         ; Task 2.12: Implement transition to SUBGRID_ULTRAFAST
@@ -353,135 +363,88 @@ TransitionToState(newState) {
 
 ; Function to start a new selection cycle
 StartNewSelection(key) {
-    global StateMap, g_firstKeyPressed, highlight, subGrid, currentState, enableVerboseLogging, showcaseDebug
+    global enableVerboseLogging, StateMap, g_firstKeyPressed
 
-    ; --- Task: 2.16 DEBUG START ---
     if (enableVerboseLogging) {
-        LogToFile(Format("DEBUG | StartNewSelection START (from key press) | key={}", key),
+        LogToFile(Format("Timestamp: {} | StartNewSelection START | Initiating key: '{}'", A_TickCount, key) "`n",
         "antimouse_core.log")
     }
-    ; --- Task: 2.16 DEBUG END ---
 
-    ; Safety check for current state
-    if (currentState != State_SUBGRID_STANDARD && currentState != State_SUBGRID_ULTRAFAST) {
+    ; Stop cursor tracking temporarily
+    SetTimer(TrackCursor, 0)
+
+    ; --- Task 5.8 / 5.10: Preserve context safely from the PREVIOUS selection (if any) ---
+    ; Safely get the previous active cell key, providing "" as a default if it doesn't exist
+    prevActiveCellKey := StateMap.Get("activeCellKey", "")
+    prevActiveRowKey := StateMap.Get("activeRowKey", "") ; Also make this safe
+
+    ; Preserve column key (first character of cell key)
+    if (prevActiveCellKey != "" && StrLen(prevActiveCellKey) >= 1) {
+        StateMap["preservedColKey"] := SubStr(prevActiveCellKey, 1, 1)
         if (enableVerboseLogging) {
-            LogToFile(Format(
-                "WARNING: StartNewSelection called from invalid state: {}", currentState),
-            "antimouse_core.log")
+            LogToFile(Format("StartNewSelection: Preserving column key '{}'",
+                StateMap["preservedColKey"]), "antimouse_core.log")
         }
-        return
+    } else {
+        ; ROBUST FIX: Check if key exists before trying to delete it
+        if (StateMap.Has("preservedColKey"))
+            StateMap.Delete("preservedColKey") ; Clear if no previous cell
     }
 
-    try {
-        ; Stop tracking timer when resetting selection
-        SetTimer TrackCursor, 0
-
-        ; Debugging log for showcaseDebug mode
-        if (showcaseDebug) {
-            logMsg := Format("Timestamp: {} | StartNewSelection: key='{}', g_firstKeyPressed='{}', firstKey='{}'",
-                A_TickCount, key, g_firstKeyPressed, StateMap["firstKey"])
-            LogToFile(logMsg, A_ScriptDir "\debugRapidRefresh.log")
+    ; Preserve row key (second character of cell key OR specific activeRowKey)
+    if (prevActiveCellKey != "" && StrLen(prevActiveCellKey) >= 2) {
+        ; Preferentially use the specific activeRowKey if available, otherwise fallback to cell key part
+        rowToPreserve := prevActiveRowKey ; Use the safely retrieved key
+        if (rowToPreserve == "") {
+            rowToPreserve := SubStr(prevActiveCellKey, 2, 1) ; Fallback to part of the cell key
         }
-
-        ; Determine if key is a valid grid key (moved inside function for Task 2.16)
-        isGridKey := CheckIfGridKey(key)
-
-        ; --- Task 2.16: Free Cell Navigation ---
-        ; Hide subgrid
-        if (IsObject(subGrid)) {
-            if (enableVerboseLogging) {
-                LogToFile(Format(
-                    "Task: 2.16 | StartNewSelection: Hiding subgrid for state transition"),
-                "antimouse_core.log")
-            }
-            subGrid.Hide()
-        }
-
-        ; Hide highlight
-        if (IsObject(highlight)) {
-            if (enableVerboseLogging) {
-                LogToFile(Format(
-                    "Task: 2.16 | StartNewSelection: Hiding highlight for state transition"),
-                "antimouse_core.log")
-            }
-            highlight.Hide()
-        }
-
-        ; === ROW KEY HANDLING FOR ULTRA-FAST MODE (Task 3.3) ===
-        ; Determine if we're transitioning due to a held row key release
-        static keyMap := Map("u", true, "i", true, "o", true, "p", true, "j", true, "k", true, "l", true, ";", true,
-            "m", true, ",", true, ".", true, "/", true)
-        if (key != "" && keyMap.Has(key) && StateMap["inUltraFastMode"]) {
-            ; Log that we're ignoring a row key release that would trigger another selection
-            if (showcaseDebug) LogToFile(Format("StartNewSelection: Ignoring held row key press | key={}",
-                key), A_ScriptDir "\debugRapidRefresh.log")
-            ; Reset flag but don't handle the key (it's from the release of a held key)
-                StateMap["inUltraFastMode"] := false
-            return
-        }
-        ; === END TASK 3.3 ===
-
-        ; Reset state tracking variables
-        StateMap["activeCellKey"] := ""
-        StateMap["activeSubCellKey"] := ""
-        StateMap["firstKey"] := ""
-        g_firstKeyPressed := ""
-        StateMap["activeRowKey"] := ""
-        StateMap["inUltraFastMode"] := false
-
-        ; CRITICAL FIX: Directly set the state without using TransitionToState
-        ; This avoids issues with rapid key presses causing transitions
-        if (enableVerboseLogging) {
-            LogToFile(Format(
-                "Task: 2.16 | StartNewSelection: DIRECT STATE ASSIGNMENT | currentState = GRID_VISIBLE"),
-            "antimouse_core.log")
-        }
-        currentState := State_GRID_VISIBLE
-        if (enableVerboseLogging) {
-            LogToFile(Format("DEBUG | StartNewSelection: State immediately after DIRECT assignment = {}",
-                currentState), "antimouse_core.log")
-        }
-
-        ; Reset key tracking for cursor tracking function
-        ResetLastTrackedKey()
-
-        ; Restart cursor tracking
-        SetTimer TrackCursor, 50
-
-        ; If a key was pressed (not just cursor leaving cell), handle it as a grid key
-        if (key != "") {
-            if (isGridKey) {
-                ; --- Task 2.16: Added deferred key handling ---
-                ; Handle key press after state transition using a deferred function call
-                if (enableVerboseLogging) {
-                    LogToFile(Format(
-                        "Task: 2.16 | StartNewSelection: Calling deferred HandleKey for '{}'",
-                        key), "antimouse_core.log")
-                }
-                ; Call HandleKey outside this function to avoid reentrancy
-                SetTimer(() => DeferredHandleKey(key), -50)
-            } else {
-                if (enableVerboseLogging) {
-                    LogToFile(Format(
-                        "Task: 2.16 | StartNewSelection: Key '{}' is not a valid grid key, ignoring.",
-                        key), "antimouse_core.log")
-                }
-            }
-        }
-    } catch as e {
-        ; Log error
-        LogToFile(Format("ERROR in StartNewSelection: {}", e.Message),
+        StateMap["preservedRowKey"] := rowToPreserve
+        LogToFile(Format("Task 5.8 | StartNewSelection: Preserving row key '{}'", rowToPreserve),
         "antimouse_core.log")
-        ; Try cleanup as a safety measure
-        Cleanup()
+    } else {
+        ; ROBUST FIX: Check if key exists before trying to delete it
+        if (StateMap.Has("preservedRowKey"))
+            StateMap.Delete("preservedRowKey") ; Clear if no previous cell or incomplete cell key
+    }
+    ; --- END Task 5.8 / 5.10 ---
+
+    ; Transition back to grid visible state (Handles hiding subgrid/highlight)
+    TransitionToState(State_GRID_VISIBLE)
+
+    ; Clear selection-specific state variables safely and explicitly
+    ; ROBUST FIX: Check if keys exist before trying to delete them
+    if (StateMap.Has("activeCellKey"))
+        StateMap.Delete("activeCellKey")
+    if (StateMap.Has("activeSubCellKey"))
+        StateMap.Delete("activeSubCellKey")
+    if (StateMap.Has("firstKey"))
+        StateMap.Delete("firstKey")
+    if (StateMap.Has("activeRowKey"))
+        StateMap.Delete("activeRowKey")
+    if (StateMap.Has("inUltraFastMode"))
+        StateMap.Delete("inUltraFastMode")
+    g_firstKeyPressed := "" ; Reset the separate global tracker too
+
+    ; If a key initiated this new selection, process it now that the state is correct
+    if (key != "") {
+        if (enableVerboseLogging) {
+            LogToFile(Format("Timestamp: {} | StartNewSelection: Processing initiating key '{}' with HandleKey",
+                A_TickCount, key) "`n", "antimouse_core.log")
+        }
+        HandleKey(key, true) ; Pass true to bypass HandleKey's own state check
+    } else {
+        ; If no key initiated (e.g., cursor moved out), ensure tracking is re-enabled
+        if (enableVerboseLogging) {
+            LogToFile(Format("Timestamp: {} | StartNewSelection: No initiating key, enabling TrackCursor",
+                A_TickCount) "`n", "antimouse_core.log")
+        }
+        SetTimer(TrackCursor, 50)
     }
 
-    ; --- Task: 2.16 DEBUG START ---
     if (enableVerboseLogging) {
-        LogToFile(Format("DEBUG | StartNewSelection END (from key press) | key={}", key),
+        LogToFile(Format("Timestamp: {} | StartNewSelection END | Initiating key: '{}'", A_TickCount, key) "`n",
         "antimouse_core.log")
     }
-    ; --- Task: 2.16 DEBUG END ---
 }
 
 ; Deferred key handling function to avoid reentrancy when transitioning states

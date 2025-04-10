@@ -12,8 +12,9 @@ ProcessKeyPress(key) {
     global navigationKey, enableFreeNavigation ; Task 2.16: Free Cell Navigation
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | ProcessKeyPress START | key={} | currentState={}", A_TickCount, key,
-            currentState) "`n", "antimouse_core.log")
+        ; FIX: Use safe logging
+        LogToFile(Format("Timestamp: {} | ProcessKeyPress START | key={} | currentState={}", A_TickCount, key,
+            currentState), "antimouse_core.log")
     }
 
     ; --- Task 2.16: Free Cell Navigation - Handle navigation key (Escape) ---
@@ -21,7 +22,7 @@ ProcessKeyPress(key) {
         ; Check if we're in a subgrid state
         if (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) {
             if (enableVerboseLogging) {
-                FileAppend(Format(
+                LogToFile(Format(
                     "Timestamp: {} | Task: 2.16 | FREE-NAVIGATION: Navigation key pressed, returning to main grid",
                     A_TickCount) "`n", "antimouse_core.log")
             }
@@ -37,106 +38,127 @@ ProcessKeyPress(key) {
         }
     }
 
-    ; Simple state-based routing with no variable assignments that could cause problems
-    if (currentState == State_GRID_VISIBLE) {
-        ; When in grid visible state, directly route to HandleKey with no checks
-        if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | ProcessKeyPress: GRID_VISIBLE state - calling HandleKey for key='{}'",
-                A_TickCount, key) "`n", "antimouse_core.log")
+    ; Process based on current state
+    if (currentState = State_GRID_VISIBLE) {
+        ; Process grid key press
+        isGridKey := CheckIfGridKey(key)
+        if (isGridKey) {
+            HandleKey(key)
         }
-        HandleKey(key)
     }
-    else if (currentState == State_SUBGRID_STANDARD) {
-        ; For subgrid states, check if key is a grid key first
-        isGridKeyResult := CheckIfGridKey(key) ; Task Debug: Log result
-        if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format(
-                "Timestamp: {} | ProcessKeyPress (SUBGRID_STANDARD): key='{}', CheckIfGridKey result={}",
-                A_TickCount, key, isGridKeyResult) "`n", "antimouse_core.log")
+    else if (currentState = State_SUBGRID_STANDARD) {
+        ; First check if it's a valid subgrid key
+        if (IsSubGridKey(key)) {
+            ProcessStandardSubgridKey(key)
+            return
         }
 
-        if (isGridKeyResult) {
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                FileAppend(Format(
-                    "Timestamp: {} | ProcessKeyPress: Grid key in SUBGRID_STANDARD - calling StartNewSelection",
-                    A_TickCount) "`n", "antimouse_core.log")
+        ; If not a subgrid key, check if it's a grid key
+        isGridKey := CheckIfGridKey(key)
+        if (isGridKey) {
+            ; Task 5.10: ROBUST FIX - Always start a new selection with grid keys when in subgrid state
+            ; This simplifies the flow and prevents crashes during multiple key presses (A->S->P)
+
+            if (enableVerboseLogging) {
+                LogToFile(Format(
+                    "Timestamp: {} | Task: 5.10 | ROBUST FIX | ProcessKeyPress: Grid key '{}' in SUBGRID_STANDARD - Starting new selection",
+                    A_TickCount, key), "antimouse_core.log")
             }
+
+            ; Start new selection with this key - no checking if it's part of current cell
             StartNewSelection(key)
-        } else {
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                FileAppend(Format(
-                    "Timestamp: {} | ProcessKeyPress: Non-grid key in SUBGRID_STANDARD - calling HandleStandardSubgridKey",
-                    A_TickCount) "`n", "antimouse_core.log")
-            }
-            HandleStandardSubgridKey(key)
+            return
         }
     }
-    else if (currentState == State_SUBGRID_ULTRAFAST) {
-        ; For ultra-fast subgrid, check if key is a grid key first
-        if (CheckIfGridKey(key)) {
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                FileAppend(Format(
-                    "Timestamp: {} | ProcessKeyPress: Grid key in SUBGRID_ULTRAFAST - calling StartNewSelection",
-                    A_TickCount) "`n", "antimouse_core.log")
+    else if (currentState = State_SUBGRID_ULTRAFAST) {
+        ; First check if it's a valid ultrafast subgrid key
+        if (IsUltraFastSubGridKey(key)) {
+            ProcessUltraFastKey(key)
+            return
+        }
+
+        ; If not an ultrafast key, check if it's a grid key
+        isGridKey := CheckIfGridKey(key)
+        if (isGridKey) {
+            ; Task 5.10: ROBUST FIX - Always start a new selection with grid keys when in subgrid state
+            ; This simplifies the flow and prevents crashes during multiple key presses (A->S->P)
+
+            if (enableVerboseLogging) {
+                LogToFile(Format(
+                    "Timestamp: {} | Task: 5.10 | ROBUST FIX | ProcessKeyPress: Grid key '{}' in SUBGRID_ULTRAFAST - Starting new selection",
+                    A_TickCount, key), "antimouse_core.log")
             }
+
+            ; Start new selection with this key - no checking if it's part of current cell
             StartNewSelection(key)
-        } else {
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                FileAppend(Format(
-                    "Timestamp: {} | ProcessKeyPress: Non-grid key in SUBGRID_ULTRAFAST - calling HandleUltraFastKey",
-                    A_TickCount) "`n", "antimouse_core.log")
-            }
-            HandleUltraFastKey(key)
+            return
         }
     }
     else if (currentState == State_IDLE) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | ProcessKeyPress: Key press ignored in IDLE state",
+            LogToFile(Format("Timestamp: {} | ProcessKeyPress: Key press ignored in IDLE state",
                 A_TickCount) "`n", "antimouse_core.log")
         }
     }
     else {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | ProcessKeyPress: Unhandled state: '{}'",
+            LogToFile(Format("Timestamp: {} | ProcessKeyPress: Unhandled state: '{}'",
                 A_TickCount, currentState) "`n", "antimouse_core.log")
         }
     }
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | ProcessKeyPress END | key={} | currentState={}", A_TickCount, key,
+        LogToFile(Format("Timestamp: {} | ProcessKeyPress END | key={} | currentState={}", A_TickCount, key,
             currentState) "`n",
         "antimouse_core.log")
     }
 }
 
-; Helper function to check if a key is a grid key (column or row) - Used only in subgrid states
+; Check if key is a valid grid key (column or row key)
 CheckIfGridKey(key) {
     global StateMap, showcaseDebug
 
-    ; Safety check for state map objects
-    if (!IsObject(StateMap) || !IsObject(StateMap['activeColKeys']) || !IsObject(StateMap['activeRowKeys'])) {
-        if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | CheckIfGridKey: StateMap or key arrays not valid objects",
-                A_TickCount) "`n", "antimouse_core.log")
-        }
-        return false
-    }
+    ; Get active keys from StateMap
+    activeColKeys := StateMap["activeColKeys"]
+    activeRowKeys := StateMap["activeRowKeys"]
 
-    ; Check column keys
-    for i, colKey in StateMap['activeColKeys'] {
-        if (key == colKey) {
-            return true
+    isGridKey := false
+
+    ; Check if key is in active column or row keys
+    for index, colKey in activeColKeys {
+        if (colKey = key) {
+            isGridKey := true
+            break
         }
     }
 
-    ; Check row keys
-    for i, rowKey in StateMap['activeRowKeys'] {
-        if (key == rowKey) {
-            return true
+    if (!isGridKey) {
+        for index, rowKey in activeRowKeys {
+            if (rowKey = key) {
+                isGridKey := true
+                break
+            }
         }
     }
 
-    return false
+    if (showcaseDebug) {
+        LogToFile(Format("CheckIfGridKey: Key '{}' is a grid key: {}", key, isGridKey), "antimouse_keypress.log")
+    }
+
+    return isGridKey
+}
+
+; Helper function to check if a key is a valid subgrid key
+IsSubGridKey(key) {
+    ; In standard subgrid, GHBN are the valid keys
+    return key == "g" || key == "h" || key == "b" || key == "n"
+}
+
+; Helper function to check if a key is a valid ultrafast subgrid key
+IsUltraFastSubGridKey(key) {
+    ; In ultrafast subgrid, QWERASDFZXCV are valid keys
+    validKeys := "qwerasdfzxcv"
+    return InStr(validKeys, key) > 0
 }
 
 ; Original IsGridKey left intact for compatibility with any other callers
@@ -148,7 +170,7 @@ IsGridKey(key) {
 HandleStandardSubgridKey(key) {
     ; Simply call our actual implementation with a different name to avoid conflicts
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | HandleStandardSubgridKey: Calling ProcessStandardSubgridKey for key='{}'",
+        LogToFile(Format("Timestamp: {} | HandleStandardSubgridKey: Calling ProcessStandardSubgridKey for key='{}'",
             A_TickCount, key) "`n",
         "antimouse_core.log")
     }

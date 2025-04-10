@@ -12,7 +12,7 @@ global enableVerboseLogging ; Added
 HandleSubGridKey(subKey) {
     ; THIS IS LEGACY - Use ProcessStandardSubgridKey or ProcessUltraFastSubgridKey
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format(
+        LogToFile(Format(
             "Timestamp: {} | WARNING: Legacy HandleSubGridKey called for key '{}'. Redirecting based on state.",
             A_TickCount, subKey) "`n", "antimouse_core.log")
     }
@@ -29,13 +29,13 @@ ProcessStandardSubgridKey(subKey) {
         enableVerboseLogging ; Added enableVerboseLogging
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey START | subKey={}", A_TickCount,
+        LogToFile(Format("Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey START | subKey={}", A_TickCount,
             subKey) "`n", "antimouse_core.log")
     }
 
     if (currentState != State_SUBGRID_STANDARD || !IsObject(subGrid)) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey: Invalid state ('{}') or subGrid object. Exiting.",
                 A_TickCount, currentState) "`n", "antimouse_core.log")
         }
@@ -45,7 +45,7 @@ ProcessStandardSubgridKey(subKey) {
     timeSinceTransition := A_TickCount - stateTransitionTime
     if (timeSinceTransition < stateTransitionDelay) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey: Debounced ({}ms < {}ms). Exiting.",
                 A_TickCount, timeSinceTransition, stateTransitionDelay) "`n", "antimouse_core.log")
         }
@@ -55,7 +55,7 @@ ProcessStandardSubgridKey(subKey) {
     targetCoords := subGrid.GetTargetCoordinates(subKey)
     if (!IsObject(targetCoords)) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey: Invalid subKey '{}'. Exiting.",
+            LogToFile(Format("Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey: Invalid subKey '{}'. Exiting.",
                 A_TickCount, subKey) "`n", "antimouse_core.log")
         }
         if (showcaseDebug) {
@@ -66,7 +66,7 @@ ProcessStandardSubgridKey(subKey) {
     }
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 2.11 | DIAGNOSTIC | Moving mouse to subgrid coords: x={}, y={}",
+        LogToFile(Format("Timestamp: {} | Task: 2.11 | DIAGNOSTIC | Moving mouse to subgrid coords: x={}, y={}",
             A_TickCount, targetCoords.x, targetCoords.y) "`n", "antimouse_core.log")
     }
     MouseMove(targetCoords.x, targetCoords.y, 0)
@@ -75,13 +75,13 @@ ProcessStandardSubgridKey(subKey) {
     UpdateCellMemory(StateMap['activeCellKey'], subKey)
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format(
+        LogToFile(Format(
             "Timestamp: {} | Task: 5.0 | ProcessStandardSubgridKey: Placeholder for mouse click at ({}, {}).",
             A_TickCount, targetCoords.x, targetCoords.y) "`n", "antimouse_core.log")
     }
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey END | subKey={} | State after={}",
+        LogToFile(Format("Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey END | subKey={} | State after={}",
             A_TickCount, subKey, currentState) "`n", "antimouse_core.log")
     }
 }
@@ -91,13 +91,13 @@ ProcessUltraFastSubgridKey(subKey) {
     global currentState, subGrid, StateMap, showcaseDebug, highlight, enableVerboseLogging ; Added enableVerboseLogging
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 2.12 | ProcessUltraFastSubgridKey START | subKey={}", A_TickCount,
+        LogToFile(Format("Timestamp: {} | Task: 2.12 | ProcessUltraFastSubgridKey START | subKey={}", A_TickCount,
             subKey) "`n", "antimouse_core.log")
     }
 
     if (currentState != State_SUBGRID_ULTRAFAST || !StateMap['inUltraFastMode']) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | Task: 2.12 | ProcessUltraFastSubgridKey: Invalid state ('{}') or not inUltraFastMode. Exiting.",
                 A_TickCount, currentState) "`n", "antimouse_core.log")
         }
@@ -107,7 +107,7 @@ ProcessUltraFastSubgridKey(subKey) {
     targetCoords := subGrid.GetTargetCoordinates(subKey, true)
     if (!IsObject(targetCoords)) {
         if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | Task: 2.12 | ProcessUltraFastSubgridKey: Invalid ultra-fast subKey '{}'. Exiting.",
                 A_TickCount, subKey) "`n", "antimouse_core.log")
         }
@@ -119,7 +119,7 @@ ProcessUltraFastSubgridKey(subKey) {
     }
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 2.12 | DIAGNOSTIC | Moving mouse to subgrid coords: x={}, y={}",
+        LogToFile(Format("Timestamp: {} | Task: 2.12 | DIAGNOSTIC | Moving mouse to subgrid coords: x={}, y={}",
             A_TickCount, targetCoords.x, targetCoords.y) "`n", "antimouse_core.log")
     }
     MouseMove(targetCoords.x, targetCoords.y, 0)
@@ -128,36 +128,18 @@ ProcessUltraFastSubgridKey(subKey) {
     UpdateCellMemory(StateMap['activeCellKey'], subKey)
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format(
+        LogToFile(Format(
             "Timestamp: {} | Task: 5.0 | ProcessUltraFastSubgridKey: Placeholder for mouse click at ({}, {}).",
             A_TickCount, targetCoords.x, targetCoords.y) "`n", "antimouse_core.log")
     }
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 2.12 | ProcessUltraFastSubgridKey END | subKey={} | State after={}",
+        LogToFile(Format("Timestamp: {} | Task: 2.12 | ProcessUltraFastSubgridKey END | subKey={} | State after={}",
             A_TickCount, subKey, currentState) "`n", "antimouse_core.log")
     }
 }
 
 ; --- Helper Functions ---
-IsSubGridKey(key) {
-    global subGridKeys
-    for _, subKey in subGridKeys {
-        if (key == subKey)
-            return true
-    }
-    return false
-}
-
-IsUltraFastSubGridKey(key) {
-    global ultraFastSubGridKeys
-    for _, ufKey in ultraFastSubGridKeys {
-        if (key == ufKey)
-            return true
-    }
-    return false
-}
-
 UpdateCellMemory(cellKey, subCellKey) {
     global cellMemory, storePerMonitor, StateMap, enableVerboseLogging ; Added enableVerboseLogging
     keyToUse := cellKey
@@ -165,7 +147,7 @@ UpdateCellMemory(cellKey, subCellKey) {
         ; Safety check for currentOverlay
         if (!IsObject(StateMap['currentOverlay'])) {
             if (enableVerboseLogging) { ; <<< WRAPPED
-                FileAppend(Format(
+                LogToFile(Format(
                     "Timestamp: {} | Task: 4.0 | UpdateCellMemory: WARNING - currentOverlay not valid object.",
                     A_TickCount) "`n", "antimouse_core.log")
             }
@@ -175,7 +157,7 @@ UpdateCellMemory(cellKey, subCellKey) {
         keyToUse := monitorIndex "_" cellKey
     }
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 4.0 | UpdateCellMemory: Storing key='{}', subCellKey='{}'",
+        LogToFile(Format("Timestamp: {} | Task: 4.0 | UpdateCellMemory: Storing key='{}', subCellKey='{}'",
             A_TickCount,
             keyToUse, subCellKey) "`n", "antimouse_core.log")
     }
@@ -189,14 +171,14 @@ ProcessUltraFastKey(key) {
         showcaseDebug, instaClickMode, g_ModifierState, highlight ; Added highlight global
 
     ; --- CORE LOGGING START ---
-    FileAppend(Format("Timestamp: {} | ProcessUltraFastKey START | key='{}'", A_TickCount, key) "`n",
+    LogToFile(Format("Timestamp: {} | ProcessUltraFastKey START | key='{}'", A_TickCount, key) "`n",
     "antimouse_core.log")
     ; --- CORE LOGGING END ---
 
     ; Only process in the correct state with a valid subgrid
     if (currentState != State_SUBGRID_ULTRAFAST || !IsObject(subGrid) || !StateMap['inUltraFastMode']) {
         ; Log the reason and return
-        FileAppend(Format(
+        LogToFile(Format(
             "Timestamp: {} | ProcessUltraFastKey: Invalid state or missing objects - state='{}', subGrid={}, inUltraFastMode={}",
             A_TickCount, currentState, IsObject(subGrid), StateMap['inUltraFastMode']) "`n", "antimouse_core.log")
         return
@@ -220,14 +202,14 @@ ProcessUltraFastKey(key) {
             ; Get boundaries directly from currentOverlay
             mainCellBoundaries := StateMap['currentOverlay'].GetCellBoundaries(StateMap['activeCellKey'])
             if (IsObject(mainCellBoundaries)) {
-                FileAppend(Format("Timestamp: {} | ProcessUltraFastKey: Updating and Showing Highlight.", A_TickCount) "`n",
+                LogToFile(Format("Timestamp: {} | ProcessUltraFastKey: Updating and Showing Highlight.", A_TickCount) "`n",
                 "antimouse_core.log")
                 highlight.Update(mainCellBoundaries.x, mainCellBoundaries.y, mainCellBoundaries.w,
                     mainCellBoundaries.h
                 )
             }
         } else {
-            FileAppend(Format(
+            LogToFile(Format(
                 "Timestamp: {} | ProcessUltraFastKey: WARNING - Highlight or currentOverlay object invalid.",
                 A_TickCount) "`n", "antimouse_core.log")
         }
@@ -273,14 +255,14 @@ ProcessUltraFastKey(key) {
     }
 
     ; --- CORE LOGGING END ---
-    FileAppend(Format("Timestamp: {} | ProcessUltraFastKey END | key='{}'", A_TickCount, key) "`n",
+    LogToFile(Format("Timestamp: {} | ProcessUltraFastKey END | key='{}'", A_TickCount, key) "`n",
     "antimouse_core.log")
 }
 
 ; Routing function - called by ProcessKeyPress to route to the main implementation
 HandleUltraFastKey(key) {
     ; Simply call our actual implementation
-    FileAppend(Format("Timestamp: {} | HandleUltraFastKey: Calling ProcessUltraFastKey for key='{}'",
+    LogToFile(Format("Timestamp: {} | HandleUltraFastKey: Calling ProcessUltraFastKey for key='{}'",
         A_TickCount, key) "`n", "antimouse_core.log")
     ProcessUltraFastKey(key)
 }
@@ -294,7 +276,7 @@ HandleRowKeyRelease(key) {
         logMsg := Format(
             "Timestamp: {} | HandleRowKeyRelease START | key={} | currentState={} | activeRowKey={} | inUltraFastMode={}",
             A_TickCount, key, currentState, StateMap['activeRowKey'], StateMap['inUltraFastMode'])
-        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+        LogToFile(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
     }
     ; <<< ADD LOGGING END >>>
 
@@ -303,7 +285,7 @@ HandleRowKeyRelease(key) {
         logMsg := Format(
             "Timestamp: {} | HandleRowKeyRelease: Check condition: enableUltraFast={}, inUltraFastMode={}, activeRowKey={}",
             A_TickCount, enableUltraFast, StateMap['inUltraFastMode'], StateMap['activeRowKey'])
-        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+        LogToFile(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
     }
 
     ; Only proceed if we're in Ultra-Fast mode and this is the key that activated it
@@ -313,7 +295,7 @@ HandleRowKeyRelease(key) {
             logMsg := Format(
                 "Timestamp: {} | HandleRowKeyRelease: Condition FAILED for key={}. Expected activeRowKey={}",
                 A_TickCount, key, StateMap['activeRowKey'])
-            FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+            LogToFile(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
         }
         return
     }
@@ -322,18 +304,18 @@ HandleRowKeyRelease(key) {
     if (showcaseDebug) {
         logMsg := Format("Timestamp: {} | HandleRowKeyRelease: Deactivating ultra-fast mode for key={}", A_TickCount,
             key)
-        FileAppend(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
+        LogToFile(logMsg "`n", A_ScriptDir "\debugRapidRefresh.log")
     }
 
     ; Switch back to standard mode
     ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) FileAppend(Format(
+    if (showcaseDebug) LogToFile(Format(
         "Timestamp: {} | HandleRowKeyRelease: Setting inUltraFastMode=false (Before) | inUltraFastMode={}", A_TickCount,
         StateMap['inUltraFastMode']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     ; <<< ADD LOGGING END >>>
         StateMap['inUltraFastMode'] := false
     ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) FileAppend(Format(
+    if (showcaseDebug) LogToFile(Format(
         "Timestamp: {} | HandleRowKeyRelease: Set inUltraFastMode=false (After) | inUltraFastMode={}", A_TickCount,
         StateMap['inUltraFastMode']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     ; <<< ADD LOGGING END >>>
@@ -355,13 +337,13 @@ HandleRowKeyRelease(key) {
 
     ; Reset state
     ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) FileAppend(Format(
+    if (showcaseDebug) LogToFile(Format(
         "Timestamp: {} | HandleRowKeyRelease: Clearing activeRowKey (Before) | activeRowKey={}", A_TickCount, StateMap[
             'activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     ; <<< ADD LOGGING END >>>
         StateMap['activeRowKey'] := ""
     ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) FileAppend(Format(
+    if (showcaseDebug) LogToFile(Format(
         "Timestamp: {} | HandleRowKeyRelease: Cleared activeRowKey (After) | activeRowKey={}", A_TickCount, StateMap[
             'activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     ; <<< ADD LOGGING END >>>
