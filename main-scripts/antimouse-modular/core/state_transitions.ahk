@@ -9,62 +9,64 @@ global enableVerboseLogging
 
 ; Function to automatically detect and activate the subgrid for the cell under the cursor
 ; Used for Task 2.17 Automatic Subgrid Detection
-DetectCellFunc() {
-    global StateMap, highlight, enableVerboseLogging
-
-    ; Only proceed if we're in GRID_VISIBLE state
-    if (currentState != State_GRID_VISIBLE) {
-        return
-    }
-
-    ; Get the current cell under the cursor
-    cellKey := GetCurrentCell()
-
-    if (cellKey != "") {
-        ; Cell found, transition to subgrid
-        if (enableVerboseLogging) {
-            FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor in cell '{}', activating subgrid",
-                A_TickCount, cellKey) "`n", "antimouse_core.log")
-        }
-
-        ; Get the boundary for the cell
-        boundaries := StateMap["currentOverlay"].GetCellBoundaries(cellKey)
-
-        if (IsObject(boundaries)) {
-            ; Set the active cell key
-            StateMap["activeCellKey"] := cellKey
-
-            if (enableVerboseLogging) {
-                FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Mouse magnetism REMOVED.", A_TickCount) "`n",
-                "antimouse_core.log")
-            }
-
-            ; Update highlight to show the active cell
-            if (IsObject(highlight)) {
-                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                ; highlight.Show() ; Removed - Show is handled by Update() in HighlightOverlay
-            }
-
-            ; Transition to subgrid state -- REMOVED, will be handled by TrackCursor
-            ; TransitionToState(State_SUBGRID_STANDARD)
-            if (enableVerboseLogging) {
-                FileAppend(Format(
-                    "Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Set activeCellKey='{}', highlight updated. Transition deferred to TrackCursor.",
-                    A_TickCount, cellKey) "`n", "antimouse_core.log")
-            }
-        } else {
-            if (enableVerboseLogging) {
-                FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Failed to get boundaries for cell '{}'",
-                    A_TickCount, cellKey) "`n", "antimouse_core.log")
-            }
-        }
-    } else {
-        if (enableVerboseLogging) {
-            FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor not in any cell",
-                A_TickCount) "`n", "antimouse_core.log")
-        }
-    }
-}
+; --- Task 2.17 FIX: Commented out as detection is now immediate in activation.ahk ---
+; DetectCellFunc() {
+;     global StateMap, highlight, enableVerboseLogging
+;
+;     ; Only proceed if we're in GRID_VISIBLE state
+;     if (currentState != State_GRID_VISIBLE) {
+;         return
+;     }
+;
+;     ; Get the current cell under the cursor
+;     cellKey := GetCurrentCell()
+;
+;     if (cellKey != "") {
+;         ; Cell found, transition to subgrid
+;         if (enableVerboseLogging) {
+;             FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor in cell '{}', activating subgrid",
+;                 A_TickCount, cellKey) "`n", "antimouse_core.log")
+;         }
+;
+;         ; Get the boundary for the cell
+;         boundaries := StateMap["currentOverlay"].GetCellBoundaries(cellKey)
+;
+;         if (IsObject(boundaries)) {
+;             ; Set the active cell key
+;             StateMap["activeCellKey"] := cellKey
+;
+;             if (enableVerboseLogging) {
+;                 FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Mouse magnetism REMOVED.", A_TickCount) "`n",
+;                 "antimouse_core.log")
+;             }
+;
+;             ; Update highlight to show the active cell
+;             if (IsObject(highlight)) {
+;                 highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+;                 ; highlight.Show() ; Removed - Show is handled by Update() in HighlightOverlay
+;             }
+;
+;             ; Transition to subgrid state -- REMOVED, will be handled by TrackCursor
+;             ; TransitionToState(State_SUBGRID_STANDARD)
+;             if (enableVerboseLogging) {
+;                 FileAppend(Format(
+;                     "Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Set activeCellKey='{}', highlight updated. Transition deferred to TrackCursor.",
+;                     A_TickCount, cellKey) "`n", "antimouse_core.log")
+;             }
+;         } else {
+;             if (enableVerboseLogging) {
+;                 FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Failed to get boundaries for cell '{}'",
+;                     A_TickCount, cellKey) "`n", "antimouse_core.log")
+;             }
+;         }
+;     } else {
+;         if (enableVerboseLogging) {
+;             FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor not in any cell",
+;                 A_TickCount) "`n", "antimouse_core.log")
+;         }
+;     }
+; }
+; --- Task 2.17 FIX END ---
 
 ; Central function to handle all state transitions
 TransitionToState(newState) {
@@ -261,8 +263,8 @@ TransitionToState(newState) {
 
         ; --- TASK 2.17: Automatic Subgrid Detection ---
         ; Use a standard AHK v2 timer function to detect cells
-        DetectCellTimer := DetectCellFunc.Bind()
-        SetTimer(DetectCellTimer, -1)  ; Run ASAP after current thread finishes
+        ; DetectCellTimer := DetectCellFunc.Bind()
+        ; SetTimer(DetectCellTimer, -1)  ; Run ASAP after current thread finishes <<< Task 2.17 FIX: Removed timer, detection is now immediate in activation.ahk
     }
     else if (newState == State_SUBGRID_STANDARD) {
         ; --- Task: 4.4 Start: Optionally hide main grid ---
@@ -416,8 +418,19 @@ StartNewSelection(key) {
     ; If not in a subgrid state, nothing to reset/transition from
     if (currentState != State_SUBGRID_STANDARD && currentState != State_SUBGRID_ULTRAFAST) {
         ; Re-enable TrackCursor before returning if we didn't transition
+        if (enableVerboseLogging) {
+            FileAppend(Format(
+                "Timestamp: {} | Task: FIX | StartNewSelection: Not in subgrid state ({}), just restarting tracker",
+                A_TickCount, currentState) "`n", "antimouse_core.log")
+        }
         SetTimer(TrackCursor, 50)
         return
+    }
+
+    if (enableVerboseLogging) {
+        FileAppend(Format(
+            "Timestamp: {} | Task: FIX | StartNewSelection: Successfully resetting from state {} back to GRID_VISIBLE",
+            A_TickCount, currentState) "`n", "antimouse_core.log")
     }
 
     ; If in Ultra-Fast mode and this is the held row key, ignore - ONLY if key is not empty
@@ -471,8 +484,10 @@ StartNewSelection(key) {
             A_TickCount, currentState) "`n", "antimouse_core.log")
     }
 
+    ; Reset the tracking key to ensure it will detect the next cell entry
+    ResetLastTrackedKey()
+
     ; 4. Manually trigger necessary entry actions for GRID_VISIBLE
-    ; (Show main overlays - Assuming they weren't hidden if keepGridVisible was true)
     global keepGridVisible
     if (!keepGridVisible) { ; Only show if they might have been hidden
         if (IsObject(StateMap["overlays"])) {

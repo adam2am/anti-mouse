@@ -234,6 +234,49 @@ CapsLock_Q() {
                 A_TickCount) "`n", "antimouse_core.log")
             ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
+            ; <<< Task 2.17 FIX: Immediate Subgrid Detection >>>
+            initialCellKey := GetCurrentCell() ; Ensure GetCurrentCell is globally accessible or included
+            if (initialCellKey != "") {
+                initialBoundaries := StateMap["currentOverlay"].GetCellBoundaries(initialCellKey)
+                if (IsObject(initialBoundaries)) {
+                    if (enableVerboseLogging) {
+                        FileAppend(Format(
+                            "Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: Initial cell '{}' detected. boundaries=({},{},{},{}). Updating highlight & subgrid, then transitioning.",
+                            A_TickCount, initialCellKey, initialBoundaries.x, initialBoundaries.y, initialBoundaries.w,
+                            initialBoundaries.h) "`n", "antimouse_core.log")
+                    }
+                    StateMap["activeCellKey"] := initialCellKey
+                    if (IsObject(highlight)) {
+                        highlight.Update(initialBoundaries.x, initialBoundaries.y, initialBoundaries.w,
+                            initialBoundaries.h)
+                        ; Highlight is shown by Update method itself
+                    }
+                    ; Update subgrid position *before* showing it in the transition
+                    if (IsObject(subGrid)) {
+                        subGrid.Update(initialBoundaries.x, initialBoundaries.y, initialBoundaries.w, initialBoundaries
+                            .h)
+                        if (enableVerboseLogging) {
+                            FileAppend(Format("Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: subGrid updated.",
+                                A_TickCount) "`n", "antimouse_core.log")
+                        }
+                    }
+                    TransitionToState(State_SUBGRID_STANDARD)
+                } else {
+                    if (enableVerboseLogging) {
+                        FileAppend(Format(
+                            "Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: Failed to get boundaries for initial cell '{}'.",
+                            A_TickCount, initialCellKey) "`n", "antimouse_core.log")
+                    }
+                }
+            } else {
+                if (enableVerboseLogging) {
+                    FileAppend(Format(
+                        "Timestamp: {} | Task: 2.17 FIX | CapsLock_Q: No initial cell detected under cursor.",
+                        A_TickCount) "`n", "antimouse_core.log")
+                }
+            }
+            ; <<< Task 2.17 FIX END >>>
+
             ; Enable cursor tracking timer AFTER grid is fully set up
             try {
                 FileAppend(Format("Timestamp: {} | CapsLock_Q: Attempting SetTimer(TrackCursor, 50).", A_TickCount)
