@@ -34,10 +34,10 @@ DetectCellFunc() {
             ; Set the active cell key
             StateMap["activeCellKey"] := cellKey
 
-            ; Move cursor to cell center
-            cellCenterX := boundaries.x + boundaries.w / 2
-            cellCenterY := boundaries.y + boundaries.h / 2
-            MouseMove(cellCenterX, cellCenterY, 0)
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Mouse magnetism REMOVED.", A_TickCount) "`n",
+                "antimouse_core.log")
+            }
 
             ; Update highlight to show the active cell
             if (IsObject(highlight)) {
@@ -256,8 +256,8 @@ TransitionToState(newState) {
 
         ; --- TASK 2.17: Automatic Subgrid Detection ---
         ; Use a standard AHK v2 timer function to detect cells
-        ; DetectCellTimer := DetectCellFunc.Bind()
-        ; SetTimer(DetectCellTimer, -200)  ; 200ms delay, run once - Temporarily disabled for debugging navigation
+        DetectCellTimer := DetectCellFunc.Bind()
+        SetTimer(DetectCellTimer, -200)  ; 200ms delay, run once - Re-enabled
     }
     else if (newState == State_SUBGRID_STANDARD) {
         ; --- Task: 4.4 Start: Optionally hide main grid ---
@@ -299,10 +299,16 @@ TransitionToState(newState) {
         ; Show subgrid
         if (IsObject(subGrid)) {
             if (enableVerboseLogging) {
-                FileAppend(Format("Timestamp: {} | Task: 2.11 | GUI | Showing subGrid (Entering SUBGRID_STANDARD)",
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 2.11 | GUI | ABOUT TO CALL subGrid.Show() (Entering SUBGRID_STANDARD)",
                     A_TickCount) "`n", "antimouse_core.log")
             }
             subGrid.Show()
+            if (enableVerboseLogging) { ; Task Debug: Log AFTER subGrid.Show()
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 2.11 | GUI | JUST CALLED subGrid.Show() (Entering SUBGRID_STANDARD)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
         } else {
             if (enableVerboseLogging) {
                 FileAppend(Format(
