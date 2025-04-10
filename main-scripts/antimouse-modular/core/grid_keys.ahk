@@ -31,14 +31,14 @@ HandleKey(key, bypassStateCheck := false) {
     ; <<< ENHANCED DIAGNOSTIC LOGGING END ---
 
     ; Debounce check - ignore key presses too close to state transition
-    timeSinceTransition := A_TickCount - stateTransitionTime
-    if (timeSinceTransition < stateTransitionDelay) {
-        if (enableVerboseLogging) { ; <<< WRAPPED
-            FileAppend(Format("Timestamp: {} | Task: 2.1 | HandleKey: Debounced ({}ms < {}ms). Exiting.", A_TickCount,
-                timeSinceTransition, stateTransitionDelay) "`n", "antimouse_core.log")
-        }
-        return ; Ignore the key press
-    }
+    ; timeSinceTransition := A_TickCount - stateTransitionTime
+    ; if (timeSinceTransition < stateTransitionDelay) {
+    ;     if (enableVerboseLogging) { ; <<< WRAPPED
+    ;         FileAppend(Format("Timestamp: {} | Task: 2.1 | HandleKey: Debounced ({}ms < {}ms). Exiting.", A_TickCount,
+    ;             timeSinceTransition, stateTransitionDelay) "`n", "antimouse_core.log")
+    ;     }
+    ;     return ; Ignore the key press
+    ; }
 
     ; State check (unless bypassed, e.g., by StartNewSelection)
     if (!bypassStateCheck && (currentState != State_GRID_VISIBLE || !IsObject(StateMap['currentOverlay']))) {
@@ -123,10 +123,22 @@ HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex) {
 
     ; <<< TASK 2.2 CORE LOGGING START >>>
     if (enableVerboseLogging) { ; <<< WRAPPED
-        FileAppend(Format("Timestamp: {} | Task: 2.2 | HandleFirstKey START | key={}, isCol={}, isRow={}", A_TickCount,
-            key, isColKey, isRowKey) "`n", "antimouse_core.log")
+        FileAppend(Format(
+            "Timestamp: {} | Task: 2.2 | HandleFirstKey START | key={}, isCol={}, isRow={}, currentState={}",
+            A_TickCount,
+            key, isColKey, isRowKey, currentState) "`n", "antimouse_core.log")
     }
     ; <<< TASK 2.2 CORE LOGGING END >>>
+
+    ; --- NEW: Check if overlay is visible ---
+    if (IsObject(StateMap['currentOverlay'])) {
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | Task: DEBUG | HandleFirstKey: Checking overlay visibility for key '{}'",
+                A_TickCount, key) "`n", "antimouse_core.log")
+        }
+        StateMap['currentOverlay'].Show()
+    }
+    ; --- END NEW ---
 
     currentTime := A_TickCount
 
@@ -258,10 +270,20 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
     ; <<< TASK 2.3 CORE LOGGING START >>>
     if (enableVerboseLogging) { ; <<< WRAPPED
         FileAppend(Format(
-            "Timestamp: {} | Task: 2.3 | HandleSecondKey START | key={}, isCol={}, isRow={}, firstKey='{}'",
-            A_TickCount, key, isColKey, isRowKey, g_firstKeyPressed) "`n", "antimouse_core.log")
+            "Timestamp: {} | Task: 2.3 | HandleSecondKey START | key={}, isCol={}, isRow={}, currentState={}, firstKey={}",
+            A_TickCount, key, isColKey, isRowKey, currentState, g_firstKeyPressed) "`n", "antimouse_core.log")
     }
     ; <<< TASK 2.3 CORE LOGGING END >>>
+
+    ; --- NEW: Check if overlay is visible ---
+    if (IsObject(StateMap['currentOverlay'])) {
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | Task: DEBUG | HandleSecondKey: Checking overlay visibility for key '{}'",
+                A_TickCount, key) "`n", "antimouse_core.log")
+        }
+        StateMap['currentOverlay'].Show()
+    }
+    ; --- END NEW ---
 
     ; Initialize variables
     cellKey := ""

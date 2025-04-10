@@ -5,6 +5,7 @@
 ; Reference state constants and variables defined in state.ahk and config.ahk
 global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST
 global StateMap, currentState, showcaseDebug
+global TransitionToState ; Add reference to TransitionToState function
 
 ; Function to get the current cell that the cursor is in
 ; Returns cell key (e.g., "qj") or empty string if cursor is not in any cell
@@ -94,7 +95,7 @@ TrackCursor() {
     try {
         ; Access global state and configuration
         global currentState, highlight, subGrid, StateMap, showcaseDebug, enableUltraFast, rowKeyHoldThreshold,
-            enableVerboseLogging
+            enableVerboseLogging, g_firstKeyPressed
 
         ; Get current mouse position
         MouseGetPos(&x, &y)
@@ -171,22 +172,32 @@ TrackCursor() {
                             ; --- Task 2.17 FIX: Dynamic Subgrid Activation ---
                             ; Activate subgrid whenever the cursor moves to a new cell
                             ; Removed check for wasPreviouslyOutside to allow continuous tracking
-                            if (enableVerboseLogging) {
-                                FileAppend(Format(
-                                    "Timestamp: {} | Task 2.17 FIX | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}'. Updating subgrid & transitioning.",
-                                    A_TickCount, currentCellKey) "`n", "antimouse_core.log")
+                            ; *** NEW: Only transition if user hasn't started key selection ***
+                            if (g_firstKeyPressed == "") {
+                                if (enableVerboseLogging) {
+                                    FileAppend(Format(
+                                        "Timestamp: {} | Task 2.17 FIX | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' AND g_firstKeyPressed is EMPTY. Updating subgrid & transitioning.",
+                                        A_TickCount, currentCellKey) "`n", "antimouse_core.log")
+                                }
+                                StateMap["activeCellKey"] := currentCellKey
+                                ; Update subgrid position BEFORE transitioning
+                                if (IsObject(subGrid)) {
+                                    subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                                }
+                                TransitionToState(State_SUBGRID_STANDARD)
+                                ; Update the last key BEFORE returning
+                                lastTrackedCellKey_GridVisible := currentCellKey
+                                ; Exit TrackCursor early after transition to avoid potential conflicts
+                                trackingInProgress := false
+                                return
+                            } else {
+                                if (enableVerboseLogging) {
+                                    FileAppend(Format(
+                                        "Timestamp: {} | Task 2.17 FIX | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' BUT g_firstKeyPressed ('{}') is set. ONLY updated highlight.",
+                                        A_TickCount, currentCellKey, g_firstKeyPressed) "`n", "antimouse_core.log")
+                                }
+                                ; Don't transition, just update the highlight (already done) and last tracked key.
                             }
-                            StateMap["activeCellKey"] := currentCellKey
-                            ; Update subgrid position BEFORE transitioning
-                            if (IsObject(subGrid)) {
-                                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                            }
-                            TransitionToState(State_SUBGRID_STANDARD)
-                            ; Update the last key BEFORE returning
-                            lastTrackedCellKey_GridVisible := currentCellKey
-                            ; Exit TrackCursor early after transition to avoid potential conflicts
-                            trackingInProgress := false
-                            return
                             ; --- Task 2.17 FIX END ---
 
                         } else {
@@ -243,12 +254,14 @@ TrackCursor() {
             if (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) {
                 ; In subgrid, only show highlight if a specific subcell is active
                 if (StateMap['activeSubCellKey'] != "") {
-                    highlight.Show()
+                    ; Don't do anything - highlight.Update() already makes it visible
+                    ; The Update() is handled elsewhere when a subcell is selected
                 }
             } else if (currentState == State_GRID_VISIBLE) {
                 ; In grid mode, show highlight if a cell is potentially being targeted
                 if (StateMap['firstKey'] != "" || StateMap['activeCellKey'] != "") {
-                    highlight.Show()
+                    ; Don't do anything - highlight.Update() already makes it visible
+                    ; The Update() is handled elsewhere when a cell is selected
                 }
             }
         }
