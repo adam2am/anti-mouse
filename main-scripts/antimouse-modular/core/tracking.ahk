@@ -6,6 +6,61 @@
 global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST
 global StateMap, currentState, showcaseDebug
 
+; Function to get the current cell that the cursor is in
+; Returns cell key (e.g., "qj") or empty string if cursor is not in any cell
+GetCurrentCell() {
+    ; Get current mouse position
+    MouseGetPos(&x, &y)
+
+    ; Get the cell at current position
+    cellKey := GetCellAtPosition(x, y)
+
+    if (enableVerboseLogging) {
+        FileAppend(Format("Timestamp: {} | Task: 2.17 | GetCurrentCell: Cursor at ({},{}) is in cell '{}'",
+            A_TickCount, x, y, cellKey) "`n", "antimouse_core.log")
+    }
+
+    return cellKey
+}
+
+; Returns the cell key (e.g., "qj") at the given screen position
+; Definition moved to core/positioning.ahk to resolve conflict
+; GetCellAtPosition(x, y) {
+;     global StateMap
+;
+;     ; Ensure we have a valid overlay
+;     if (!StateMap.Has('currentOverlay') || !IsObject(StateMap['currentOverlay'])) {
+;         if (enableVerboseLogging) {
+;             FileAppend(Format("Timestamp: {} | GetCellAtPosition: No valid overlay", A_TickCount) "`n",
+;                 "antimouse_core.log")
+;         }
+;         return ""
+;     }
+;
+;     ; Get column and row keys
+;     colKeys := StateMap['activeColKeys']
+;     rowKeys := StateMap['activeRowKeys']
+;
+;     ; Loop through all cells to find which one contains the current position
+;     for _, colKey in colKeys {
+;         for _, rowKey in rowKeys {
+;             cellKey := colKey . rowKey
+;             boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+;
+;             if (IsObject(boundaries)) {
+;                 ; Check if position is within this cell's boundaries
+;                 if (x >= boundaries.x && x < boundaries.x + boundaries.w &&
+;                     y >= boundaries.y && y < boundaries.y + boundaries.h) {
+;                     return cellKey
+;                 }
+;             }
+;         }
+;     }
+;
+;     ; Not in any cell
+;     return ""
+; }
+
 ; Monitors the mouse cursor position and updates the active cell/highlight/subgrid accordingly.
 TrackCursor() {
     ; Static variable to prevent re-entry

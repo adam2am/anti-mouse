@@ -9,10 +9,32 @@ global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULT
 ProcessKeyPress(key) {
     global StateMap, currentState, showcaseDebug, g_firstKeyPressed ; Reference variables defined in state.ahk and config.ahk
     global enableVerboseLogging ; Added
+    global navigationKey, enableFreeNavigation ; Task 2.16: Free Cell Navigation
 
     if (enableVerboseLogging) { ; <<< WRAPPED
         FileAppend(Format("Timestamp: {} | ProcessKeyPress START | key={} | currentState={}", A_TickCount, key,
             currentState) "`n", "antimouse_core.log")
+    }
+
+    ; --- Task 2.16: Free Cell Navigation - Handle navigation key (Escape) ---
+    if (enableFreeNavigation && key == navigationKey) {
+        ; Check if we're in a subgrid state
+        if (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) {
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | Task: 2.16 | FREE-NAVIGATION: Navigation key pressed, returning to main grid",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+
+            ; Reset selection state
+            StateMap["firstKey"] := ""
+            StateMap["activeCellKey"] := ""
+            StateMap["activeSubCellKey"] := ""
+
+            ; Return to the main grid
+            TransitionToState(State_GRID_VISIBLE)
+            return
+        }
     }
 
     ; Simple state-based routing with no variable assignments that could cause problems

@@ -12,6 +12,8 @@ global doubleCapsThreshold := 400   ; Time in ms for double CapsLock detection
 global stateTransitionDelay := 50   ; Minimum time (ms) between state transitions to prevent leakage
 global saveMemoryOnExit := true     ; Save cell memory when deactivating grid
 global keepGridVisible := true      ; Grid always remains visible when subgrid is active (fixed behavior)
+global enableFreeNavigation := true ; Allow returning to grid from subgrid for free cell navigation
+global navigationKey := "Escape"    ; Key to press to return from subgrid to grid
 
 ; --- Ultra-Fast Subgrid Settings ---
 global enableUltraFast := true      ; Enable/disable Ultra-Fast Subgrid mode

@@ -7,6 +7,60 @@ global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULT
 global StateMap, currentState, showcaseDebug
 global enableVerboseLogging
 
+; Function to automatically detect and activate the subgrid for the cell under the cursor
+; Used for Task 2.17 Automatic Subgrid Detection
+DetectCellFunc() {
+    global StateMap, highlight, enableVerboseLogging
+
+    ; Only proceed if we're in GRID_VISIBLE state
+    if (currentState != State_GRID_VISIBLE) {
+        return
+    }
+
+    ; Get the current cell under the cursor
+    cellKey := GetCurrentCell()
+
+    if (cellKey != "") {
+        ; Cell found, transition to subgrid
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor in cell '{}', activating subgrid",
+                A_TickCount, cellKey) "`n", "antimouse_core.log")
+        }
+
+        ; Get the boundary for the cell
+        boundaries := StateMap["currentOverlay"].GetCellBoundaries(cellKey)
+
+        if (IsObject(boundaries)) {
+            ; Set the active cell key
+            StateMap["activeCellKey"] := cellKey
+
+            ; Move cursor to cell center
+            cellCenterX := boundaries.x + boundaries.w / 2
+            cellCenterY := boundaries.y + boundaries.h / 2
+            MouseMove(cellCenterX, cellCenterY, 0)
+
+            ; Update highlight to show the active cell
+            if (IsObject(highlight)) {
+                highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                ; highlight.Show() ; Removed - Show is handled by Update() in HighlightOverlay
+            }
+
+            ; Transition to subgrid state
+            TransitionToState(State_SUBGRID_STANDARD)
+        } else {
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Failed to get boundaries for cell '{}'",
+                    A_TickCount, cellKey) "`n", "antimouse_core.log")
+            }
+        }
+    } else {
+        if (enableVerboseLogging) {
+            FileAppend(Format("Timestamp: {} | Task: 2.17 | AUTO-DETECTION: Cursor not in any cell",
+                A_TickCount) "`n", "antimouse_core.log")
+        }
+    }
+}
+
 ; Central function to handle all state transitions
 TransitionToState(newState) {
     global currentState, stateTransitionTime, showcaseDebug, StateMap, subGrid, enableUltraFast, rowKeyHoldThreshold
@@ -183,10 +237,38 @@ TransitionToState(newState) {
             }
             subGrid.Hide()
         }
+
+        ; --- TASK 2.17: Automatic Subgrid Detection ---
+        ; Use a standard AHK v2 timer function to detect cells
+        ; DetectCellTimer := DetectCellFunc.Bind()
+        ; SetTimer(DetectCellTimer, -200)  ; 200ms delay, run once - Temporarily disabled for debugging navigation
     }
     else if (newState == State_SUBGRID_STANDARD) {
         ; --- Task: 4.4 Start: Optionally hide main grid ---
-        ; <<< REMOVED keepGridVisible check and main grid hiding logic >>>
+        ; Check configuration flag to determine if main grid should remain visible
+        global keepGridVisible
+
+        if (!keepGridVisible) {
+            ; Hide main grid overlays when entering subgrid if keepGridVisible is false
+            if (IsObject(StateMap["overlays"])) {
+                if (enableVerboseLogging) {
+                    FileAppend(Format(
+                        "Timestamp: {} | Task: 4.4 | GUI | Hiding main grid overlays (keepGridVisible=false)",
+                        A_TickCount) "`n", "antimouse_core.log")
+                }
+                for _, overlay in StateMap["overlays"] {
+                    if (IsObject(overlay)) {
+                        overlay.Hide()
+                    }
+                }
+            }
+        } else {
+            ; Log that we're keeping grid visible based on config
+            if (enableVerboseLogging) {
+                FileAppend(Format("Timestamp: {} | Task: 4.4 | GUI | Keeping main grid visible (keepGridVisible=true)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+        }
         ; --- Task: 4.4 End ---
 
         ; Ensure highlight is visible (should be updated by HandleSecondKey)
