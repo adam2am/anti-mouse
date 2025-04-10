@@ -177,51 +177,53 @@ TrackCursor() {
                                     }
                                 }
 
+                                ; --- REMOVED HOVER ACTIVATION - START ---
                                 ; --- Task 5.10: ROBUST FIX - Check if keys are being processed ---
                                 ; Only activate subgrid if no keys are currently being processed
                                 ; This avoids race conditions with HandleKey/HandleFirstKey/HandleSecondKey
-                                if (g_firstKeyPressed == "") {
-                                    ; No key being processed, safe to activate subgrid
-                                    if (enableVerboseLogging) {
-                                        LogToFile(Format(
-                                            "Task 5.10 | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}'. No keys being processed, activating subgrid.",
-                                            currentCellKey), "antimouse_core.log")
-                                    }
-
-                                    if (IsObject(StateMap)) {
-                                        StateMap["activeCellKey"] := currentCellKey
-
-                                        ; Update subgrid position BEFORE transitioning
-                                        if (IsObject(subGrid)) {
-                                            try {
-                                                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                                            } catch as err {
-                                                LogToFile(Format("Task: 5.10 | TrackCursor ERROR updating subGrid: {}",
-                                                    err.Message), "antimouse_core.log")
-                                            }
-                                        }
-
-                                        try {
-                                            TransitionToState(State_SUBGRID_STANDARD)
-                                        } catch as err {
-                                            LogToFile(Format("Task: 5.10 | TrackCursor ERROR transitioning state: {}",
-                                                err.Message), "antimouse_core.log")
-                                        }
-
-                                        ; Update the last key BEFORE returning
-                                        lastTrackedCellKey_GridVisible := currentCellKey
-                                        ; Exit TrackCursor early after transition to avoid potential conflicts
-                                        trackingInProgress := false
-                                        return
-                                    }
-                                } else {
-                                    ; Key is being processed, just update highlight but don't change state
-                                    if (enableVerboseLogging) {
-                                        LogToFile(Format(
-                                            "Task 5.10 | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' but key '{}' is being processed. Skipping subgrid activation.",
-                                            currentCellKey, g_firstKeyPressed), "antimouse_core.log")
-                                    }
-                                }
+                                ;                                if (g_firstKeyPressed == "") {
+                                ;                                    ; No key being processed, safe to activate subgrid
+                                ;                                    if (enableVerboseLogging) {
+                                ;                                        LogToFile(Format(
+                                ;                                            "Task 5.10 | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}'. No keys being processed, activating subgrid.",
+                                ;                                            currentCellKey), "antimouse_core.log")
+                                ;                                    }
+                                ;
+                                ;                                    if (IsObject(StateMap)) {
+                                ;                                        StateMap["activeCellKey"] := currentCellKey
+                                ;
+                                ;                                        ; Update subgrid position BEFORE transitioning
+                                ;                                        if (IsObject(subGrid)) {
+                                ;                                            try {
+                                ;                                                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                                ;                                            } catch as err {
+                                ;                                                LogToFile(Format("Task: 5.10 | TrackCursor ERROR updating subGrid: {}",
+                                ;                                                    err.Message), "antimouse_core.log")
+                                ;                                            }
+                                ;                                        }
+                                ;
+                                ;                                        try {
+                                ;                                            TransitionToState(State_SUBGRID_STANDARD)
+                                ;                                        } catch as err {
+                                ;                                            LogToFile(Format("Task: 5.10 | TrackCursor ERROR transitioning state: {}",
+                                ;                                                err.Message), "antimouse_core.log")
+                                ;                                        }
+                                ;
+                                ;                                        ; Update the last key BEFORE returning
+                                ;                                        lastTrackedCellKey_GridVisible := currentCellKey
+                                ;                                        ; Exit TrackCursor early after transition to avoid potential conflicts
+                                ;                                        trackingInProgress := false
+                                ;                                        return
+                                ;                                    }
+                                ;                                } else {
+                                ;                                    ; Key is being processed, just update highlight but don't change state
+                                ;                                    if (enableVerboseLogging) {
+                                ;                                        LogToFile(Format(
+                                ;                                            "Task 5.10 | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' but key '{}' is being processed. Skipping subgrid activation.",
+                                ;                                            currentCellKey, g_firstKeyPressed), "antimouse_core.log")
+                                ;                                    }
+                                ;                                }
+                                ; --- REMOVED HOVER ACTIVATION - END ---
 
                             } else {
                                 ; Failed to get boundaries, hide highlight as a fallback

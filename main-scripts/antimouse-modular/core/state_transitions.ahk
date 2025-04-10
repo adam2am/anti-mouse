@@ -264,10 +264,47 @@ TransitionToState(newState) {
     else if (newState == State_SUBGRID_STANDARD) {
         ; Handle subgrid activation
         global keepGridVisible ; Reference to config option
+
+        ; *** ADD VALIDATION ***
+        if (!StateMap.Has('activeCellKey') || StateMap['activeCellKey'] == "") {
+            LogToFile(Format(
+                "CRITICAL ERROR: TransitionToState(SUBGRID_STANDARD) but activeCellKey is missing/empty! Reverting state. OldState={}",
+                oldState), "antimouse_core.log")
+            ; Attempt to revert safely
+            currentState := State_GRID_VISIBLE
+            SetTimer(TrackCursor, 50) ; Restart tracking in GRID_VISIBLE
+            transitionInProgress := false ; Reset flag before returning
+            return ; Prevent further execution in invalid state
+        }
+        ; *** END VALIDATION ***
+
+        activeCellKey := StateMap['activeCellKey'] ; Use validated key
+
         if (enableVerboseLogging) {
             LogToFile(Format(
-                "Task: 2.12 | GUI | Activating standard subgrid (2x2) | activeCellKey={}",
-                StateMap["activeCellKey"]), "antimouse_core.log")
+                "Task: 2.12 | GUI | Entering SUBGRID_STANDARD | Validated activeCellKey={}",
+                activeCellKey), "antimouse_core.log")
+        }
+
+        ; Get boundaries *after* validation
+        boundaries := ""
+        if (IsObject(StateMap['currentOverlay'])) {
+            try boundaries := StateMap['currentOverlay'].GetCellBoundaries(activeCellKey)
+            catch as e {
+                LogToFile(Format("ERROR: TransitionToState(SUBGRID_STANDARD) failed GetCellBoundaries for {}: {}",
+                    activeCellKey, e.Message), "antimouse_core.log")
+            }
+        }
+
+        ; Validate boundaries before GUI updates
+        if (!IsObject(boundaries)) {
+            LogToFile(Format(
+                "CRITICAL ERROR: TransitionToState(SUBGRID_STANDARD) failed to get boundaries for activeCellKey '{}'. Reverting state.",
+                activeCellKey), "antimouse_core.log")
+            currentState := State_GRID_VISIBLE
+            SetTimer(TrackCursor, 50)
+            transitionInProgress := false
+            return
         }
 
         ; --- Task 4.4: Implement keepGridVisible Option ---
@@ -299,56 +336,115 @@ TransitionToState(newState) {
         }
         ; --- End Task 4.4 ---
 
-        ; Make sure highlight is visible
+        ; Make sure highlight is visible and updated
         if (IsObject(highlight)) {
             if (enableVerboseLogging) {
                 LogToFile(Format(
-                    "Task: 2.12 | GUI | Ensuring highlight visible for cell {} (Entering SUBGRID_STANDARD)",
-                    StateMap["activeCellKey"]), "antimouse_core.log")
+                    "Task: 2.12 | GUI | Updating & Showing highlight for cell {} (Entering SUBGRID_STANDARD)",
+                    activeCellKey), "antimouse_core.log")
             }
-            ; Note: highlight.Update() should already make it visible, no explicit .Show() needed
+            try highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            catch as e {
+                LogToFile(Format("ERROR: TransitionToState(SUBGRID_STANDARD) failed highlight.Update: {}", e.Message),
+                "antimouse_core.log")
+            }
         }
 
-        ; Show the subgrid (now configured and positioned)
+        ; Update and Show the subgrid (now configured and positioned)
         if (IsObject(subGrid)) {
             if (enableVerboseLogging) {
                 LogToFile(Format(
-                    "Task: 2.12 | GUI | Ensuring subgrid visible (Entering SUBGRID_STANDARD)"),
+                    "Task: 2.12 | GUI | Updating & Showing subgrid (Entering SUBGRID_STANDARD)"),
                 "antimouse_core.log")
             }
-            subGrid.Show()
-        }
-
-        ; TODO: Check if ultra-fast mode is pending and switch layout?
-        subGrid.SwitchToStandard() ; Ensure standard layout
-        if (enableVerboseLogging) {
-            ; SAFE ACCESS for logging
-            safeActiveCellKey := StateMap.Get("activeCellKey", "<N/A>")
-            LogToFile(Format(
-                "Task: 2.12 | GUI | Activating standard subgrid (2x2) | activeCellKey={}",
-                safeActiveCellKey), "antimouse_core.log")
+            try {
+                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                subGrid.SwitchToStandard() ; Ensure standard layout AFTER updating position
+                subGrid.Show()
+            } catch as e {
+                LogToFile(Format("ERROR: TransitionToState(SUBGRID_STANDARD) failed subGrid operations: {}", e.Message),
+                "antimouse_core.log")
+            }
         }
     }
     else if (newState == State_SUBGRID_ULTRAFAST) {
         ; Task 2.12: Implement transition to SUBGRID_ULTRAFAST
+
+        ; *** ADD VALIDATION ***
+        if (!StateMap.Has('activeCellKey') || StateMap['activeCellKey'] == "" || !StateMap.Has('activeRowKey') ||
+        StateMap['activeRowKey'] == "") {
+            LogToFile(Format(
+                "CRITICAL ERROR: TransitionToState(SUBGRID_ULTRAFAST) but activeCellKey ('{}') or activeRowKey ('{}') is missing/empty! Reverting state. OldState={}",
+                StateMap.Get('activeCellKey', '[missing]'), StateMap.Get('activeRowKey', '[missing]'), oldState),
+            "antimouse_core.log")
+            ; Attempt to revert safely (perhaps back to standard subgrid? or grid visible?)
+            ; Let's try reverting to GRID_VISIBLE for now, needs review.
+            currentState := State_GRID_VISIBLE
+            SetTimer(TrackCursor, 50) ; Restart tracking in GRID_VISIBLE
+            transitionInProgress := false ; Reset flag before returning
+            return ; Prevent further execution in invalid state
+        }
+        ; *** END VALIDATION ***
+
+        activeCellKey := StateMap['activeCellKey']
+        activeRowKey := StateMap['activeRowKey']
+
         if (enableVerboseLogging) {
             LogToFile(Format(
-                "Task: 2.12 | CORE | Activating ultra-fast subgrid (3x4) | activeCellKey={}, activeRowKey={}",
-                StateMap["activeCellKey"], StateMap["activeRowKey"]), "antimouse_core.log")
+                "Task: 2.12 | CORE | Entering SUBGRID_ULTRAFAST | Validated activeCellKey={}, activeRowKey={}",
+                activeCellKey, activeRowKey), "antimouse_core.log")
         }
 
-        ; Hide standard subgrid first (safety)
-        if (IsObject(subGrid)) {
+        ; Get boundaries *after* validation
+        boundaries := ""
+        if (IsObject(StateMap['currentOverlay'])) {
+            try boundaries := StateMap['currentOverlay'].GetCellBoundaries(activeCellKey)
+            catch as e {
+                LogToFile(Format("ERROR: TransitionToState(SUBGRID_ULTRAFAST) failed GetCellBoundaries for {}: {}",
+                    activeCellKey, e.Message), "antimouse_core.log")
+            }
+        }
+
+        ; Validate boundaries before GUI updates
+        if (!IsObject(boundaries)) {
+            LogToFile(Format(
+                "CRITICAL ERROR: TransitionToState(SUBGRID_ULTRAFAST) failed to get boundaries for activeCellKey '{}'. Reverting state.",
+                activeCellKey), "antimouse_core.log")
+            currentState := State_GRID_VISIBLE
+            SetTimer(TrackCursor, 50)
+            transitionInProgress := false
+            return
+        }
+
+        ; Update and Show highlight
+        if (IsObject(highlight)) {
             if (enableVerboseLogging) {
-                LogToFile(Format("Task: 2.12 | GUI | Hiding subGrid (Entering SUBGRID_ULTRAFAST)"),
+                LogToFile(Format(
+                    "Task: 2.12 | GUI | Updating & Showing highlight for cell {} (Entering SUBGRID_ULTRAFAST)",
+                    activeCellKey), "antimouse_core.log")
+            }
+            try highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            catch as e {
+                LogToFile(Format("ERROR: TransitionToState(SUBGRID_ULTRAFAST) failed highlight.Update: {}", e.Message),
                 "antimouse_core.log")
             }
-            subGrid.Hide()
         }
 
-        ; Show the ultra-fast subgrid (should be already configured by this point)
+        ; Update, Switch Layout, and Show the subgrid
         if (IsObject(subGrid)) {
-            subGrid.Show()
+            if (enableVerboseLogging) {
+                LogToFile(Format(
+                    "Task: 2.12 | GUI | Updating, Switching Layout & Showing subGrid (Entering SUBGRID_ULTRAFAST)"),
+                "antimouse_core.log")
+            }
+            try {
+                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                subGrid.SwitchToUltraFast(activeRowKey) ; Switch layout AFTER updating position
+                subGrid.Show()
+            } catch as e {
+                LogToFile(Format("ERROR: TransitionToState(SUBGRID_ULTRAFAST) failed subGrid operations: {}", e.Message
+                ), "antimouse_core.log")
+            }
         }
     }
 
