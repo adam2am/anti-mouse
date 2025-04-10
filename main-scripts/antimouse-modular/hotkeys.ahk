@@ -343,7 +343,7 @@ CapsLock & SC030:: ProcessKeyPress("b") ; B
 #HotIf currentState != State_IDLE
 Space:: {
     ; Access global state and config needed
-    global currentState, highlight, subGrid, StateMap, showcaseDebug
+    global currentState, highlight, subGrid, StateMap, showcaseDebug, enableVerboseLogging
 
     try {
         ; Save mouse position *before* any cleanup or state change
@@ -353,34 +353,64 @@ Space:: {
         SetTimer(TrackCursor, 0)
         currentState := State_IDLE ; Set state first
 
+        ; Log the action
+        LogToFile("Space Hotkey: Stopping TrackCursor and performing click", "antimouse_core.log")
+
         ; Explicitly remove tooltips
         ToolTip()
 
-        ; Hide UI elements quickly
-        if (IsObject(highlight)) highlight.Hide()
-            if (IsObject(subGrid)) subGrid.Hide()
-                for overlay in StateMap['overlays'] {
-                    if (IsObject(overlay))
-                        overlay.Hide()
+        ; --- TASK 5.6: Safe object handling ---
+        ; Hide UI elements quickly, with robust type checking
+        if (IsObject(highlight)) {
+            LogToFile("Space Hotkey: Hiding highlight", "antimouse_core.log")
+            highlight.Hide()
+        } else {
+            LogToFile(Format("Space Hotkey: highlight is not an object (type: {})", Type(highlight)),
+            "antimouse_core.log")
+        }
+
+        if (IsObject(subGrid)) {
+            LogToFile("Space Hotkey: Hiding subGrid", "antimouse_core.log")
+            subGrid.Hide()
+        } else {
+            LogToFile(Format("Space Hotkey: subGrid is not an object (type: {})", Type(subGrid)), "antimouse_core.log")
+        }
+
+        ; Safely handle overlays
+        if (IsObject(StateMap) && StateMap.Has('overlays') && IsObject(StateMap['overlays'])) {
+            for index, overlay in StateMap['overlays'] {
+                if (IsObject(overlay)) {
+                    LogToFile(Format("Space Hotkey: Hiding overlay {}", index), "antimouse_core.log")
+                    overlay.Hide()
+                } else {
+                    LogToFile(Format("Space Hotkey: overlay {} is not an object (type: {})",
+                        index, Type(overlay)), "antimouse_core.log")
                 }
+            }
+        } else {
+            LogToFile("Space Hotkey: StateMap['overlays'] is not valid", "antimouse_core.log")
+        }
+        ; --- END TASK 5.6 ---
 
         Sleep(30) ; Small delay to ensure UI is hidden
 
         ; Perform the mouse click at the saved position
-        ; Using Click() is generally more reliable than MouseClick for simple clicks
+        LogToFile(Format("Space Hotkey: Clicking at ({}, {})", mouseX, mouseY), "antimouse_core.log")
         Click("Left")
-        ; Fallback if Click fails (less common in v2 but possible)
-        ; if GetKeyState("LButton", "P") != 1 {
-        ;     MouseClick("Left", mouseX, mouseY, 1, 0)
-        ; }
 
         ; Perform full cleanup *after* the click
         Sleep(30) ; Delay before final cleanup
+        LogToFile("Space Hotkey: Calling Cleanup()", "antimouse_core.log")
         Cleanup() ; Function from activation.ahk
     } catch as e {
+        LogToFile(Format("Space Hotkey: ERROR - {}", e.Message), "antimouse_core.log")
         if (showcaseDebug) ToolTip("Error during Space action: " e.Message)
         ; Attempt cleanup even if there was an error during the click/hide phase
-            Cleanup()
+            try {
+                Cleanup()
+            } catch as cleanupError {
+                LogToFile(Format("Space Hotkey: CLEANUP ERROR - {}", cleanupError.Message), "antimouse_core.log")
+            }
     }
 }
 

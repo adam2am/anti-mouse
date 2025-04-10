@@ -91,3 +91,84 @@ ForceCapsLockOff() {
             ToolTip("Forcing CapsLock off")
     }
 }
+
+; --- Task 5.5: Safe Logging Mechanism ---
+; Global log queue to buffer log messages before writing to file
+global g_logQueue := []
+global enableVerboseLogging := true  ; Making it easier to enable/disable logging globally
+
+; Safe logging function that uses a queue instead of direct file access
+LogToFile(message, filename := "antimouse_core.log") {
+    ; Format with timestamp if not already formatted
+    if (!InStr(message, "Timestamp:")) {
+        formattedMessage := Format("Timestamp: {} | {}", A_TickCount, message)
+    } else {
+        formattedMessage := message
+    }
+
+    ; Add to queue
+    g_logQueue.Push({ file: filename, msg: formattedMessage "`n" })
+}
+
+; Process log queue (called on a timer)
+ProcessLogQueue() {
+    global g_logQueue  ; Add global reference to access the log queue
+    static processing := false
+
+    ; Prevent re-entry
+    if (processing || g_logQueue.Length == 0) {
+        return
+    }
+
+    processing := true
+
+    try {
+        ; Take a copy of the queue and clear it
+        queueCopy := g_logQueue.Clone()
+        g_logQueue := []
+
+        ; Group messages by filename
+        fileGroups := Map()
+        for entry in queueCopy {
+            if (!fileGroups.Has(entry.file)) {
+                fileGroups[entry.file] := []
+            }
+            fileGroups[entry.file].Push(entry.msg)
+        }
+
+        ; Write each group to its file
+        for filename, messages in fileGroups {
+            try {
+                ; Join messages and write in one operation
+                combinedMsg := ""
+                for msg in messages {
+                    combinedMsg .= msg
+                }
+
+                ; Use FileOpen for better control
+                file := FileOpen(filename, "a", "UTF-8")
+                if (IsObject(file)) {
+                    file.Write(combinedMsg)
+                    file.Close()
+                }
+            } catch as e {
+                ; If we can't write to this file, add an error to the queue for the next attempt
+                g_logQueue.Push({ file: "antimouse_error.log", msg: Format(
+                    "Timestamp: {} | ERROR: Failed to write to {}: {}`n",
+                    A_TickCount, filename, e.Message) })
+            }
+        }
+    } catch as e {
+        ; Emergency fallback logging for queue processor errors
+        try {
+            FileAppend(Format("Timestamp: {} | CRITICAL: Error in ProcessLogQueue: {}`n",
+                A_TickCount, e.Message), "antimouse_error.log")
+        } catch {
+            ; Silently fail if even this fails
+        }
+    } finally {
+        processing := false
+    }
+}
+
+; --- End Task 5.5 ---

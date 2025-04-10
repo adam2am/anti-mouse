@@ -42,51 +42,12 @@ global HandleKey, HandleFirstKey, HandleSecondKey, StartNewSelection, ProcessSta
 ; ==============================================================================
 ; Global Variables & Initialization
 ; ==============================================================================
-global g_logQueue := [] ; Buffered logger queue
+; REMOVED: global g_logQueue := [] ; Buffered logger queue - Now defined in utils.ahk
 
-; Timer function to process the log queue
-ProcessLogQueue() {
-    global g_logQueue
-    static processing := false ; Prevent re-entry
+; Start the log processing timer - Uses the implementation from utils.ahk
+SetTimer(ProcessLogQueue, 300) ; Process queue every 300ms
 
-    if (processing || g_logQueue.Length == 0) {
-        return
-    }
-    processing := true
-
-    local logFileHandle
-    try {
-        ; Make a copy of the queue and clear the global one immediately
-        ; This minimizes the time the global queue is locked
-        local queueCopy := g_logQueue.Clone()
-        g_logQueue := []
-
-        logFileHandle := FileOpen("antimouse_core.log", "a", "UTF-8") ; Append mode
-        if (!IsObject(logFileHandle)) {
-            ; Cannot open log file, maybe log to debug output?
-            OutputDebug("Error: Could not open antimouse_core.log for appending.")
-            processing := false
-            return
-        }
-
-        ; Write all messages from the copy
-        for _, message in queueCopy {
-            logFileHandle.Write(message "`n")
-        }
-        logFileHandle.Close()
-
-    } catch as e {
-        OutputDebug("Error processing log queue: " e.Message)
-        ; Ensure file is closed if open
-        try {
-            if (IsObject(logFileHandle)) {
-                logFileHandle.Close()
-            }
-        } catch {
-        }
-    }
-    processing := false
-}
+; REMOVED: Old ProcessLogQueue implementation that's now in utils.ahk
 
 ; --- Settings & Configuration ---
 #Include config.ahk
@@ -121,9 +82,6 @@ if (showcaseDebug) {
 }
 
 ; --- MAIN Execution START ---
-; Start the log processing timer
-SetTimer(ProcessLogQueue, 300) ; Process queue every 300ms
-
 Persistent() ; Keep the script running
 
 ; --- Exit Handling (Optional) ---

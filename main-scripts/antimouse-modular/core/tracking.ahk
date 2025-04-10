@@ -74,23 +74,21 @@ TrackCursor() {
     ; Check if tracking is already in progress
     if (trackingInProgress) {
         ; Log that we're exiting due to trackingInProgress flag
-        FileAppend(Format("Timestamp: {} | TrackCursor: Exit (trackingInProgress=true)", A_TickCount) "`n",
-        "antimouse_core.log")
+        LogToFile("TrackCursor: Exit (trackingInProgress=true)", "antimouse_core.log")
         return
     }
 
     ; Check if the state is valid for tracking
     if (currentState != State_GRID_VISIBLE && currentState != State_SUBGRID_STANDARD && currentState !=
         State_SUBGRID_ULTRAFAST) {
-        FileAppend(Format("Timestamp: {} | TrackCursor: Exit (invalid state={})", A_TickCount, currentState) "`n",
-        "antimouse_core.log")
+        LogToFile(Format("TrackCursor: Exit (invalid state={})", currentState), "antimouse_core.log")
         return
     }
 
     ; Only set the flag if we're actually going to process tracking
     trackingInProgress := true
-    FileAppend(Format("Timestamp: {} | TrackCursor: STARTING. State={}, lastTrackedKey={}", A_TickCount, currentState,
-        lastTrackedCellKey_GridVisible) "`n", "antimouse_core.log")
+    LogToFile(Format("TrackCursor: STARTING. State={}, lastTrackedKey={}", currentState,
+        lastTrackedCellKey_GridVisible), "antimouse_core.log")
 
     try {
         ; Access global state and configuration
@@ -99,16 +97,14 @@ TrackCursor() {
 
         ; Get current mouse position
         MouseGetPos(&x, &y)
-        FileAppend(Format("Timestamp: {} | TrackCursor: Mouse at ({},{})", A_TickCount, x, y) "`n",
-        "antimouse_core.log")
+        LogToFile(Format("TrackCursor: Mouse at ({},{})", x, y), "antimouse_core.log")
 
         activeCellBoundaries := Map()
         cursorInsideCell := false
 
         ; Get boundaries if subgrid is active
         if (currentState == State_SUBGRID_STANDARD || currentState == State_SUBGRID_ULTRAFAST) {
-            FileAppend(Format("Timestamp: {} | TrackCursor: In SUBGRID state, checking if cursor still in cell",
-                A_TickCount) "`n", "antimouse_core.log")
+            LogToFile("TrackCursor: In SUBGRID state, checking if cursor still in cell", "antimouse_core.log")
 
             if (StateMap.Has('activeCellKey') && StateMap['activeCellKey'] != "") {
                 ; <<< FIX: Get boundaries from the MAIN overlay, not the subgrid itself >>>
@@ -119,31 +115,25 @@ TrackCursor() {
                         cursorInsideCell := (x >= boundaries.x && x < boundaries.x + boundaries.w && y >= boundaries.y &&
                             y < boundaries.y + boundaries.h)
 
-                        FileAppend(Format(
-                            "Timestamp: {} | TrackCursor: Subgrid Active. Cell='{}', Bounds=({},{},{},{}), Cursor Inside={}",
-                            A_TickCount, StateMap['activeCellKey'], boundaries.x, boundaries.y, boundaries.w,
-                            boundaries.h,
-                            cursorInsideCell) "`n", "antimouse_core.log")
+                        LogToFile(Format(
+                            "TrackCursor: Subgrid Active. Cell='{}', Bounds=({},{},{},{}), Cursor Inside={}",
+                            StateMap['activeCellKey'], boundaries.x, boundaries.y, boundaries.w,
+                            boundaries.h, cursorInsideCell), "antimouse_core.log")
                     } else {
-                        FileAppend(Format(
-                            "Timestamp: {} | TrackCursor: WARNING - Failed to get boundaries for activeCellKey '{}'",
-                            A_TickCount, StateMap['activeCellKey']) "`n", "antimouse_core.log")
+                        LogToFile(Format(
+                            "TrackCursor: WARNING - Failed to get boundaries for activeCellKey '{}'",
+                            StateMap['activeCellKey']), "antimouse_core.log")
                     }
                 } else {
-                    FileAppend(Format(
-                        "Timestamp: {} | TrackCursor: WARNING - StateMap['currentOverlay'] invalid",
-                        A_TickCount) "`n", "antimouse_core.log")
+                    LogToFile("TrackCursor: WARNING - StateMap['currentOverlay'] invalid", "antimouse_core.log")
                 }
             } else {
-                FileAppend(Format(
-                    "Timestamp: {} | TrackCursor: WARNING - No activeCellKey set in SUBGRID state",
-                    A_TickCount) "`n", "antimouse_core.log")
+                LogToFile("TrackCursor: WARNING - No activeCellKey set in SUBGRID state", "antimouse_core.log")
             }
 
             if (!cursorInsideCell) {
-                FileAppend(Format(
-                    "Timestamp: {} | TrackCursor: Cursor LEFT cell boundaries! Calling StartNewSelection()",
-                    A_TickCount) "`n", "antimouse_core.log")
+                LogToFile("TrackCursor: Cursor LEFT cell boundaries! Calling StartNewSelection()", "antimouse_core.log"
+                )
                 ; Mouse moved outside the active subgrid cell's boundaries, reset to main grid selection
                 StartNewSelection("") ; Pass empty key as it's not a key press trigger
             }
@@ -163,59 +153,67 @@ TrackCursor() {
                             ; --- Task 1.6: Update and show the highlight for the new cell ---
                             highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
                             if (enableVerboseLogging) {
-                                FileAppend(Format(
-                                    "Timestamp: {} | Task 1.6 | TrackCursor (GRID_VISIBLE): Highlight moved to cell '{}'",
-                                    A_TickCount,
-                                    currentCellKey) "`n", "antimouse_core.log")
+                                LogToFile(Format(
+                                    "Task 1.6 | TrackCursor (GRID_VISIBLE): Highlight moved to cell '{}'",
+                                    currentCellKey), "antimouse_core.log")
                             }
 
                             ; --- Task 2.17 FIX: Dynamic Subgrid Activation ---
                             ; Activate subgrid whenever the cursor moves to a new cell
                             ; Removed check for wasPreviouslyOutside to allow continuous tracking
-                            ; *** NEW: Only transition if user hasn't started key selection ***
-                            if (g_firstKeyPressed == "") {
-                                if (enableVerboseLogging) {
-                                    FileAppend(Format(
-                                        "Timestamp: {} | Task 2.17 FIX | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' AND g_firstKeyPressed is EMPTY. Updating subgrid & transitioning.",
-                                        A_TickCount, currentCellKey) "`n", "antimouse_core.log")
-                                }
-                                StateMap["activeCellKey"] := currentCellKey
-                                ; Update subgrid position BEFORE transitioning
-                                if (IsObject(subGrid)) {
-                                    subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                                }
-                                TransitionToState(State_SUBGRID_STANDARD)
-                                ; Update the last key BEFORE returning
-                                lastTrackedCellKey_GridVisible := currentCellKey
-                                ; Exit TrackCursor early after transition to avoid potential conflicts
-                                trackingInProgress := false
-                                return
-                            } else {
-                                if (enableVerboseLogging) {
-                                    FileAppend(Format(
-                                        "Timestamp: {} | Task 2.17 FIX | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' BUT g_firstKeyPressed ('{}') is set. ONLY updated highlight.",
-                                        A_TickCount, currentCellKey, g_firstKeyPressed) "`n", "antimouse_core.log")
-                                }
-                                ; Don't transition, just update the highlight (already done) and last tracked key.
+                            ; *** TASK 5.4 FIX: Always activate subgrid on cursor movement ***
+
+                            ; DEBUG log the g_firstKeyPressed value regardless
+                            LogToFile(Format(
+                                "Task 5.4 | TrackCursor: g_firstKeyPressed='{}', StateMap['firstKey']='{}'",
+                                g_firstKeyPressed, StateMap['firstKey']), "antimouse_core.log")
+
+                            ; Always activate the subgrid when cursor enters a cell, even during key selection
+                            ; This fixes the issue where the subgrid doesn't follow cursor movement
+                            if (enableVerboseLogging) {
+                                LogToFile(Format(
+                                    "Task 5.4 FIX | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}'. Updating subgrid & transitioning REGARDLESS of key state.",
+                                    currentCellKey), "antimouse_core.log")
                             }
+
+                            StateMap["activeCellKey"] := currentCellKey
+                            ; Update subgrid position BEFORE transitioning
+                            if (IsObject(subGrid)) {
+                                subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                            }
+                            TransitionToState(State_SUBGRID_STANDARD)
+                            ; Update the last key BEFORE returning
+                            lastTrackedCellKey_GridVisible := currentCellKey
+                            ; Exit TrackCursor early after transition to avoid potential conflicts
+                            trackingInProgress := false
+                            return
+
+                            ; --- OLD CONDITIONAL IMPLEMENTATION (REMOVED) ---
+                            ; if (g_firstKeyPressed == "") {
+                            ;    // activates subgrid only when no key pressed
+                            ; } else {
+                            ;    // doesn't activate subgrid when key is pressed
+                            ; }
+                            ; --- END REMOVED CODE ---
+
                             ; --- Task 2.17 FIX END ---
 
                         } else {
                             ; Failed to get boundaries, hide highlight as a fallback
                             highlight.Hide()
                             if (enableVerboseLogging) {
-                                FileAppend(Format(
-                                    "Timestamp: {} | Task 1.6 | TrackCursor (GRID_VISIBLE): Failed to get boundaries for cell '{}', hiding highlight.",
-                                    A_TickCount, currentCellKey) "`n", "antimouse_core.log")
+                                LogToFile(Format(
+                                    "Task 1.6 | TrackCursor (GRID_VISIBLE): Failed to get boundaries for cell '{}', hiding highlight.",
+                                    currentCellKey), "antimouse_core.log")
                             }
                         }
                     } else {
                         ; Cursor moved outside any valid cell, hide the highlight
                         highlight.Hide()
                         if (enableVerboseLogging) {
-                            FileAppend(Format(
-                                "Timestamp: {} | Task 1.6 | TrackCursor (GRID_VISIBLE): Cursor left all cells, hiding highlight.",
-                                A_TickCount) "`n", "antimouse_core.log")
+                            LogToFile(
+                                "Task 1.6 | TrackCursor (GRID_VISIBLE): Cursor left all cells, hiding highlight.",
+                                "antimouse_core.log")
                         }
                     }
                     ; Update the last tracked cell key
@@ -227,9 +225,9 @@ TrackCursor() {
                     highlight.Hide()
                 }
                 if (enableVerboseLogging) {
-                    FileAppend(Format(
-                        "Timestamp: {} | TrackCursor (GRID_VISIBLE): WARNING - Overlay or Highlight object invalid, hiding highlight.",
-                        A_TickCount) "`n", "antimouse_core.log")
+                    LogToFile(
+                        "TrackCursor (GRID_VISIBLE): WARNING - Overlay or Highlight object invalid, hiding highlight.",
+                        "antimouse_core.log")
                 }
                 lastTrackedCellKey_GridVisible := "" ; Reset tracking
             }
@@ -237,14 +235,12 @@ TrackCursor() {
             ; --- CORE LOGGING START ---
             currentOverlayInfo := IsObject(StateMap.Has('currentOverlay')) ? "Overlay OK" : "Overlay NOT Object"
             activeCellKeyInfo := StateMap.Has('activeCellKey') ? StateMap['activeCellKey'] : "<No Active Cell>"
-            FileAppend(Format("Timestamp: {} | TrackCursor: In GRID_VISIBLE block. Overlay={}, ActiveCell={}",
-                A_TickCount, currentOverlayInfo, activeCellKeyInfo) "`n", "antimouse_core.log")
+            LogToFile(Format("TrackCursor: In GRID_VISIBLE block. Overlay={}, ActiveCell={}",
+                currentOverlayInfo, activeCellKeyInfo), "antimouse_core.log")
             ; --- CORE LOGGING END ---
             ; Add safety check for overlay before potentially using it later in the loop
             if (!StateMap.Has('currentOverlay') || !IsObject(StateMap['currentOverlay'])) {
-                FileAppend(Format(
-                    "Timestamp: {} | TrackCursor: WARNING - Overlay became invalid in GRID_VISIBLE state.", A_TickCount
-                ) "`n", "antimouse_core.log")
+                LogToFile("TrackCursor: WARNING - Overlay became invalid in GRID_VISIBLE state.", "antimouse_core.log")
                 ; Consider calling Cleanup() here? Or just let the timer run?
             }
         }
@@ -269,8 +265,7 @@ TrackCursor() {
     } catch as e {
         ; <<< TASK 5.2 START: Add verbose logging check >>>
         if (enableVerboseLogging) {
-            FileAppend(Format("Timestamp: {} | TrackCursor: **** ERROR **** {}", A_TickCount, e.Message) "`n",
-            "antimouse_core.log")
+            LogToFile(Format("TrackCursor: **** ERROR **** {}", e.Message), "antimouse_core.log")
         }
         ; <<< TASK 5.2 END >>>
         Cleanup()
@@ -278,8 +273,7 @@ TrackCursor() {
         trackingInProgress := false
         ; <<< TASK 5.2 START: Add verbose logging check >>>
         if (enableVerboseLogging) {
-            FileAppend(Format("Timestamp: {} | TrackCursor: END | trackingInProgress=false", A_TickCount) "`n",
-            "antimouse_core.log")
+            LogToFile("TrackCursor: END | trackingInProgress=false", "antimouse_core.log")
         }
         ; <<< TASK 5.2 END >>>
     }
@@ -290,6 +284,5 @@ TrackCursor() {
 ResetLastTrackedKey() {
     ; Explicitly use the proper scoping ref to the static variable
     lastTrackedCellKey_GridVisible := ""
-    FileAppend(Format("Timestamp: {} | Task: FIX | ResetLastTrackedKey: Reset lastTrackedCellKey_GridVisible to empty",
-        A_TickCount) "`n", "antimouse_core.log")
+    LogToFile("Task: FIX | ResetLastTrackedKey: Reset lastTrackedCellKey_GridVisible to empty", "antimouse_core.log")
 }
