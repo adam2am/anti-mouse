@@ -80,6 +80,7 @@ TransitionToState(newState) {
         return result
     }
 
+    ; <<< TEMP DEBUG: Re-enable recursion check >>>
     ; Check for recursive transitions
     if (transitionInProgress) {
         if (enableVerboseLogging) {
@@ -90,9 +91,10 @@ TransitionToState(newState) {
         }
         return  ; Prevent the recursive transition
     }
+    ; <<< END TEMP DEBUG >>>
 
     ; Set flag to detect recursion and track state transition
-    transitionInProgress := true
+    transitionInProgress := true ; Also re-enable setting the flag
     transitionStack.Push(Format("{}->'{}'", A_TickCount, newState))
 
     ; Limit stack size to avoid memory issues
@@ -101,9 +103,15 @@ TransitionToState(newState) {
     }
 
     oldState := currentState
+
+    if (enableVerboseLogging) { ; Task Debug: Log states at start
+        FileAppend(Format("Timestamp: {} | DEBUG | TransitionToState START | oldState='{}', newState='{}'", A_TickCount,
+            oldState, newState) "`n", "antimouse_core.log")
+    }
+
     if (oldState == newState) {
         ; No actual transition needed
-        transitionInProgress := false  ; Reset the flag before returning
+        transitionInProgress := false ; Reset flag if we return early
         return
     }
 
@@ -167,7 +175,15 @@ TransitionToState(newState) {
     }
 
     ; Update the state
+    if (enableVerboseLogging) { ; Task Debug: Log BEFORE state assignment
+        FileAppend(Format("Timestamp: {} | DEBUG | TransitionToState: About to set currentState='{}'", A_TickCount,
+            newState) "`n", "antimouse_core.log")
+    }
     currentState := newState
+    if (enableVerboseLogging) { ; Task Debug: Log AFTER state assignment
+        FileAppend(Format("Timestamp: {} | DEBUG | TransitionToState: Just set currentState='{}' (readback)",
+            A_TickCount, currentState) "`n", "antimouse_core.log")
+    }
     stateTransitionTime := currentTime
 
     ; --- Entry actions for the NEW state ---
@@ -349,8 +365,9 @@ TransitionToState(newState) {
 
 ; Function to start a new selection cycle
 StartNewSelection(key) {
-    if (enableVerboseLogging) {
-        FileAppend(Format("Timestamp: {} | StartNewSelection START | key={}", A_TickCount, key) "`n",
+    if (key != "" && enableVerboseLogging) { ; Task Debug: Log Start only for key presses
+        FileAppend(Format("Timestamp: {} | DEBUG | StartNewSelection START (from key press) | key={}", A_TickCount, key
+        ) "`n",
         "antimouse_core.log")
     }
     global currentState, subGrid, highlight, StateMap, enableUltraFast, showcaseDebug, g_firstKeyPressed,
@@ -413,47 +430,54 @@ StartNewSelection(key) {
         return
     }
 
-    ; Hide the subgrid first
+    ; --- Direct State Reset & Transition Logic --- START ---
+    if (enableVerboseLogging) {
+        FileAppend(Format(
+            "Timestamp: {} | DEBUG | StartNewSelection: Applying direct state reset and transition for key '{}'",
+            A_TickCount, key) "`n", "antimouse_core.log")
+    }
+
+    ; 1. Hide GUIs manually (equivalent to exit actions of SUBGRID* states)
     if (IsObject(subGrid)) {
         subGrid.Hide()
     }
-
-    ; Hide highlight as well
     if (IsObject(highlight)) {
         highlight.Hide()
     }
 
-    ; Reset state before handling the new key using StateMap
-    ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) FileAppend(Format(
-        "Timestamp: {} | StartNewSelection: Resetting State (Before) | activeCellKey={} | activeSubCellKey={} | firstKey={} | inUltraFastMode={} | activeRowKey={}",
-        currentTime, StateMap['activeCellKey'], StateMap['activeSubCellKey'], StateMap['firstKey'], StateMap[
-            'inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
-    ; <<< ADD LOGGING END >>>
-        StateMap['activeCellKey'] := ""
+    ; 2. Reset necessary StateMap values
+    StateMap['activeCellKey'] := ""
     StateMap['activeSubCellKey'] := ""
     StateMap['firstKey'] := ""
+    g_firstKeyPressed := "" ; Explicitly reset this too
+    StateMap['inUltraFastMode'] := false
+    StateMap['activeRowKey'] := ""
 
-    ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
-    if (enableVerboseLogging) {
-        FileAppend(Format("Timestamp: {} | DIAGNOSTIC | StartNewSelection: Resetting g_firstKeyPressed from '{}' to ''",
-            A_TickCount, g_firstKeyPressed) "`n", "antimouse_core.log")
+    ; 3. DIRECTLY assign state
+    currentState := State_GRID_VISIBLE
+    if (enableVerboseLogging) { ; Task Debug: Log state immediately after direct assignment
+        FileAppend(Format("Timestamp: {} | DEBUG | StartNewSelection: State immediately after DIRECT assignment = {}",
+            A_TickCount, currentState) "`n", "antimouse_core.log")
     }
-    ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
-    ; Explicitly reset g_firstKeyPressed to ensure new key selection works
-    g_firstKeyPressed := ""
-
-    StateMap['inUltraFastMode'] := false ; Exit ultra-fast mode
-    StateMap['activeRowKey'] := "" ; Clear active row key
-    ; <<< ADD LOGGING START >>>
-    if (showcaseDebug) FileAppend(Format(
-        "Timestamp: {} | StartNewSelection: Reset State (After) | inUltraFastMode={} | activeRowKey={}", currentTime,
-        StateMap['inUltraFastMode'], StateMap['activeRowKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
-    ; <<< ADD LOGGING END >>>
-    ; <<< STATE TRANSITION >>>
-    ; Transition to GRID_VISIBLE *before* processing the new key
-        TransitionToState(State_GRID_VISIBLE)
+    ; 4. Manually trigger necessary entry actions for GRID_VISIBLE
+    ; (Show main overlays - Assuming they weren't hidden if keepGridVisible was true)
+    global keepGridVisible
+    if (!keepGridVisible) { ; Only show if they might have been hidden
+        if (IsObject(StateMap["overlays"])) {
+            if (enableVerboseLogging) {
+                FileAppend(Format(
+                    "Timestamp: {} | DEBUG | StartNewSelection: Manually showing main grid overlays (keepGridVisible=false)",
+                    A_TickCount) "`n", "antimouse_core.log")
+            }
+            for _, overlay in StateMap["overlays"] {
+                if (IsObject(overlay)) {
+                    overlay.Show()
+                }
+            }
+        }
+    }
+    ; --- Direct State Reset & Transition Logic --- END ---
 
     ; Call HandleKey to process the key press - ONLY if key is not empty
     if (key != "") {
@@ -465,7 +489,9 @@ StartNewSelection(key) {
                 "Timestamp: {} | Task: 5.1 | DIAGNOSTIC | StartNewSelection: Scheduling deferred HandleKey('{}')",
                 A_TickCount, key) "`n", "antimouse_core.log")
         }
-        SetTimer(() => HandleKey(key), -10) ; Defer HandleKey execution
+        ; Bind the key to a helper function that logs and calls HandleKey
+        DeferredHandleKeyFunc_Bound := DeferredHandleKeyFunc.Bind(key)
+        SetTimer(DeferredHandleKeyFunc_Bound, -10) ; Defer HandleKey execution
         ; <<< TASK 5.1 FIX END >>>
 
         ; HandleKey(key) ; <<< REMOVED direct call
@@ -480,5 +506,22 @@ StartNewSelection(key) {
         SetTimer(TrackCursor, 50)
     }
 
+    if (key != "" && enableVerboseLogging) { ; Task Debug: Log End only for key presses
+        FileAppend(Format("Timestamp: {} | DEBUG | StartNewSelection END (from key press) | key={}", A_TickCount, key) "`n",
+        "antimouse_core.log")
+    }
     ; TrackCursor re-enabled either by deferred HandleKey or directly above for empty key
+}
+
+; Helper function for deferred HandleKey call with logging
+DeferredHandleKeyFunc(key) {
+    if (enableVerboseLogging) { ; Task Debug: Log state at start of deferred function
+        FileAppend(Format("Timestamp: {} | DEBUG | DeferredHandleKey STARTING | currentState={}", A_TickCount,
+            currentState) "`n", "antimouse_core.log")
+    }
+    if (enableVerboseLogging) { ; Task Debug: Log execution of deferred HandleKey
+        FileAppend(Format("Timestamp: {} | DEBUG | Deferred HandleKey Executing for key='{}'", A_TickCount, key) "`n",
+        "antimouse_core.log")
+    }
+    HandleKey(key)
 }

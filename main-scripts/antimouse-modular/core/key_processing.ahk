@@ -48,7 +48,14 @@ ProcessKeyPress(key) {
     }
     else if (currentState == State_SUBGRID_STANDARD) {
         ; For subgrid states, check if key is a grid key first
-        if (CheckIfGridKey(key)) {
+        isGridKeyResult := CheckIfGridKey(key) ; Task Debug: Log result
+        if (enableVerboseLogging) { ; <<< WRAPPED
+            FileAppend(Format(
+                "Timestamp: {} | ProcessKeyPress (SUBGRID_STANDARD): key='{}', CheckIfGridKey result={}",
+                A_TickCount, key, isGridKeyResult) "`n", "antimouse_core.log")
+        }
+
+        if (isGridKeyResult) {
             if (enableVerboseLogging) { ; <<< WRAPPED
                 FileAppend(Format(
                     "Timestamp: {} | ProcessKeyPress: Grid key in SUBGRID_STANDARD - calling StartNewSelection",
