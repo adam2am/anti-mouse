@@ -5,7 +5,7 @@
 ; Reference state constants and variables defined in state.ahk and config.ahk
 global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST, State_CELL_SELECTED
 global StateMap, currentState, showcaseDebug, highlight, subGrid, stateTransitionDelay, stateTransitionTime
-global g_firstKeyPressed ; Explicitly track first key globally
+;global g_firstKeyPressed ; Explicitly track first key globally <<< Task 6.2: REMOVED
 global enableVerboseLogging ; Added
 
 ; Handle a key press in GRID_VISIBLE state by either storing first key or completing cell selection
@@ -428,6 +428,16 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
             ; Successfully got boundaries, move to subgrid state
             StateMap['activeCellKey'] := finalCellKey
 
+            ; --- Task 6.13: Move mouse to the center of the final selected cell ---
+            MouseMove(boundaries.x + boundaries.w // 2, boundaries.y + boundaries.h // 2, 0)
+            if (enableVerboseLogging) { ; <<< WRAPPED
+                LogToFile(Format(
+                    "Timestamp: {} | Task: 6.13 | HandleSecondKey: Moved mouse to center of final cell '{}' ({}, {})`n",
+                    A_TickCount, finalCellKey, boundaries.x + boundaries.w // 2, boundaries.y + boundaries.h // 2),
+                "antimouse_core.log")
+            }
+            ; --- End Task 6.13 ---
+
             ; <<< Task 3.1: Store active row key for potential ultra-fast mode >>>
             if (isRowKey) {
                 StateMap['activeRowKey'] := key ; The second key was the row key
@@ -450,10 +460,7 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
             }
             ; --- End Task 5.8 ---
 
-            ; Move mouse to the center of the cell (optional, could be configured)
-            ; MouseMove(boundaries.x + boundaries.w / 2, boundaries.y + boundaries.h / 2, 0)
-
-            ; Update highlight and subgrid positions
+            ; Update highlight and subgrid positions (moved slightly earlier to ensure subgrid is updated *before* potential state transition)
             if (IsObject(highlight)) {
                 try {
                     highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
@@ -471,16 +478,11 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
                 }
             }
 
-            ; Reset the first key tracker
-            StateMap['firstKey'] := ""
+            ; Reset first key state *before* transitioning
+            StateMap["firstKey"] := ""
 
-            ; Transition to the subgrid state
-            try {
-                TransitionToState(State_SUBGRID_STANDARD)
-            } catch as err {
-                LogToFile(Format("Task: 5.10 | HandleSecondKey ERROR transitioning state: {}", err.Message),
-                "antimouse_core.log")
-            }
+            ; Transition to subgrid state
+            TransitionToState(State_SUBGRID_STANDARD)
         } else {
             ; Failed to get boundaries, something went wrong
             ; Reset the first key press state and potentially show an error

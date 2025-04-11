@@ -388,12 +388,14 @@ Cleanup() {
     StateMap['activeRowKey'] := "" ; Clear the active row key
     StateMap['rowKeyHeldTime'] := 0 ; Reset the hold time
 
+    ; --- Task 5.10: ROBUST FIX --- END
     LogToFile(Format(
-        "Cleanup: Reset State (After) | firstKey={} | g_firstKeyPressed={} | inUltraFastMode={} | activeRowKey={}",
-        StateMap['firstKey'], StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']),
-    "antimouse_core.log")
+        "Cleanup: Reset State (After) | firstKey={} | inUltraFastMode={} | activeRowKey={}",
+        StateMap.Get('firstKey', "(not set)"), StateMap.Get('inUltraFastMode', "(not set)"), StateMap.Get(
+            'activeRowKey', "(not set)")
+    ), "antimouse_core.log")
 
-    ; Clear any lingering tooltips
+    ; Explicitly hide GUIs again, just in case (best effort)
     ToolTip()
 
     ; --- Hide GUI Elements (Best Effort) ---

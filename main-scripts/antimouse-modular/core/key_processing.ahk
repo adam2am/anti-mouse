@@ -5,6 +5,13 @@
 ; Reference state constants defined in state.ahk
 global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST
 
+; Reference state constants and variables defined in state.ahk and config.ahk
+; --- Task 6.2: Consolidate firstKey State Variable ---
+; global StateMap, currentState, showcaseDebug, g_firstKeyPressed <<< REMOVED
+global StateMap, currentState, showcaseDebug ; <<< UPDATED
+global enableVerboseLogging ; Added
+global enableFreeNavigation, navigationKey ; Settings
+
 ; Central function called by hotkeys to route key presses to the appropriate handler based on the current state.
 ProcessKeyPress(key) {
     global StateMap, currentState, showcaseDebug, g_firstKeyPressed ; Reference variables defined in state.ahk and config.ahk

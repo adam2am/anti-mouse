@@ -274,7 +274,6 @@ TransitionToState(newState) {
 
         ; Reset first key tracking
         StateMap["firstKey"] := ""
-        g_firstKeyPressed := ""
     }
     else if (newState == State_SUBGRID_STANDARD) {
         ; Handle subgrid activation
@@ -492,7 +491,7 @@ TransitionToState(newState) {
 
 ; Function to start a new selection cycle
 StartNewSelection(key) {
-    global enableVerboseLogging, StateMap, g_firstKeyPressed
+    global enableVerboseLogging, StateMap
 
     if (enableVerboseLogging) {
         LogToFile(Format("Timestamp: {} | StartNewSelection START | Initiating key: '{}'", A_TickCount, key) "`n",
@@ -546,13 +545,11 @@ StartNewSelection(key) {
         StateMap.Delete("activeCellKey")
     if (StateMap.Has("activeSubCellKey"))
         StateMap.Delete("activeSubCellKey")
-    if (StateMap.Has("firstKey"))
-        StateMap['firstKey'] := "" ; Set to empty string instead of deleting
     if (StateMap.Has("activeRowKey"))
         StateMap.Delete("activeRowKey")
     if (StateMap.Has("inUltraFastMode"))
         StateMap.Delete("inUltraFastMode")
-    g_firstKeyPressed := "" ; Reset the separate global tracker too
+    StateMap['firstKey'] := "" ; Replaces g_firstKeyPressed := ""
 
     ; If a key initiated this new selection, process it now that the state is correct
     if (key != "") {

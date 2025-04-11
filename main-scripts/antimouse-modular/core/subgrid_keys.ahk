@@ -353,4 +353,15 @@ HandleRowKeyRelease(key) {
             Sleep(500)
             ToolTip()
         }
+
+    ; --- Task 6.8: Explicit Ultra-Fast Transition ---
+    ; Even though the flag/GUI might be reset elsewhere or implicitly,
+    ; explicitly transition the state machine back to standard subgrid mode.
+    TransitionToState(State_SUBGRID_STANDARD)
+    if (enableVerboseLogging) { ; <<< WRAPPED
+        LogToFile(Format(
+            "Timestamp: {} | Task: 6.8 | HandleRowKeyRelease: Explicitly transitioning back to SUBGRID_STANDARD for key '{}' release",
+            A_TickCount, key), "antimouse_core.log")
+    }
+    ; --- End Task 6.8 ---
 }

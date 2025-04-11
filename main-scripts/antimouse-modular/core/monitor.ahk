@@ -121,12 +121,12 @@ SwitchMonitor(monitorNum) {
     }
 
     ; --- Restore State on New Monitor --- (Based on what state we were in)
-    StateMap['firstKey'] := "" ; Always reset partial selection
-    g_firstKeyPressed := ""
     StateMap['activeCellKey'] := ""
     StateMap['activeSubCellKey'] := ""
     StateMap['inUltraFastMode'] := false
     StateMap['activeRowKey'] := ""
+    ; --- Task 6.2: Consolidate firstKey State Variable ---
+    StateMap['firstKey'] := "" ; Replaces g_firstKeyPressed := ""
 
     ; Transition to GRID_VISIBLE state on the new monitor
     ; This ensures the grid is shown correctly, and subgrids/highlights are hidden initially.
