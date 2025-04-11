@@ -93,7 +93,7 @@ TrackCursor() {
     try {
         ; Access global state and configuration
         global currentState, highlight, subGrid, StateMap, showcaseDebug, enableUltraFast, rowKeyHoldThreshold,
-            enableVerboseLogging, g_firstKeyPressed
+            enableVerboseLogging
 
         ; Get current mouse position
         MouseGetPos(&x, &y)
@@ -181,7 +181,7 @@ TrackCursor() {
                                 ; --- Task 5.10: ROBUST FIX - Check if keys are being processed ---
                                 ; Only activate subgrid if no keys are currently being processed
                                 ; This avoids race conditions with HandleKey/HandleFirstKey/HandleSecondKey
-                                ;                                if (g_firstKeyPressed == "") {
+                                ;                                if (StateMap['firstKey'] == "") {
                                 ;                                    ; No key being processed, safe to activate subgrid
                                 ;                                    if (enableVerboseLogging) {
                                 ;                                        LogToFile(Format(
@@ -220,7 +220,7 @@ TrackCursor() {
                                 ;                                    if (enableVerboseLogging) {
                                 ;                                        LogToFile(Format(
                                 ;                                            "Task 5.10 | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' but key '{}' is being processed. Skipping subgrid activation.",
-                                ;                                            currentCellKey, g_firstKeyPressed), "antimouse_core.log")
+                                ;                                            currentCellKey, StateMap['firstKey']), "antimouse_core.log")
                                 ;                                    }
                                 ;                                }
                                 ; --- REMOVED HOVER ACTIVATION - END ---

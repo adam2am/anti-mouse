@@ -70,7 +70,8 @@ global enableVerboseLogging
 
 ; Central function to handle all state transitions
 TransitionToState(newState) {
-    global currentState, stateTransitionTime, showcaseDebug, StateMap, subGrid, enableUltraFast, rowKeyHoldThreshold
+    global currentState, stateTransitionTime, showcaseDebug, StateMap, subGrid, enableUltraFast, rowKeyHoldThreshold,
+        keepGridVisible
     local oldState
     static transitionInProgress := false  ; Static variable to detect recursive transitions
     static transitionStack := []  ; Track transition stack for debugging
@@ -150,26 +151,37 @@ TransitionToState(newState) {
                     }
                 }
             }
-
-            ; Add logging for grid visibility decision
-            if (showcaseDebug) {
-                LogToFile(Format(
-                    "TransitionToState: Hiding main grid (Transitioning to IDLE)",
-                    currentTime), A_ScriptDir "\debugRapidRefresh.log")
+            LogToFile("Task 6.4 | TransitionToState: Hiding main grid (Exiting GRID_VISIBLE -> IDLE)",
+                "antimouse_core.log")
+        } else if (newState == State_SUBGRID_STANDARD || newState == State_SUBGRID_ULTRAFAST) {
+            ; Don't hide main grid if keepGridVisible is true when moving to subgrid
+            if (!keepGridVisible) {
+                if (IsObject(StateMap["overlays"])) {
+                    for _, overlay in StateMap["overlays"] {
+                        if (IsObject(overlay)) {
+                            try overlay.Hide()
+                        }
+                    }
+                }
+                LogToFile(
+                    "Task 6.4 | TransitionToState: Hiding main grid (Exiting GRID_VISIBLE -> SUBGRID, keepGridVisible=false)",
+                    "antimouse_core.log")
+            } else {
+                LogToFile(
+                    "Task 6.4 | TransitionToState: NOT hiding main grid (Exiting GRID_VISIBLE -> SUBGRID, keepGridVisible=true)",
+                    "antimouse_core.log")
             }
         } else {
-            ; Log that we're NOT hiding the grid on exit from GRID_VISIBLE (unless going to IDLE)
-            if (showcaseDebug && newState != State_IDLE) {
-                LogToFile(Format(
-                    "TransitionToState: NOT Hiding main grid on exit from GRID_VISIBLE (newState='{}')",
-                    newState), A_ScriptDir "\debugRapidRefresh.log")
-            }
+            ; Log that we're NOT hiding the grid on exit from GRID_VISIBLE (unless going to IDLE or SUBGRID)
+            LogToFile(Format("Task 6.4 | TransitionToState: NOT Hiding main grid (Exiting GRID_VISIBLE -> '{}')",
+                newState), "antimouse_core.log")
         }
     }
     if (oldState == State_SUBGRID_STANDARD) {
         ; Hide standard subgrid when exiting this state
         if (IsObject(subGrid)) {
             try subGrid.Hide()
+            LogToFile("Task 6.4 | TransitionToState: Hiding subGrid (Exiting SUBGRID_STANDARD)", "antimouse_core.log")
         }
     }
     if (oldState == State_SUBGRID_ULTRAFAST) {
@@ -177,6 +189,7 @@ TransitionToState(newState) {
         if (IsObject(subGrid)) {
             ; TODO: Potentially reset subgrid layout back to standard if needed?
             try subGrid.Hide()
+            LogToFile("Task 6.4 | TransitionToState: Hiding subGrid (Exiting SUBGRID_ULTRAFAST)", "antimouse_core.log")
         }
     }
 
@@ -248,6 +261,7 @@ TransitionToState(newState) {
                 "antimouse_core.log")
             }
             highlight.Hide()
+            LogToFile("Task 6.4 | TransitionToState: Hiding highlight (Entering GRID_VISIBLE)", "antimouse_core.log")
         }
         if (IsObject(subGrid)) {
             if (enableVerboseLogging) {
@@ -255,6 +269,7 @@ TransitionToState(newState) {
                 "antimouse_core.log")
             }
             subGrid.Hide()
+            LogToFile("Task 6.4 | TransitionToState: Hiding subGrid (Entering GRID_VISIBLE)", "antimouse_core.log")
         }
 
         ; Reset first key tracking
@@ -446,6 +461,24 @@ TransitionToState(newState) {
                 ), "antimouse_core.log")
             }
         }
+
+        ; Optionally hide main grid if configured
+        if (!keepGridVisible) {
+            if (IsObject(StateMap["overlays"])) {
+                for _, overlay in StateMap["overlays"] {
+                    if (IsObject(overlay)) {
+                        try overlay.Hide()
+                    }
+                }
+                LogToFile(
+                    "Task 6.4 | TransitionToState: Hiding main grid (Entering SUBGRID_ULTRAFAST, keepGridVisible=false)",
+                    "antimouse_core.log")
+            }
+        } else {
+            LogToFile(
+                "Task 6.4 | TransitionToState: NOT hiding main grid (Entering SUBGRID_ULTRAFAST, keepGridVisible=true)",
+                "antimouse_core.log")
+        }
     }
 
     ; Reset recursive transition check and log completion
@@ -514,7 +547,7 @@ StartNewSelection(key) {
     if (StateMap.Has("activeSubCellKey"))
         StateMap.Delete("activeSubCellKey")
     if (StateMap.Has("firstKey"))
-        StateMap.Delete("firstKey")
+        StateMap['firstKey'] := "" ; Set to empty string instead of deleting
     if (StateMap.Has("activeRowKey"))
         StateMap.Delete("activeRowKey")
     if (StateMap.Has("inUltraFastMode"))

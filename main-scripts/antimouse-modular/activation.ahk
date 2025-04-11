@@ -10,7 +10,6 @@ CapsLock_Q() {
     global currentState, highlight, subGrid, cellMemory, StateMap
     global selectedLayout, layoutConfigs, showcaseDebug ; Also ensure these are global
     global gridActivationInProgress, gridActivationTime ; For preventing double activation
-    global g_firstKeyPressed ; Add explicit global reference
     global enableVerboseLogging ; Added enableVerboseLogging
 
     ; Define currentTime at the beginning for all code paths
@@ -21,8 +20,8 @@ CapsLock_Q() {
         LogToFile(Format("Timestamp: {} | CapsLock_Q START | currentState={} | firstKey={}", A_TickCount,
             currentState, StateMap['firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     if (enableVerboseLogging) { ; <<< WRAPPED
-        LogToFile(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q START | currentState='{}' | g_firstKeyPressed='{}'",
-            A_TickCount, currentState, g_firstKeyPressed) "`n", "antimouse_core.log")
+        LogToFile(Format("Timestamp: {} | DIAGNOSTIC | CapsLock_Q START | currentState='{}' | firstKey='{}'",
+            A_TickCount, currentState, StateMap['firstKey']) "`n", "antimouse_core.log")
     }
     ; <<< ADD LOGGING END >>>
     ; Protect against double activation
@@ -65,8 +64,8 @@ CapsLock_Q() {
         ; IMPROVEMENT: Explicitly reset all state variables using StateMap
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
         LogToFile(Format(
-            "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Resetting state variables. Before: firstKey='{}', g_firstKeyPressed='{}'",
-            A_TickCount, StateMap['firstKey'], g_firstKeyPressed) "`n", "antimouse_core.log")
+            "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: Resetting state variables. Before: firstKey='{}'",
+            A_TickCount, StateMap['firstKey']) "`n", "antimouse_core.log")
         ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
         ; <<< ADD LOGGING START >>>
@@ -86,9 +85,6 @@ CapsLock_Q() {
         StateMap['lastSelectedRowIndex'] := 0
         StateMap['overlays'] := []
 
-        ; Explicitly reset the global g_firstKeyPressed variable
-        g_firstKeyPressed := ""
-
         ; Explicitly initialize ultra-fast mode state variables
         StateMap['inUltraFastMode'] := false
         StateMap['activeRowKey'] := ""
@@ -96,8 +92,8 @@ CapsLock_Q() {
 
         ; <<< ENHANCED DIAGNOSTIC LOGGING START >>>
         LogToFile(Format(
-            "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: State variables reset. After: firstKey='{}', g_firstKeyPressed='{}'",
-            A_TickCount, StateMap['firstKey'], g_firstKeyPressed) "`n", "antimouse_core.log")
+            "Timestamp: {} | DIAGNOSTIC | CapsLock_Q: State variables reset. After: firstKey='{}'",
+            A_TickCount, StateMap['firstKey']) "`n", "antimouse_core.log")
         ; <<< ENHANCED DIAGNOSTIC LOGGING END >>>
 
         ; <<< ADD LOGGING START >>>
@@ -326,7 +322,7 @@ Cleanup() {
     LogToFile("Cleanup() Function START", "antimouse_core.log")
     ; Access global state
     global currentState, highlight, subGrid, StateMap, g_ModifierState, gridActivationInProgress, showcaseDebug
-    global enableVerboseLogging, g_firstKeyPressed ; Added g_firstKeyPressed
+    global enableVerboseLogging
 
     ; Prevent cleanup if already idle (avoids redundant actions)
     if (currentState == State_IDLE) {
@@ -377,7 +373,6 @@ Cleanup() {
 
     ; --- TASK 5.6: Ensure we reset all state variables ---
     StateMap['firstKey'] := "" ; Clear partial selections
-    g_firstKeyPressed := "" ; Also reset the global tracking variable
     StateMap['activeCellKey'] := "" ; Clear the active cell
     StateMap['activeSubCellKey'] := "" ; Clear the active subcell
 
@@ -395,7 +390,7 @@ Cleanup() {
 
     LogToFile(Format(
         "Cleanup: Reset State (After) | firstKey={} | g_firstKeyPressed={} | inUltraFastMode={} | activeRowKey={}",
-        StateMap['firstKey'], g_firstKeyPressed, StateMap['inUltraFastMode'], StateMap['activeRowKey']),
+        StateMap['firstKey'], StateMap['firstKey'], StateMap['inUltraFastMode'], StateMap['activeRowKey']),
     "antimouse_core.log")
 
     ; Clear any lingering tooltips
@@ -601,11 +596,6 @@ ActivateGrid() {
     global currentState, highlight, subGrid, cellMemory, StateMap
     global selectedLayout, layoutConfigs, showcaseDebug, storePerMonitor ; Config-related globals
     global gridActivationInProgress, gridActivationTime, g_ModifierState ; State tracking globals
-    global g_firstKeyPressed ; Add explicit global reference
 }
 
-; --- Cell Memory Management --- START ---
-; <<< REMOVE START >>>
-; ... existing code ...
-; <<< REMOVE END >>>
 ; --- Cell Memory Management --- END ---
