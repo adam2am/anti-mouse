@@ -1,313 +1,367 @@
-/main-scripts/antimouse-modular/
-├── - structure of antimouse-modular -.md (This file)
-├── 1main.ahk ; Main entry point, initialization, includes
-├── activation.ahk ; Grid activation (CapsLock_Q) and cleanup logic (Cleanup, DeactivateGrid)
-├── antimouse_core.log ; Core diagnostic log file
-├── antimouse_settings.ini ; User settings storage
-├── cell_memory.txt ; Stores remembered cell->subcell mappings
-├── config.ahk ; Global configuration variables (layouts, keys, thresholds)
-├── core/ ; Directory for refactored core logic modules
-│ ├── grid_keys.ahk ; Handles main grid key presses (HandleKey, HandleFirstKey, HandleSecondKey)
-│ ├── key_processing.ahk ; Routes key presses based on state (ProcessKeyPress, CheckIfGridKey)
-│ ├── monitor.ahk ; Monitor switching logic (SwitchMonitor, CycleToNextMonitor)
-│ ├── positioning.ahk ; Cell finding logic (GetCellAtPosition - assumed, not provided but referenced)
-│ ├── state_transitions.ahk ; Handles transitions between states (TransitionToState, StartNewSelection)
-│ ├── subgrid_keys.ahk ; Handles subgrid/ultra-fast key presses and row release (ProcessStandardSubgridKey, ProcessUltraFastKey, HandleRowKeyRelease, UpdateCellMemory)
-│ └── tracking.ahk ; Cursor tracking timer logic (TrackCursor, GetCurrentCell, ResetLastTrackedKey)
-├── debugRapidRefresh.log ; Debug log for rapid events
-├── debug_log.txt ; General debug log (potentially unused/legacy)
-├── gui_classes.ahk ; Class definitions for GUI overlays (OverlayGUI, SubGridOverlay, HighlightOverlay)
-├── hotkeys.ahk ; All hotkey definitions (#HotIf contexts, CapsLock logic)
-├── memory_settings.ahk ; Functions for loading/saving settings and cell memory (Load/SaveSettings, Load/SaveCellMemory)
-├── settings_gui.ahk ; Settings GUI creation and handling (ShowSettingsGUI)
-├── state.ahk ; Global state variables (currentState, StateMap, etc.)
-└── utils.ahk ; Utility functions (validation, GUI cleanup, ForceCapsLockOff, etc.)
-## Core Concepts
+Okay, let's break down the logic flow of the AntiMouse script based on the provided code snippets.
 
-*   **States:** The script operates in distinct states defined in `state.ahk`: `IDLE`, `GRID_VISIBLE`, `SUBGRID_STANDARD`, `SUBGRID_ULTRAFAST`. State transitions drive the script's behavior, managed by `TransitionToState` in `core/state_transitions.ahk`.
-*   **Overlays:** Transparent GUI windows (`OverlayGUI` wrapping `GridOverlay`, `SubGridOverlay`, `HighlightOverlay` defined in `gui_classes.ahk`) are displayed over monitors to show grid lines, cell keys, and selection highlights.
-*   **StateMap:** A central `Map` object (`state.ahk`) holding dynamic state during grid operation (active keys, selected indices, GUI objects, ultra-fast mode status, etc.).
-*   **Two-Key Selection:** Main grid cells are selected using a two-key sequence (Column Key + Row Key or Row Key + Column Key), handled primarily in `core/grid_keys.ahk`.
-*   **Subgrids:** Once a main cell is selected, a smaller subgrid (standard 2x2 or ultra-fast 3x4, configured in `config.ahk` and managed by `SubGridOverlay` class) appears within that cell for finer mouse positioning. Keys handled in `core/subgrid_keys.ahk`.
-*   **Cell Memory:** The script remembers the last selected subcell for each main cell (optionally per monitor, configured via `storePerMonitor`), loaded/saved by `memory_settings.ahk` into `cellMemory` (`state.ahk`) and updated by `UpdateCellMemory` in `core/subgrid_keys.ahk`.
-*   **Ultra-Fast Mode:** Holding a row key (defined in `config.ahk`) during subgrid selection can trigger a larger 3x4 subgrid layout (`ultraFastSubGridKeys` in `config.ahk`) for faster selection. Triggered by `TrackCursor` (`core/tracking.ahk`) based on `rowKeyHoldThreshold` (`config.ahk`), keys handled by `ProcessUltraFastKey`, and deactivated by `HandleRowKeyRelease` (`core/subgrid_keys.ahk`).
-*   **Activation:** Primarily triggered via CapsLock (double-tap or hold+key), managed by detailed hotkey logic in `hotkeys.ahk` using `g_ModifierState` (`state.ahk`) and timing (`doubleCapsThreshold` from `config.ahk`). `CapsLock_Q()` (`activation.ahk`) is the core activation function.
-*   **Cleanup:** `Cleanup()` in `activation.ahk` is responsible for resetting state, hiding/destroying GUIs, and stopping timers. Triggered by Escape, Space (after click), or activation errors. `DeactivateGrid()` (`activation.ahk`) provides a more controlled deactivation path, potentially debounced.
+## 1. Logical Function/Variable Flow
 
-## Logical Flow Description
+Here's a breakdown of the script's execution flow, focusing on key functions, variables, and state transitions:
 
-1.  **Initialization (`1main.ahk`)**
-    *   Sets AHK environment (`#Requires`, `#SingleInstance`, `CoordMode`, etc.).
-    *   Includes all necessary modules in a specific order (Config -> State -> Utils/Classes -> Memory -> Core Logic -> Activation -> Settings -> Hotkeys).
-    *   Calls `LoadSettings()` and `LoadCellMemory()` from `memory_settings.ahk`.
-    *   Sets `activeColKeys`/`activeRowKeys` based on `selectedLayout`.
-    *   Starts `ForceCapsLockOff` timer (`utils.ahk`).
-    *   Script becomes persistent, driven by hotkeys and timers.
+**A. Initialization (`1main.ahk`)**
 
-2.  **Activation (Example: CapsLock Double-Tap)**
-    *   `CapsLock` hotkey (`hotkeys.ahk`) detects double-tap using `g_ModifierState` and timing (`doubleCapsThreshold`). Sets `g_ModifierState.inHoldMode = true`.
+1.  **Environment Setup:** Sets AHK version, single instance, coordinates, ensures CapsLock is off.
+2.  **Includes:** Loads modules in order: `config` -> `state` -> `utils`/`gui_classes` -> `memory_settings` -> `core/*` -> `activation` -> `settings_gui` -> `hotkeys`. This order is crucial for dependencies.
+3.  **Load Persistent Data:**
+    *   Calls `LoadSettings()` (`memory_settings.ahk`) -> Reads `antimouse_settings.ini` into global config variables (`selectedLayout`, `storePerMonitor`, `showcaseDebug`, `monitorMapping`, `defaultTransparency`, `highlightColor`, `instaClickMode`, `enableUltraFast`, `rowKeyHoldThreshold`, `keepGridVisible`).
+    *   Calls `LoadCellMemory()` (`memory_settings.ahk`) -> Reads `cell_memory.txt` into the global `cellMemory` Map.
+4.  **Apply Initial Config:** Sets global `activeColKeys`/`activeRowKeys` based on the `selectedLayout` loaded from settings and defined in `layoutConfigs` (`config.ahk`).
+5.  **Start Timers:**
+    *   `SetTimer(ProcessLogQueue, 300)` (`utils.ahk`): Starts the buffered logging timer.
+    *   `SetTimer(ForceCapsLockOff, 250)` (`utils.ahk`): Starts the timer to keep CapsLock physically off.
+6.  **Persist:** `Persistent()` makes the script stay running, waiting for hotkeys or timers. `currentState` starts as `State_IDLE`.
+
+**B. Activation Flow (Example: CapsLock Double-Tap)**
+
+1.  **Hotkey Trigger (`hotkeys.ahk`):**
+    *   User presses CapsLock twice within `doubleCapsThreshold`.
+    *   `CapsLock::` hotkey fires multiple times. It uses `g_ModifierState` (`state.ahk`) map (`capsPressedFirstTime`, `capsPressedSecondTime`, `lastCapsUpTime`, `capsFirstReleased`) to detect the double-tap.
+    *   On successful detection, sets `g_ModifierState.inHoldMode = true`.
     *   Calls `CapsLock_Q()` (`activation.ahk`).
-    *   `CapsLock_Q()`:
-        *   Checks `gridActivationInProgress` flag and timing to prevent double activation. Sets the flag.
-        *   Checks if `currentState != State_IDLE`; if so, calls `Cleanup()` and exits.
-        *   Resets relevant `StateMap` variables (`firstKey`, `currentOverlay`, keys, indices, etc.) and `g_firstKeyPressed`.
-        *   Loads `cellMemory`.
-        *   Gets layout config (`layoutConfigs`, `selectedLayout` from `config.ahk`).
-        *   Initializes `highlight` and `subGrid` GUI objects (`gui_classes.ahk`).
-        *   Creates and shows `OverlayGUI` for each monitor, storing them in `StateMap['overlays']`. Determines `StateMap['currentOverlay']` based on initial mouse position (`startX`, `startY`).
-        *   **Calls `TransitionToState(State_GRID_VISIBLE)`**.
-        *   **Instant Subgrid Activation Logic:**
-            *   Calls `GetCurrentCell()` (`core/tracking.ahk`, which calls `GetCellAtPosition` from `core/positioning.ahk`) to find the cell under the cursor (`initialCellKey`).
-            *   If `initialCellKey` is found:
-                *   Gets cell boundaries via `StateMap["currentOverlay"].GetCellBoundaries(initialCellKey)`.
-                *   If boundaries are valid:
-                    *   Sets `StateMap["activeCellKey"] = initialCellKey`.
-                    *   Updates `highlight` overlay position (`highlight.Update`).
-                    *   Updates `subGrid` overlay position (`subGrid.Update`).
-                    *   **Calls `TransitionToState(State_SUBGRID_STANDARD)`**. (Note: This transitions *again* immediately after the GRID_VISIBLE transition).
-                    *   *Memory check for remembered subcell is implicit; subgrid appears, mouse doesn't move automatically unless triggered by another action.*
-            *   If no cell found or boundaries fail: State remains `GRID_VISIBLE` (from the first transition).
-        *   Starts `TrackCursor` timer (`core/tracking.ahk`).
-        *   Resets `gridActivationInProgress` flag upon success or failure.
+2.  **`CapsLock_Q()` (`activation.ahk`):**
+    *   **Guard Checks:** Prevents double activation using `gridActivationInProgress` flag and timing. Checks if `currentState != State_IDLE`; if so, calls `Cleanup()` and exits.
+    *   **State Reset:** Sets `gridActivationInProgress = true`. Resets relevant `StateMap` values (`firstKey`, `currentOverlay`, `activeCellKey`, etc.) and `g_firstKeyPressed`.
+    *   **Load/Config:** Reloads `cellMemory`. Gets layout config (`layoutConfigs`, `selectedLayout`). Sets `StateMap['activeColKeys']`/`StateMap['activeRowKeys']`.
+    *   **GUI Initialization:** Creates `HighlightOverlay` and `SubGridOverlay` instances (stored in `highlight`, `subGrid` globals).
+    *   **Overlay Creation:** Loops through monitors, creates `OverlayGUI` instances (which contain `GridOverlay`) for each, shows them, and stores them in `StateMap['overlays']`. Determines `StateMap['currentOverlay']` based on initial mouse position (`startX`, `startY`).
+    *   **Initial State Transition:** Calls `TransitionToState(State_GRID_VISIBLE)` (`core/state_transitions.ahk`). This sets `currentState` and runs entry actions for GRID_VISIBLE (showing main overlays, hiding highlight/subgrid).
+    *   **Instant Subgrid Activation:**
+        *   Calls `GetCurrentCell()` (`core/tracking.ahk`, which uses `GetCellAtPosition` from `core/positioning.ahk`) to find `initialCellKey` under the cursor.
+        *   If `initialCellKey` found and boundaries (`currentOverlay.GetCellBoundaries`) are valid:
+            *   Sets `StateMap['activeCellKey'] = initialCellKey`.
+            *   Updates `highlight` position (`highlight.Update`).
+            *   Updates `subGrid` position (`subGrid.Update`).
+            *   Calls `TransitionToState(State_SUBGRID_STANDARD)`. This immediately changes the state again and runs entry actions for SUBGRID_STANDARD (showing highlight/subgrid, potentially hiding main overlays based on `keepGridVisible`).
+    *   **Start Tracking:** Calls `SetTimer(TrackCursor, 50)` (`core/tracking.ahk`).
+    *   **Cleanup Flag:** Resets `gridActivationInProgress` on success/failure.
 
-3.  **Key Handling (`ProcessKeyPress` in `core/key_processing.ahk`)**
-    *   Called by most letter/symbol hotkeys defined in `hotkeys.ahk` (when state is not `IDLE`).
-    *   Uses `currentState` for routing:
-    *   **If `currentState == State_GRID_VISIBLE`:** Calls `HandleKey(key)` (`core/grid_keys.ahk`).
-    *   **If `currentState == State_SUBGRID_STANDARD`:**
-        *   Calls `CheckIfGridKey(key)` (`core/key_processing.ahk`).
-        *   If TRUE: Calls `StartNewSelection(key)` (`core/state_transitions.ahk`) to reset to grid view and process the key.
-        *   If FALSE: Calls `HandleStandardSubgridKey(key)` (which calls `ProcessStandardSubgridKey` in `core/subgrid_keys.ahk`).
-    *   **If `currentState == State_SUBGRID_ULTRAFAST`:**
-        *   Calls `CheckIfGridKey(key)`.
-        *   If TRUE: Calls `StartNewSelection(key)`.
-        *   If FALSE: Calls `HandleUltraFastKey(key)` (which calls `ProcessUltraFastKey` in `core/subgrid_keys.ahk`).
-    *   **If `currentState == State_IDLE`:** Ignores key press (activation handled by specific CapsLock hotkeys).
+**C. Key Processing Flow (Grid/Subgrid Active)**
 
-4.  **Grid Navigation (`HandleKey`, `HandleFirstKey`, `HandleSecondKey` in `core/grid_keys.ahk`)**
-    *   Uses `g_firstKeyPressed` global (`state.ahk`) to track sequence.
-    *   `HandleKey()` checks debounce (`stateTransitionDelay`), state validity, determines if key is Col/Row, calls `HandleFirstKey` or `HandleSecondKey`.
-    *   `HandleFirstKey()`: Stores key in `g_firstKeyPressed` and `StateMap['firstKey']`. Guesses target cell based on `lastSelectedRowIndex` or middle column. Gets boundaries, updates `highlight`, moves mouse. Starts `TrackCursor`.
-    *   `HandleSecondKey()`:
-        *   Checks if first key was Col/Row and current key is the opposite (valid sequence).
-        *   If valid: Determines `finalCellKey`, sets `proceedToSubgrid = true`.
-        *   If invalid (Col->Col or Row->Row): Updates `g_firstKeyPressed`/`StateMap['firstKey']` to the *new* key and calls `HandleFirstKey()` again, effectively changing the first key selection.
-        *   If other invalid sequence: Resets `g_firstKeyPressed`.
+1.  **Hotkey Trigger (`hotkeys.ahk`):** User presses a letter/symbol key (e.g., 'w', 'j', ';'). The corresponding hotkey (active via `#HotIf currentState != State_IDLE`) fires.
+2.  **Central Router (`ProcessKeyPress` in `core/key_processing.ahk`):**
+    *   Receives the `key`.
+    *   Checks `currentState`:
+        *   **`State_GRID_VISIBLE`:** Calls `HandleKey(key)` (`core/grid_keys.ahk`).
+        *   **`State_SUBGRID_STANDARD`:**
+            *   Checks `IsSubGridKey(key)` (g,h,b,n). If true, calls `ProcessStandardSubgridKey(key)` (`core/subgrid_keys.ahk`).
+            *   If false, checks `CheckIfGridKey(key)`. If true, calls `StartNewSelection(key)` (`core/state_transitions.ahk`).
+        *   **`State_SUBGRID_ULTRAFAST`:**
+            *   Checks `IsUltraFastSubGridKey(key)` (qwer...). If true, calls `ProcessUltraFastKey(key)` (`core/subgrid_keys.ahk`).
+            *   If false, checks `CheckIfGridKey(key)`. If true, calls `StartNewSelection(key)`.
+        *   **`State_IDLE`:** Ignores.
+
+**D. Grid Navigation Flow (`core/grid_keys.ahk`)**
+
+1.  **`HandleKey(key)`:**
+    *   Checks state (`GRID_VISIBLE`). Determines if `key` is Col/Row.
+    *   Stops `TrackCursor`.
+    *   Checks `g_firstKeyPressed`:
+        *   If empty: Calls `HandleFirstKey()`.
+        *   If set: Calls `HandleSecondKey()`.
+2.  **`HandleFirstKey(key, ...)`:**
+    *   Stores `key` in `g_firstKeyPressed` and `StateMap['firstKey']`.
+    *   Guesses the other coordinate (row if col key pressed, col if row key pressed) using `StateMap['lastSelectedRowIndex']` or middle/default.
+    *   Constructs `cellKey`.
+    *   Gets `boundaries` for `cellKey` from `StateMap['currentOverlay']`.
+    *   Updates `highlight` (`highlight.Update`) to show the *guessed* cell.
+    *   Moves mouse (`MouseMove`) to the center of the guessed cell.
+    *   Restarts `TrackCursor`.
+3.  **`HandleSecondKey(key, ...)`:**
+    *   Determines if `g_firstKeyPressed` and `key` form a valid sequence (Col->Row or Row->Col).
+    *   **If Valid Sequence:**
+        *   Constructs `finalCellKey`. Sets `proceedToSubgrid = true`. Sets `StateMap['currentRowIndex']` or `StateMap['currentColIndex']`. Updates `StateMap['lastSelectedRowIndex']` if a row key was the second key.
+    *   **If Invalid Sequence (Col->Col or Row->Row):**
+        *   Logs the issue.
+        *   Resets `g_firstKeyPressed = ""`, `StateMap['firstKey'] = ""`.
+        *   Calls `StartNewSelection(key)` to treat the second key as the *start* of a new selection. Returns early. (Robust Fix 5.10)
     *   **If `proceedToSubgrid`:**
-        *   Gets boundaries for `finalCellKey`.
-        *   If boundaries valid:
+        *   Gets `boundaries` for `finalCellKey`.
+        *   If valid:
             *   Sets `StateMap['activeCellKey'] = finalCellKey`.
-            *   Stores the actual row key used in `StateMap['activeRowKey']`.
-            *   Updates `highlight`, moves mouse to cell center.
+            *   Determines and sets `StateMap['activeRowKey']` (the row key involved in the selection, needed for ultra-fast).
+            *   Clears `StateMap["preservedRowKey"]` (if it existed).
+            *   Updates `highlight` for the final cell (`highlight.Update`).
             *   Updates `subGrid` geometry (`subGrid.Update`).
-            *   Resets `g_firstKeyPressed` / `StateMap['firstKey']`.
-            *   **Calls `TransitionToState(State_SUBGRID_STANDARD)`**.
-            *   *Memory check/automatic subcell move is not explicit here; user needs to press a subgrid key.*
-        *   Starts `TrackCursor`.
+            *   Resets `g_firstKeyPressed = ""`, `StateMap['firstKey'] = ""`.
+            *   Calls `TransitionToState(State_SUBGRID_STANDARD)`.
+        *   If boundaries invalid: Resets `g_firstKeyPressed`, hides highlight.
+    *   Restarts `TrackCursor`.
 
-5.  **Subgrid Navigation (`ProcessStandardSubgridKey`/`ProcessUltraFastKey` in `core/subgrid_keys.ahk`)**
-    *   Checks state validity and debounce (`stateTransitionDelay`).
-    *   Calls `subGrid.GetTargetCoordinates(subKey)` or `subGrid.GetUltraFastTargetCoordinates(subKey)`.
+**E. Subgrid Navigation Flow (`core/subgrid_keys.ahk`)**
+
+1.  **`ProcessStandardSubgridKey(subKey)` / `ProcessUltraFastKey(key)`:**
+    *   Checks state validity (`SUBGRID_STANDARD` or `SUBGRID_ULTRAFAST` / `inUltraFastMode`).
+    *   Checks debounce (`stateTransitionDelay`).
+    *   Calls `subGrid.GetTargetCoordinates(subKey)` or `subGrid.GetUltraFastTargetCoordinates(key)`.
     *   If coordinates valid:
         *   Moves mouse (`MouseMove`).
-        *   Updates `StateMap['activeSubCellKey']`.
-        *   Calls `UpdateCellMemory(StateMap['activeCellKey'], subKey)` (potentially prefixed with "ultra:"). `UpdateCellMemory` handles `storePerMonitor` logic and saves to `cellMemory` map. *Note: `SaveCellMemory()` (writing to file) is not explicitly called here, relies on `saveMemoryOnExit` during cleanup or other triggers.*
-        *   In `ProcessUltraFastKey`, it also ensures the `highlight` is shown over the main cell.
+        *   Updates `StateMap['activeSubCellKey'] = subKey`.
+        *   Calls `UpdateCellMemory(StateMap['activeCellKey'], subKey)` (possibly prefixed with "ultra:").
+        *   In `ProcessUltraFastKey`, ensures `highlight` is shown over the main cell.
+2.  **`UpdateCellMemory(cellKey, subCellKey)`:**
+    *   Constructs `keyToUse` (e.g., "qj" or "1_qj" if `storePerMonitor`).
+    *   Updates the `cellMemory` Map: `cellMemory[keyToUse] := subCellKey`.
+    *   *(Note: `SaveCellMemory()` is not called here, happens on exit/deactivation).*
 
-6.  **Ultra-Fast Mode (`TrackCursor` in `core/tracking.ahk`, `HandleRowKeyRelease` in `core/subgrid_keys.ahk`)**
-    *   `TrackCursor` (Logic not fully shown, inferred): When `SUBGRID_STANDARD` and `StateMap['activeRowKey']` is held, checks if time held > `rowKeyHoldThreshold`. If yes: sets `StateMap['inUltraFastMode'] = true`, calls `subGrid.SwitchToUltraFast()`, and calls `TransitionToState(State_SUBGRID_ULTRAFAST)`.
-    *   Row Key Up Hotkeys (`u up::`, etc. in `hotkeys.ahk`): Call `CheckRowKeyUpForUltraFast(key)`, which calls `HandleRowKeyRelease(key)` (`core/subgrid_keys.ahk`).
-    *   `HandleRowKeyRelease()`: Checks if `enableUltraFast`, `inUltraFastMode` are true and released key matches `activeRowKey`. If yes: sets `StateMap['inUltraFastMode'] = false`, calls `subGrid.SwitchToStandard()`, resets `StateMap['activeRowKey']`. *It does not explicitly transition state back to `SUBGRID_STANDARD` here, relies on `TrackCursor` or other actions.*
+**F. Ultra-Fast Mode Flow**
 
-7.  **State Transition: Subgrid -> Grid (`StartNewSelection` in `core/state_transitions.ahk`)**
-    *   Called by `ProcessKeyPress` when a grid key (Col/Row) is pressed during `SUBGRID_STANDARD` or `SUBGRID_ULTRAFAST`.
+1.  **Activation (`TrackCursor` in `core/tracking.ahk` - Inferred Logic):**
+    *   When `currentState == State_SUBGRID_STANDARD`.
+    *   User holds down a row key (e.g., 'j').
+    *   `TrackCursor` (or a dedicated key-down handler, not fully shown) detects the row key is held.
+    *   It starts tracking `StateMap['rowKeyHeldTime']`.
+    *   If `A_TickCount - StateMap['rowKeyHeldTime'] > rowKeyHoldThreshold` and `enableUltraFast` is true:
+        *   Sets `StateMap['inUltraFastMode'] = true`.
+        *   Sets `StateMap['activeRowKey']` to the held key.
+        *   Calls `subGrid.SwitchToUltraFast()`.
+        *   Calls `TransitionToState(State_SUBGRID_ULTRAFAST)`.
+2.  **Key Handling (`ProcessKeyPress` -> `ProcessUltraFastKey`):** As described in Section E.
+3.  **Deactivation (`hotkeys.ahk`, `core/subgrid_keys.ahk`):**
+    *   User releases the row key (e.g., 'j up').
+    *   `j up::` hotkey calls `CheckRowKeyUpForUltraFast("j")`, which calls `HandleRowKeyRelease("j")`.
+    *   **`HandleRowKeyRelease(key)`:**
+        *   Checks if `enableUltraFast`, `StateMap['inUltraFastMode']` are true, and `key == StateMap['activeRowKey']`.
+        *   If true:
+            *   Sets `StateMap['inUltraFastMode'] = false`.
+            *   Calls `subGrid.SwitchToStandard()`.
+            *   Resets `StateMap['activeRowKey'] = ""`.
+            *   **Crucially, it does *not* explicitly call `TransitionToState(State_SUBGRID_STANDARD)`.** The state likely changes back when `TrackCursor` runs and sees `inUltraFastMode` is false, or the next action implicitly handles it.
+
+**G. State Transition: Subgrid -> Grid (`StartNewSelection` in `core/state_transitions.ahk`)**
+
+1.  **Trigger:** User presses a grid key (e.g., 'q') while in `SUBGRID_STANDARD` or `SUBGRID_ULTRAFAST`. `ProcessKeyPress` routes this call.
+2.  **Execution:**
     *   Stops `TrackCursor`.
-    *   Hides `subGrid` and `highlight`.
-    *   Resets state (`activeCellKey`, `activeSubCellKey`, `firstKey`, `g_firstKeyPressed`, `activeRowKey`, `inUltraFastMode`).
-    *   **Calls `TransitionToState(State_GRID_VISIBLE)`**.
-    *   Calls `HandleKey(key, true)` *after* the transition to process the pressed grid key as the start of a new selection (passes `true` to bypass `HandleKey`'s own state check). `HandleKey` restarts `TrackCursor`.
+    *   Safely preserves the *row* key from the previous selection (`StateMap['activeRowKey']` or from `StateMap['activeCellKey']`) into `StateMap["preservedRowKey"]`. (Task 5.8/5.10)
+    *   Calls `TransitionToState(State_GRID_VISIBLE)`. This handles hiding `subGrid`/`highlight` and showing main overlays via its entry/exit actions.
+    *   Clears selection state (`activeCellKey`, `activeSubCellKey`, `firstKey`, `activeRowKey`, `inUltraFastMode`, `g_firstKeyPressed`).
+    *   Calls `HandleKey(key, true)`: Processes the pressed grid key (`q`) as the *first* key of a new selection, bypassing `HandleKey`'s own state check. `HandleKey` will restart `TrackCursor`.
 
-8.  **Cursor Tracking (`TrackCursor` in `core/tracking.ahk`)**
-    *   Runs periodically (e.g., 50ms) when grid/subgrid is active (state check at start). Uses `trackingInProgress` static var to prevent re-entry.
-    *   **If `SUBGRID_STANDARD` or `SUBGRID_ULTRAFAST`:** Gets `activeCellKey` boundaries from `StateMap['currentOverlay']`. Checks if cursor `(x,y)` is still inside. If *not*: calls `StartNewSelection("")` to return to grid mode.
-    *   **If `GRID_VISIBLE`:**
-        *   Calls `GetCellAtPosition(x, y)`.
-        *   Compares `currentCellKey` with `lastTrackedCellKey_GridVisible`.
-        *   If changed:
-            *   If `currentCellKey` is valid: Gets boundaries. Updates `highlight` (`highlight.Update`). **Sets `StateMap["activeCellKey"] = currentCellKey`. Updates `subGrid` position (`subGrid.Update`). Calls `TransitionToState(State_SUBGRID_STANDARD)`. Updates `lastTrackedCellKey_GridVisible` and *returns early* to avoid race conditions.**
-            *   If `currentCellKey` is empty (outside cells): Hides `highlight`. Updates `lastTrackedCellKey_GridVisible`.
-        *   *Ultra-Fast Trigger Logic (Inferred):* Checks if `StateMap['activeRowKey']` is set and held -> activates ultra-fast if threshold met.
-    *   Resets `trackingInProgress` flag in `finally` block.
+**H. Cursor Tracking (`TrackCursor` in `core/tracking.ahk`)**
 
-9.  **Cleanup (`Cleanup` in `activation.ahk`)**
-    *   Sets `activeCleanup` flag (not explicitly defined in provided code, assumed).
-    *   Sets `currentState = State_IDLE` immediately.
-    *   Stops `TrackCursor` timer.
-    *   Resets flags (`g_ModifierState.inHoldMode`, `gridActivationInProgress`).
+1.  **Timer Execution:** Runs every ~50ms when `currentState` is not `IDLE`. Uses static `trackingInProgress` to prevent re-entry.
+2.  **Subgrid States (`SUBGRID_STANDARD` / `SUBGRID_ULTRAFAST`):**
+    *   Gets `activeCellKey` boundaries from `StateMap['currentOverlay']`.
+    *   Checks if cursor `(x,y)` is inside these boundaries.
+    *   If **NOT**: Calls `StartNewSelection("")` to transition back to `GRID_VISIBLE`.
+3.  **Grid Visible State (`GRID_VISIBLE`):**
+    *   Calls `GetCellAtPosition(x, y)`.
+    *   Compares `currentCellKey` with static `lastTrackedCellKey_GridVisible`.
+    *   **If Changed:**
+        *   If `currentCellKey` is valid (not empty):
+            *   Gets boundaries.
+            *   Updates `highlight` (`highlight.Update`) to show hover.
+            *   **!!! Automatic Subgrid Activation (Hover - Original Behavior, potentially modified/disabled by Task 5.10 check):** If `g_firstKeyPressed == ""` (no keys being processed), it sets `StateMap["activeCellKey"] = currentCellKey`, updates `subGrid.Update()`, calls `TransitionToState(State_SUBGRID_STANDARD)`, updates `lastTrackedCellKey_GridVisible`, and **returns early**.
+        *   If `currentCellKey` is empty (cursor outside cells): Hides `highlight`.
+        *   Updates `lastTrackedCellKey_GridVisible`.
+4.  **Finally Block:** Resets `trackingInProgress = false`.
+
+**I. Cleanup/Deactivation**
+
+1.  **Triggers:** `Escape` hotkey, `Space` hotkey (after click), `CapsLock Up` (single tap release), `LButton`/`RButton` click while active, errors during activation.
+2.  **`Escape::` Hotkey (`hotkeys.ahk`):** Calls `Cleanup()`. Includes robust error handling with a forced cleanup attempt (`ForceCloseAllGuis`, manual state/variable reset) if standard `Cleanup()` fails.
+3.  **`Space::` Hotkey (`hotkeys.ahk`):**
+    *   Saves mouse pos. Stops `TrackCursor`. Sets `currentState = State_IDLE`.
     *   Hides GUIs (`highlight`, `subGrid`, `overlays`).
+    *   Performs `Click("Left")`.
+    *   Calls `Cleanup()`.
+4.  **`Cleanup()` (`activation.ahk`):**
+    *   Checks if already `IDLE`.
+    *   Stops `TrackCursor`. Calls `TransitionToState(State_IDLE)` (handles initial GUI hiding).
+    *   Resets flags (`g_ModifierState.inHoldMode`, `gridActivationInProgress`).
+    *   Resets `StateMap` selection keys (`firstKey`, `activeCellKey`, etc.) and `g_firstKeyPressed`.
+    *   Resets ultra-fast state (`inUltraFastMode`, `activeRowKey`).
+    *   Explicitly hides GUIs again (best effort).
     *   Waits (`Sleep(30)`).
-    *   Destroys GUI objects (`highlight.Destroy()`, `subGrid.Destroy()`, iterates `StateMap['overlays']`), clears variables (`highlight = ""`, `subGrid = ""`, `StateMap['overlays'] = []`, `StateMap['currentOverlay'] = ""`).
-    *   Resets other `StateMap` values (`firstKey`, `activeCellKey`, etc.) and `g_firstKeyPressed`.
-    *   Calls `ForceCloseAllGuis()` (`utils.ahk`) as a safeguard.
-    *   Resets `activeCleanup` flag.
+    *   Destroys GUI objects (`highlight.Destroy()`, etc.) and clears global variables (`highlight = ""`, etc.). Clears `StateMap['overlays']`.
+    *   Calls `ForceCloseAllGuis()` (`utils.ahk`) as a final safety net.
+5.  **`DeactivateGrid()` (`activation.ahk`):** Called by LButton/RButton clicks. Similar to `Cleanup` but includes debounce (`stateTransitionDelay`), calls `TransitionToState(State_IDLE)`, and handles `SaveCellMemory()`.
 
-10. **Monitor Switching (`core/monitor.ahk`, `hotkeys.ahk`)**
-    *   Hotkeys (Tab, CapsLock+Number, Number while grid active) call `CycleToNextMonitor()` or `SwitchMonitor(monitorNum)`.
-    *   `SwitchMonitor()`: Applies `monitorMapping` (`config.ahk`). Checks validity. Checks if already on target. Stops `TrackCursor`. Gets `newOverlay`. Hides elements on old monitor. Updates `StateMap['currentOverlay']`. Shows `newOverlay`. Moves mouse to center. Resets selection state (`firstKey`, `activeCellKey`, etc.). **Calls `TransitionToState(State_GRID_VISIBLE)`**. Starts `TrackCursor`.
-    *   `CycleToNextMonitor()`: Determines current physical index, finds next in sorted list of mapped physical indices, calls `SwitchMonitor()` with the next physical index.
+**J. Monitor Switching (`core/monitor.ahk`)**
 
-## Logical Flow Diagrams
+1.  **Triggers:** `Tab` hotkey (`CycleToNextMonitor`), `Number` hotkey while active (`SwitchMonitor`), `CapsLock + Number` hotkey (`SwitchMonitor`, potentially activating grid first).
+2.  **`SwitchMonitor(monitorNum)`:**
+    *   Applies `monitorMapping`. Validates index. Checks if already on target.
+    *   Stops `TrackCursor`.
+    *   Gets `newOverlay`.
+    *   Hides elements on old monitor (`currentOverlay.Hide()`, `highlight.Hide()`, `subGrid.Hide()`).
+    *   Updates `StateMap['currentOverlay'] = newOverlay`.
+    *   Shows `newOverlay`.
+    *   Moves mouse (`MouseMove`) to the center of the new monitor.
+    *   Resets selection state (`firstKey`, `activeCellKey`, `activeRowKey`, etc.)
+    *   Calls `TransitionToState(State_GRID_VISIBLE)`.
+    *   Starts `TrackCursor`.
+3.  **`CycleToNextMonitor()`:** Determines current physical index, finds next mapped physical index in sorted list, calls `SwitchMonitor()`.
+
+**K. Settings (`settings_gui.ahk`, `memory_settings.ahk`)**
+
+1.  **Trigger:** `:*:;settings::` hotstring calls `ShowSettingsGUI()`.
+2.  **`ShowSettingsGUI()`:** Creates GUI, populates controls with current global config values.
+3.  **Apply Button:** Reads values from GUI controls, updates global config variables, calls `SaveSettings()`. Tries to apply some visual settings (transparency, highlight color) live.
+4.  **`SaveSettings()`:** Writes current global config variables to `antimouse_settings.ini`.
+
+---
+
+### How Subgrids are Activated:
+
+1.  **Instant Activation (On Initial Grid Display):** During `CapsLock_Q`, after transitioning to `GRID_VISIBLE`, the script immediately checks `GetCurrentCell()`. If the cursor is already inside a cell, it performs another transition straight to `SUBGRID_STANDARD`.
+2.  **Grid Navigation Completion:** After a valid two-key sequence (Col->Row or Row->Col) is detected in `HandleSecondKey`, it calls `TransitionToState(State_SUBGRID_STANDARD)`.
+3.  **Cursor Hover (Tracking):** While in `GRID_VISIBLE`, the `TrackCursor` timer periodically checks `GetCellAtPosition`. If the cursor moves *into* a cell (`currentCellKey` becomes non-empty and different from `lastTrackedCellKey_GridVisible`) **and** no grid keys are being processed (`g_firstKeyPressed == ""`, Task 5.10 check), it calls `TransitionToState(State_SUBGRID_STANDARD)`.
+
+### Potential Conflicts / Lack of Sense:
+
+1.  **Race Condition: `TrackCursor` vs. Key Handling:**
+    *   `TrackCursor` can change state (`GRID_VISIBLE` -> `SUBGRID_STANDARD` on hover).
+    *   `HandleKey`/`HandleSecondKey` also change state.
+    *   If a user presses the second grid key *just as* `TrackCursor` decides to transition state due to hover, the intended `HandleSecondKey` logic might run in the wrong state or conflict with the transition initiated by `TrackCursor`. The `g_firstKeyPressed == ""` check in `TrackCursor` (Task 5.10) aims to mitigate this hover activation conflict, but the general potential for timer vs. hotkey interaction remains.
+    *   Similarly, if the cursor leaves the subgrid cell (`TrackCursor` calls `StartNewSelection`) at the *exact* moment the user presses a grid key (`ProcessKeyPress` calls `StartNewSelection`), `StartNewSelection` might be called twice, potentially causing redundant actions or state inconsistencies.
+2.  **Rapid Double Transition in `CapsLock_Q`:** The `IDLE` -> `GRID_VISIBLE` -> `SUBGRID_STANDARD` transition within a single function call (`CapsLock_Q`) if the cursor starts inside a cell feels slightly complex and might hide subtle bugs compared to determining the target state first and transitioning once.
+3.  **Implicit Ultra-Fast State Reversion:** `HandleRowKeyRelease` resets the `inUltraFastMode` flag and changes the subgrid GUI layout but *doesn't* call `TransitionToState(State_SUBGRID_STANDARD)`. The state change back seems reliant on `TrackCursor` noticing the flag change or subsequent actions. This could lead to a brief period where the state is `SUBGRID_ULTRAFAST` but the flag/GUI are standard, or vice-versa, depending on timing. An explicit transition might be safer.
+4.  **`g_firstKeyPressed` vs. `StateMap['firstKey']`:** Having two variables (`g_firstKeyPressed` in `state.ahk` / `grid_keys.ahk` and `StateMap['firstKey']`) to track the first key seems redundant and increases the chance of them becoming desynchronized. `StateMap['firstKey']` is reset in more places (activation, cleanup), while `g_firstKeyPressed` is mainly managed within `grid_keys.ahk` and `StartNewSelection`. Consolidating to one might be cleaner.
+5.  **Invalid Grid Sequence Handling:** The robust fix (Task 5.10) in `HandleSecondKey` calls `StartNewSelection(key)` when an invalid sequence (Col->Col or Row->Row) occurs. This is safe but might feel slightly abrupt to the user compared to the previous behavior of just changing the first key. However, the previous behavior could lead to complex state issues.
+6.  **State Preservation on Monitor Switch:** `SwitchMonitor` explicitly transitions to `GRID_VISIBLE` and resets selection state. While simple, it means any ongoing selection or subgrid context is lost when switching monitors. Preserving/restoring state might be desired but adds complexity.
+
+### Optimization & Scalability:
+
+*   **Optimization:**
+    *   **Good:** Using classes for GUIs, central `StateMap`, modular files. Buffered logging (`ProcessLogQueue`) avoids frequent file I/O bottlenecks. Reusing GUI controls in `SubGridOverlay` is efficient.
+    *   **Areas for Improvement:** Heavy reliance on `global` could be reduced by passing state objects (like `StateMap`) explicitly. Minimizing `Sleep()` calls. The `TrackCursor` timer runs constantly when active; could potentially be optimized (e.g., only run when needed, or use different intervals). The numerous checks for `IsObject()` add safety but also overhead.
+*   **Scalability:**
+    *   **Good:** The modular structure is excellent for scalability. Adding new layouts is data-driven (`config.ahk`). Adding new states is feasible by updating `ProcessKeyPress` and `TransitionToState`.
+    *   **Areas for Improvement:** The tight coupling between `TrackCursor`, `TransitionToState`, `HandleKey`, and `StartNewSelection` (especially around automatic subgrid activation/deactivation and state resets) might become complex to manage if significantly more states or interactions are added. The CapsLock handling logic in `hotkeys.ahk` is intricate and might be hard to modify or extend significantly. Adding completely new *types* of interaction (e.g., drag modes) would require careful integration into the existing state machine and key processing logic.
+
+---
+
+## 2. Mermaid Diagrams
 
 ### High-Level State Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> IDLE : Script Start / Cleanup / DeactivateGrid
-    IDLE --> GRID_VISIBLE : Activate (CapsLock_Q) / No cell under cursor
-    IDLE --> SUBGRID_STANDARD : Activate (CapsLock_Q) / Cell under cursor (Instant Subgrid)
+    direction LR
+    [*] --> IDLE : Init / Cleanup / Deactivate
 
-    GRID_VISIBLE --> SUBGRID_STANDARD : Second Grid Key (Valid Sequence) / HandleSecondKey
-    GRID_VISIBLE --> SUBGRID_STANDARD : Cursor Moves Into Cell / TrackCursor
-
-    SUBGRID_STANDARD --> GRID_VISIBLE : Grid Key Press / StartNewSelection
-    SUBGRID_STANDARD --> GRID_VISIBLE : Cursor Leaves Cell / TrackCursor -> StartNewSelection
-    SUBGRID_STANDARD --> SUBGRID_ULTRAFAST : Row Key Held > Threshold / TrackCursor (Inferred)
-    SUBGRID_STANDARD --> IDLE : Cleanup (Escape / Space) / DeactivateGrid
-
-    SUBGRID_ULTRAFAST --> GRID_VISIBLE : Grid Key Press / StartNewSelection
-    SUBGRID_ULTRAFAST --> GRID_VISIBLE : Cursor Leaves Cell / TrackCursor -> StartNewSelection
-    SUBGRID_ULTRAFAST --> SUBGRID_STANDARD : Row Key Release / HandleRowKeyRelease + TrackCursor (Inferred state change)
-    SUBGRID_ULTRAFAST --> IDLE : Cleanup (Escape / Space) / DeactivateGrid
+    IDLE --> GRID_VISIBLE : Activate (No Cell Hover)
+    IDLE --> SUBGRID_STANDARD : Activate (Cell Hover - Instant)
 
     state GRID_VISIBLE {
-        direction LR
-        [*] --> Tracking : TrackCursor Timer
-        Tracking --> [*] : No Change
-        Tracking --> HighlightUpdate : Cursor moves to new cell
-        Tracking --> HighlightHide : Cursor leaves cells
-        HighlightUpdate --> SUBGRID_STANDARD : Auto-transition
-        HighlightHide --> Tracking
-        [*] --> FirstKeyHandling : Grid Key Press (1st) / HandleFirstKey
-        FirstKeyHandling --> WaitingForSecondKey
-        WaitingForSecondKey --> SecondKeyHandling : Grid Key Press (2nd) / HandleSecondKey
-        SecondKeyHandling --> SUBGRID_STANDARD : Valid Sequence
-        SecondKeyHandling --> FirstKeyHandling : Invalid Sequence (Change 1st Key)
+        [*] --> WaitForKey : Entry / New Selection
+        WaitForKey --> FirstKeySelected : Grid Key (1st) / HandleFirstKey
+        FirstKeySelected --> WaitForKey : Invalid 2nd Key / HandleSecondKey -> StartNewSelection(key)
+        FirstKeySelected --> SUBGRID_STANDARD : Valid 2nd Key / HandleSecondKey
+        [*] --> HoverTracking : TrackCursor Timer
+        HoverTracking --> SUBGRID_STANDARD : Cursor Enters Cell (No Key Held) / TrackCursor
+        HoverTracking --> HighlightUpdate : Cursor Enters Cell (Key Held) / TrackCursor
+        HighlightUpdate --> HoverTracking
+        HoverTracking --> HighlightHide : Cursor Leaves Cells / TrackCursor
+        HighlightHide --> HoverTracking
     }
+
     state SUBGRID_STANDARD {
-        [*] --> WaitingForKey
-        WaitingForKey --> SubgridKeyHandling : Subgrid Key Press / ProcessStandardSubgridKey
-        SubgridKeyHandling --> MouseMove/MemoryUpdate --> WaitingForKey
-        WaitingForKey --> GRID_VISIBLE : Grid Key Press / StartNewSelection
-        [*] --> Tracking : TrackCursor Timer
-        Tracking --> [*] : Still Inside Cell
-        Tracking --> GRID_VISIBLE : Cursor Leaves Cell
-        Tracking --> SUBGRID_ULTRAFAST : Row Key Held Long Enough
+         [*] --> Ready : Entry
+         Ready --> Ready : Subgrid Key / ProcessStandardSubgridKey
+         Ready --> GRID_VISIBLE : Grid Key / StartNewSelection
+         Ready --> SUBGRID_ULTRAFAST : Row Key Held > Threshold / TrackCursor (Inferred)
+         [*] --> CellTracking : TrackCursor Timer
+         CellTracking --> GRID_VISIBLE : Cursor Leaves Cell / TrackCursor -> StartNewSelection
+         CellTracking --> Ready : Cursor Inside Cell
     }
-    state SUBGRID_ULTRAFAST {
-        [*] --> WaitingForKey
-        WaitingForKey --> UltraFastKeyHandling : UltraFast Key Press / ProcessUltraFastKey
-        UltraFastKeyHandling --> MouseMove/MemoryUpdate --> WaitingForKey
-        WaitingForKey --> GRID_VISIBLE : Grid Key Press / StartNewSelection
-        [*] --> Tracking : TrackCursor Timer
-        Tracking --> [*] : Still Inside Cell
-        Tracking --> GRID_VISIBLE : Cursor Leaves Cell
-        [*] --> SUBGRID_STANDARD : Row Key Release / HandleRowKeyRelease
-    }
+
+     state SUBGRID_ULTRAFAST {
+         [*] --> Ready : Entry
+         Ready --> Ready : UltraFast Key / ProcessUltraFastKey
+         Ready --> GRID_VISIBLE : Grid Key / StartNewSelection
+         Ready --> SUBGRID_STANDARD : Row Key Release / HandleRowKeyRelease (Implicit State Change via Flag)
+         [*] --> CellTracking : TrackCursor Timer
+         CellTracking --> GRID_VISIBLE : Cursor Leaves Cell / TrackCursor -> StartNewSelection
+         CellTracking --> Ready : Cursor Inside Cell
+     }
+
+
+    GRID_VISIBLE --> IDLE : Cleanup (Esc/Space/Tap) / Deactivate
+    SUBGRID_STANDARD --> IDLE : Cleanup (Esc/Space) / Deactivate
+    SUBGRID_ULTRAFAST --> IDLE : Cleanup (Esc/Space) / Deactivate
+
+    GRID_VISIBLE --> GRID_VISIBLE : Monitor Switch
+    SUBGRID_STANDARD --> GRID_VISIBLE : Monitor Switch
+    SUBGRID_ULTRAFAST --> GRID_VISIBLE : Monitor Switch
 ```
-### Activation Flow (CapsLock_Q)
-```flowchart TD
-    A[Activation Triggered (e.g., CapsLock)] --> B{Already Active?};
-    B -- Yes --> C[Cleanup()] --> Z[End];
-    B -- No --> D{Activation Flag Set/OK?};
-    D -- No (Too Soon) --> Z;
-    D -- Yes --> E[Set Flag / Reset State / Load Memory];
-    E --> F[Init GUIs (Highlight/SubGrid)];
-    F --> G[Create Overlays / Find Current];
-    G --> H{Overlays Created?};
-    H -- No --> I[Cleanup() / Error] --> Z;
-    H -- Yes --> J[TransitionToState(GRID_VISIBLE)];
-    J --> K[GetCurrentCell()];
-    K --> L{Cell Found?};
-    L -- No --> M[Start TrackCursor] --> Z;
-    L -- Yes --> N[Get Cell Boundaries];
-    N --> O{Boundaries Valid?};
-    O -- No --> M;
-    O -- Yes --> P[Set activeCellKey];
-    P --> Q[Update Highlight];
-    Q --> R[Update SubGrid Position];
-    R --> S[TransitionToState(SUBGRID_STANDARD)];
-    S --> M;
+
+### Activation Flow (CapsLock_Q focus)
+
+```mermaid
+graph TD
+    subgraph Activation Trigger [User Action]
+        A[Double-Tap CapsLock] --> B(hotkeys.ahk: CapsLock::);
+    end
+
+    subgraph Activation Logic [activation.ahk: CapsLock_Q()]
+        B --> C{Already Active?};
+        C -- Yes --> D[Cleanup()] --> Z[End];
+        C -- No --> E{Debounce Check};
+        E -- Fail --> Z;
+        E -- OK --> F[Set Flag / Reset State / Load Memory];
+        F --> G[Init GUIs: Highlight/SubGrid];
+        G --> H[Create/Show Overlays / Find Current];
+        H --> I{Overlays OK?};
+        I -- No --> D;
+        I -- Yes --> J[TransitionToState(GRID_VISIBLE)];
+        J --> K[GetCurrentCell()];
+        K --> L{Cell Found?};
+        L -- No --> M[Start TrackCursor] --> Y[Grid Ready];
+        L -- Yes --> N[Get Boundaries];
+        N --> O{Boundaries OK?};
+        O -- No --> M;
+        O -- Yes --> P[Set activeCellKey];
+        P --> Q[Update Highlight];
+        Q --> R[Update SubGrid Position];
+        R --> S[TransitionToState(SUBGRID_STANDARD)];
+        S --> M;
+    end
+
+    subgraph Final State
+        Y --> Z;
+    end
 ```
-### Key Processing Flow (ProcessKeyPress)
-```flowchart TD
-    A[Key Press Hotkey (Active)] --> B[ProcessKeyPress(key)];
+
+### Key Press Routing (ProcessKeyPress)
+
+```mermaid
+graph TD
+    A[Hotkey Trigger (e.g., 'w')] --> B(core/key_processing.ahk: ProcessKeyPress);
     B --> C{currentState?};
-    C -- GRID_VISIBLE --> D[HandleKey(key)] --> Z[End];
-    C -- SUBGRID_STANDARD --> E{CheckIfGridKey(key)?};
-    E -- Yes --> F[StartNewSelection(key)] --> Z;
-    E -- No --> G[HandleStandardSubgridKey(key)] --> Z;
-    C -- SUBGRID_ULTRAFAST --> H{CheckIfGridKey(key)?};
-    H -- Yes --> I[StartNewSelection(key)] --> Z;
-    H -- No --> J[HandleUltraFastKey(key)] --> Z;
-    C -- IDLE --> K[Ignore / Activation Hotkey?] --> Z;
-    C -- Other --> L[Log Error] --> Z;
-```
+    C -- GRID_VISIBLE --> D[HandleKey(key)];
+    C -- SUBGRID_STANDARD --> E{IsSubGridKey?};
+    E -- Yes --> F[ProcessStandardSubgridKey(key)];
+    E -- No --> G{CheckIfGridKey?};
+    G -- Yes --> H[StartNewSelection(key)];
+    G -- No --> Z[Ignore];
+    C -- SUBGRID_ULTRAFAST --> I{IsUltraFastSubGridKey?};
+    I -- Yes --> J[ProcessUltraFastKey(key)];
+    I -- No --> K{CheckIfGridKey?};
+    K -- Yes --> H;
+    K -- No --> Z;
+    C -- IDLE --> Z;
 
-### Subgrid Activation Detail
-```graph TD
-    subgraph ActivationPath [Initial Activation (CapsLock_Q)]
-        A1[GetCellAtPosition] --> A2{Cell Found?}
-        A2 -- Yes --> A3[Get Boundaries] --> A4{OK?}
-        A4 -- Yes --> A5[Set activeCellKey] --> A6[Update Highlight/Subgrid Pos] --> A7[TransitionToState(SUBGRID_STANDARD)] --> A_End[(Subgrid Active - No Key Yet)]
-        A2 -- No --> A_Fail[(Grid Visible)]
-        A4 -- No --> A_Fail
-    end
-
-    subgraph NavigationPath [Grid Navigation (HandleSecondKey)]
-        B1[Second Key Press] --> B2{Valid Sequence?}
-        B2 -- Yes --> B3[Get Boundaries] --> B4{OK?}
-        B4 -- Yes --> B5[Set activeCellKey] --> B6[Update Highlight/Subgrid Pos] --> B7[TransitionToState(SUBGRID_STANDARD)] --> B_End[(Subgrid Active - No Key Yet)]
-        B2 -- No --> B_Fail[(Update First Key / Reset)]
-        B4 -- No --> B_Reset[(Reset First Key)]
+    subgraph Endpoints
+      D --> X[Grid Action / State Change];
+      F --> Y[Subgrid Action];
+      H --> W[Reset to Grid / State Change];
+      J --> Y;
+      Z --> ZEnd[No Action];
     end
 ```
 
-### Potential Conflicts & Optimizations
-#### State Management & Globals:
-- Conflict: Heavy reliance on numerous global variables (currentState, StateMap elements, g_firstKeyPressed, highlight, subGrid) increases complexity. g_firstKeyPressed is reset in multiple places (CapsLock_Q, HandleSecondKey, StartNewSelection, SwitchMonitor, Cleanup), making its state potentially fragile if transitions are interrupted. The StateMap helps centralize, but its direct manipulation across many functions can still be hard to track.
+### Subgrid Activation Summary Table
 
-- Optimization: Continue encapsulating state within StateMap. Ensure critical state changes are atomic or happen within well-defined transitions. Consider explicitly passing necessary state objects (like StateMap) to functions instead of relying solely on global. Reduce redundant resets of g_firstKeyPressed if possible, perhaps tying its lifecycle more strictly to the GRID_VISIBLE state.
-
-#### Timing/Race Conditions:
-- Conflict: The TrackCursor timer (50ms) runs concurrently with hotkey handlers.
-TrackCursor can call StartNewSelection if the cursor leaves the subgrid cell at the same time a user presses a grid key (which also calls StartNewSelection). This could lead to double execution or state conflicts.
-TrackCursor can automatically transition GRID_VISIBLE -> SUBGRID_STANDARD when the cursor enters a cell. If the user presses the first grid key just before this transition completes, HandleFirstKey might run in GRID_VISIBLE, but the state immediately changes underneath it, potentially causing issues when waiting for the second key. The return after transition in TrackCursor helps mitigate this, but it's a sensitive area.
-The use of Sleep() (e.g., in HandleSecondKey, Cleanup) can pause execution, potentially allowing other events (like the timer) to queue up or run unexpectedly.
-
-- Optimization: Use Critical where necessary to prevent timer interruptions during sensitive state updates or GUI manipulations. Minimize Sleep(). Re-evaluate the logic where TrackCursor automatically transitions to SUBGRID_STANDARD. Perhaps TrackCursor should only update the highlight in GRID_VISIBLE, and the transition only happens upon the second key press in HandleSecondKey. This simplifies the flow but removes the "instant subgrid on hover" feature. Alternatively, make the TrackCursor transition logic extremely robust with checks before and after TransitionToState. Remove the stateTransitionDelay debounce if possible by ensuring state transitions are handled more atomically.
-
-#### Subgrid Activation Logic:
-- Conflict: In CapsLock_Q, the script transitions IDLE -> GRID_VISIBLE and then immediately GRID_VISIBLE -> SUBGRID_STANDARD if a cell is found. This rapid double transition might be unnecessary or hide subtle issues. The state is SUBGRID_STANDARD before the TrackCursor timer is even started.
-
-- Optimization: Refactor CapsLock_Q to determine the final target state (GRID_VISIBLE or SUBGRID_STANDARD) before making the single call to TransitionToState. This makes the initial state setting cleaner.
-
-
-#### Ultra-Fast Mode Transitions:
-- Conflict: HandleRowKeyRelease resets flags (inUltraFastMode, activeRowKey) and updates the subgrid GUI (SwitchToStandard) but doesn't explicitly call TransitionToState(State_SUBGRID_STANDARD). The state likely changes back implicitly via TrackCursor detecting the conditions have changed, which might be delayed or less predictable.
-
-- Optimization: Consider adding an explicit TransitionToState(State_SUBGRID_STANDARD) call within HandleRowKeyRelease after resetting the flags and updating the GUI for a more immediate and clear state change.
-
-#### Error Handling:
-- Conflict: Error handling is mixed (try/catch with silent ignore, MsgBox, ToolTip, logging). Errors during GUI operations (e.g., getting boundaries, updating overlays) might leave the script in an inconsistent visual or logical state. Cleanup() is robust but might be called frequently if minor errors occur.
-
-- Optimization: Standardize error logging. For critical failures (e.g., cannot create overlays), ensure a full Cleanup and potentially user notification. For less critical GUI update failures, log the error but try to maintain a stable state (e.g., hide the problematic element). Add more checks for IsObject() before using GUI elements, especially in TrackCursor.
-
-### Code Clarity/Redundancy:
-Redundancy: GUI hiding/destruction logic is present in Cleanup, DeactivateGrid, StartNewSelection, and SwitchMonitor. Consolidating this into helper functions within utils.ahk or gui_classes.ahk could improve maintainability.
-
-Clarity: The difference between g_firstKeyPressed and StateMap['firstKey'] seems redundant; using only StateMap['firstKey'] might be cleaner. The CapsLock logic in hotkeys.ahk is complex but seems necessary for the desired single/double/hold behavior.
-
-#### Scalability:
-Good: The modular structure (separating config, state, utils, classes, core logic, activation, hotkeys) is a significant improvement over a monolithic script. Using StateMap centralizes dynamic data. Layouts are data-driven via layoutConfigs.
-
-Areas for Improvement: Adding significantly different interaction modes might require modifying ProcessKeyPress and potentially TransitionToState. Tighter coupling exists between TrackCursor, TransitionToState, and HandleKey regarding the automatic subgrid activation. Refactoring these interactions could improve scalability if more complex tracking behaviors are needed.
+| Activation Method        | Triggering Function/File        | State Before        | State After           | Key Logic Involved                                     | Notes                                                              |
+| :----------------------- | :------------------------------ | :------------------ | :-------------------- | :----------------------------------------------------- | :----------------------------------------------------------------- |
+| **Instant (On Activate)** | `CapsLock_Q` (activation.ahk) | `IDLE`              | `SUBGRID_STANDARD`    | `GetCurrentCell`, `GetCellBoundaries`                  | Only if cursor starts within a cell when grid is activated.        |
+| **Grid Navigation**     | `HandleSecondKey` (grid_keys.ahk) | `GRID_VISIBLE`      | `SUBGRID_STANDARD`    | Valid Col->Row or Row->Col sequence                    | Standard way to select a cell and enter its subgrid.             |
+| **Cursor Hover**        | `TrackCursor` (tracking.ahk)    | `GRID_VISIBLE`      | `SUBGRID_STANDARD`    | Cursor moves into a cell, `g_firstKeyPressed == ""` | Automatic activation by hovering. (Task 5.10 may modify this). |
