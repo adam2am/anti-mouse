@@ -13,6 +13,9 @@ HandleKey(key, bypassStateCheck := false) {
     global currentState, highlight, subGrid, cellMemory, StateMap, showcaseDebug, enableUltraFast
     global enableVerboseLogging ; Added
 
+    ; S1.2: Add lastKeypressTime for hover activation debounce
+    StateMap['lastKeypressTime'] := A_TickCount
+
     ; <<< TASK 2.1 CORE LOGGING START >>>
     if (enableVerboseLogging) { ; <<< WRAPPED
         ; FIX: Use safe logging
@@ -145,7 +148,14 @@ HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex) {
             LogToFile(Format("Timestamp: {} | Task: DEBUG | HandleFirstKey: Checking overlay visibility for key '{}'",
                 A_TickCount, key), "antimouse_core.log")
         }
-        StateMap['currentOverlay'].Show()
+
+        ; S1.1: Add try/catch for overlay.Show()
+        try {
+            StateMap['currentOverlay'].Show()
+        } catch as e {
+            LogToFile(Format("Timestamp: {} | ERROR showing overlay: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+        }
     }
     ; --- END NEW ---
 
@@ -198,116 +208,55 @@ HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex) {
         if (isColKey) {
             ; First key is COLUMN
             StateMap['currentColIndex'] := colIndex
-            ; Determine row - check if we have a preserved row from previous cell
-            if (StateMap.Has("preservedRowKey")) {
-                preservedRowKey := StateMap["preservedRowKey"]
-                targetRowIndex := 0
-                loop StateMap['activeRowKeys'].Length {
-                    if (preservedRowKey == StateMap['activeRowKeys'][A_Index]) {
-                        targetRowIndex := A_Index
-                        break
-                    }
+            tooltipText := "First key: " key " (Col). Select row."
+
+            ; Highlight the cells for this column
+            if (IsObject(StateMap['currentOverlay'])) {
+                ; S1.1: Add try/catch for overlay.HighlightCol
+                try {
+                    StateMap['currentOverlay'].HighlightCol(key, colIndex)
+                } catch as e {
+                    LogToFile(Format("Timestamp: {} | ERROR highlighting column: {}", A_TickCount, e.Message) "`n",
+                    "antimouse_core.log")
                 }
-                if (targetRowIndex > 0) {
-                    LogToFile(Format("Task 6.1 Fallback | HandleFirstKey: Found preserved row at index {}",
-                        targetRowIndex), "antimouse_core.log")
-                } else {
-                    targetRowIndex := StateMap.Get('lastSelectedRowIndex', 1)
-                    LogToFile(Format(
-                        "Task 6.1 Fallback | HandleFirstKey: Preserved row not found, using lastSelectedRowIndex {}",
-                        targetRowIndex), "antimouse_core.log")
-                }
-            } else {
-                targetRowIndex := StateMap.Get('lastSelectedRowIndex', 1)
-                LogToFile(Format("Task 6.1 Fallback | HandleFirstKey: No preserved row, using lastSelectedRowIndex {}",
-                    targetRowIndex), "antimouse_core.log")
-            }
-            targetRowIndex := ValidateIndex(targetRowIndex, StateMap['activeRowKeys'].Length)
-            targetCellKey := key . StateMap['activeRowKeys'][targetRowIndex]
-            tooltipText := "First key: " key ". Select row."
-            if (enableVerboseLogging) {
-                LogToFile(Format(
-                    "Timestamp: {} | Task: 6.1 Fallback | HandleFirstKey: First key is COLUMN='{}', guessing targetCellKey='{}'",
-                    A_TickCount, key, targetCellKey), "antimouse_core.log")
             }
         } else { ; isRowKey
+            ; First key is ROW
             StateMap['currentRowIndex'] := rowIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex
-            targetColIndex := StateMap.Get('currentColIndex', Ceil(StateMap['activeColKeys'].Length / 2))
-            targetColIndex := ValidateIndex(targetColIndex, StateMap['activeColKeys'].Length)
-            targetCellKey := StateMap['activeColKeys'][targetColIndex] . key
-            tooltipText := "First key: " key ". Select column."
-            if (enableVerboseLogging) {
-                LogToFile(Format(
-                    "Timestamp: {} | Task: 6.1 Fallback | HandleFirstKey: First key is ROW='{}', guessing targetCellKey='{}'",
-                    A_TickCount, key, targetCellKey), "antimouse_core.log")
+            StateMap['lastSelectedRowIndex'] := rowIndex ; Remember last row
+
+            tooltipText := "First key: " key " (Row). Select column."
+
+            ; Highlight the cells for this row
+            if (IsObject(StateMap['currentOverlay'])) {
+                ; S1.1: Add try/catch for overlay.HighlightRow
+                try {
+                    StateMap['currentOverlay'].HighlightRow(key, rowIndex)
+                } catch as e {
+                    LogToFile(Format("Timestamp: {} | ERROR highlighting row: {}", A_TickCount, e.Message) "`n",
+                    "antimouse_core.log")
+                }
             }
         }
     }
     ; --- Task 6.1: Get Context from Hovered Cell --- END
 
-    ; --- Use targetCellKey (calculated above) to update highlight/mouse ---
-    boundaries := ""
-    if (IsObject(StateMap['currentOverlay'])) {
-        boundaries := StateMap['currentOverlay'].GetCellBoundaries(targetCellKey)
+    if (showcaseDebug) {
+        if (hoveredCellKey != "") {
+            tooltipText .= " (Context: " hoveredCellKey ")"
+        }
+        ToolTip(tooltipText)
+        SetTimer(() => ToolTip(), -1000) ; Clear tooltip after 1 second
     }
 
-    if (IsObject(boundaries) && boundaries.HasProp("x")) {
-        targetCellX := boundaries.x
-        targetCellY := boundaries.y
-        targetCellW := boundaries.w
-        targetCellH := boundaries.h
-
-        ; Update highlight and move mouse to center of target cell
-        if (IsObject(highlight) && targetCellW > 0) {
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                LogToFile(Format("Timestamp: {} | Task: 6.1 | GUI | Updating highlight for target cell: {}",
-                    A_TickCount, targetCellKey), "antimouse_core.log")
-            }
-            highlight.Update(targetCellX, targetCellY, targetCellW, targetCellH)
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                LogToFile(Format("Timestamp: {} | Task: 6.1 | MOUSE | Moving mouse to target cell center: x={}, y={}",
-                    A_TickCount, targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2)),
-                "antimouse_core.log")
-            }
-            MouseMove(targetCellX + (targetCellW // 2), targetCellY + (targetCellH // 2), 0)
-            Sleep(10) ; Short delay for visual update
-
-            if (showcaseDebug) {
-                ToolTip(tooltipText)
-            }
-        } else {
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                LogToFile(Format(
-                    "Timestamp: {} | Task: 6.1 | WARNING | HandleFirstKey: Could not update highlight (highlight object: {}, targetCellW: {})",
-                    A_TickCount, IsObject(highlight), targetCellW), "antimouse_core.log")
-            }
-        }
-    } else {
-        if (enableVerboseLogging) { ; <<< WRAPPED
-            LogToFile(Format(
-                "Timestamp: {} | Task: 6.1 | WARNING | HandleFirstKey: Could not get boundaries for target cellKey '{}'",
-                A_TickCount, targetCellKey), "antimouse_core.log")
-        }
-        if (IsObject(highlight)) {
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                LogToFile(Format("Timestamp: {} | Task: 6.1 | GUI | Hiding highlight (failed boundaries)", A_TickCount),
-                "antimouse_core.log")
-            }
-            highlight.Hide()
-        }
-    }
-
-    ; Re-enable cursor tracking
-    if (enableVerboseLogging) { ; <<< WRAPPED
-        LogToFile(Format("Timestamp: {} | Task: 6.1 | TIMER | Enabling TrackCursor timer.", A_TickCount),
-        "antimouse_core.log")
-    }
+    ; Restart cursor tracking after key is handled
     SetTimer(TrackCursor, 50)
 
     if (enableVerboseLogging) { ; <<< WRAPPED
-        LogToFile(Format("Timestamp: {} | Task: 2.2 | HandleFirstKey END | key={}, TargetCellKey='{}', currentState={}",
-            A_TickCount, key, targetCellKey, currentState), "antimouse_core.log")
+        ; FIX: Use safe logging
+        LogToFile(Format(
+            "Timestamp: {} | Task: 2.2 | HandleFirstKey END | key={}, targetCellKey={}, TimeElapsed={}ms",
+            A_TickCount, key, targetCellKey, A_TickCount - currentTime), "antimouse_core.log")
     }
 }
 
@@ -319,205 +268,222 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
 
     ; <<< TASK 2.3 CORE LOGGING START >>>
     if (enableVerboseLogging) { ; <<< WRAPPED
-        ; FIX: Use safe logging
         LogToFile(Format(
-            "Timestamp: {} | Task: 2.3 | HandleSecondKey START | key={}, isCol={}, isRow={}, firstKey='{}', currentState='{}'",
-            A_TickCount, key, isColKey, isRowKey, StateMap['firstKey'], currentState), "antimouse_core.log")
+            "Timestamp: {} | Task: 2.3 | HandleSecondKey START | key={}, isCol={}, isRow={}, firstKey={}, currentState={} | highlight={}, subGrid={}",
+            A_TickCount, key, isColKey, isRowKey, StateMap['firstKey'], currentState, IsObject(highlight), IsObject(
+                subGrid)),
+        "antimouse_core.log")
     }
     ; <<< TASK 2.3 CORE LOGGING END >>>
 
-    ; --- NEW: Check if overlay is visible ---
-    if (IsObject(StateMap['currentOverlay'])) {
-        if (enableVerboseLogging) {
-            ; FIX: Use safe logging
-            LogToFile(Format(
-                "Timestamp: {} | Task: DEBUG | HandleSecondKey: Checking overlay visibility for key '{}'",
-                A_TickCount, key), "antimouse_core.log")
-        }
-        StateMap['currentOverlay'].Show()
-    }
-    ; --- END NEW ---
-
-    ; Retrieve the first key pressed from StateMap
+    currentTime := A_TickCount
     firstKey := StateMap['firstKey']
-    firstKeyIsCol := false
-    firstKeyIsRow := false
+    firstIsColKey := false
 
+    ; Check if the first key was a column
     loop StateMap['activeColKeys'].Length {
         if (firstKey == StateMap['activeColKeys'][A_Index]) {
-            firstKeyIsCol := true
+            firstIsColKey := true
+            if (enableVerboseLogging) { ; <<< WRAPPED
+                LogToFile(Format("Timestamp: {} | Task: 2.3 | First key '{}' is a column key", A_TickCount, firstKey),
+                "antimouse_core.log")
+            }
             break
         }
     }
-    if (!firstKeyIsCol) {
-        loop StateMap['activeRowKeys'].Length {
-            if (firstKey == StateMap['activeRowKeys'][A_Index]) {
-                firstKeyIsRow := true
-                break
-            }
-        }
-    }
 
-    ; <<< TASK 2.3 CORE LOGGING START >>>
-    if (enableVerboseLogging) { ; <<< WRAPPED
-        ; FIX: Use safe logging
-        LogToFile(Format("Timestamp: {} | Task: 2.3 | HandleSecondKey: First key '{}' type: isCol={}, isRow={}",
-            A_TickCount, firstKey, firstKeyIsCol, firstKeyIsRow), "antimouse_core.log")
-    }
-    ; <<< TASK 2.3 CORE LOGGING END >>>
+    ; For clarity, also check if it's a row key
+    firstIsRowKey := !firstIsColKey
 
-    finalCellKey := ""
-    proceedToSubgrid := false ; Flag to indicate if we should move to subgrid state
-
-    ; Check if the key sequence is valid (Col -> Row or Row -> Col)
-    if ((isColKey && firstKeyIsRow) || (isRowKey && firstKeyIsCol)) {
-        ; Valid sequence
-        if (isColKey) {
-            ; Second key is Column, first key was Row
-            finalCellKey := key . firstKey
-            ; Store current column and row index in state
-            StateMap['currentRowIndex'] := rowIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex
-        } else {
-            ; Second key is Row, first key was Column
-            finalCellKey := firstKey . key
-            ; Store current column and row index in state
-            StateMap['currentColIndex'] := colIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex
-        }
-        proceedToSubgrid := true
-
-        if (enableVerboseLogging) { ; <<< WRAPPED
-            ; FIX: Use safe logging
-            LogToFile(Format(
-                "Timestamp: {} | Task: 2.3 | HandleSecondKey: Valid sequence detected ({}->{}). finalCellKey='{}'",
-                A_TickCount, firstKey, key, finalCellKey), "antimouse_core.log")
-        }
-    } else {
-        ; Invalid sequence (Col -> Col or Row -> Row)
-        ; --- TASK 5.10: Robust Fix - Start new selection instead of just changing first key ---
+    ; Handle invalid combinations (two cols or two rows)
+    if ((firstIsColKey && isColKey) || (firstIsRowKey && isRowKey)) {
         if (enableVerboseLogging) { ; <<< WRAPPED
             LogToFile(Format(
-                "Timestamp: {} | Task: 5.10 | HandleSecondKey: INVALID sequence ({}->{}). Calling StartNewSelection({})",
-                A_TickCount, firstKey, key, key), "antimouse_core.log")
+                "Timestamp: {} | Task: 2.3 | Invalid key combination! FirstKey='{}' ({}), SecondKey='{}' ({})",
+                A_TickCount, firstKey, firstIsColKey ? "Col" : "Row", key, isColKey ? "Col" : "Row"),
+            "antimouse_core.log")
         }
+
+        ; Clear first key tracking and show a tooltip
         if (showcaseDebug) {
-            ToolTip("Invalid key sequence: " . firstKey . " -> " . key)
+            tooltipText := "Invalid: Two " . (isColKey ? "column" : "row") . " keys in a row."
+            ToolTip(tooltipText)
             SetTimer(() => ToolTip(), -1000) ; Clear tooltip after 1 second
         }
-        ; Clear the first key state since the sequence was invalid
+
+        ; Clear selection state and return to grid visible, without activating a cell
+        ; S1.4: Clear firstKey BEFORE calling StartNewSelection to prevent recursion
         StateMap['firstKey'] := ""
-        ; Start a new selection using the *current* key as the *first* key
-        StartNewSelection(key) ; Make sure StartNewSelection is accessible
-        return ; Exit HandleSecondKey early as StartNewSelection handles the rest
+
+        ; Task 5.10: Use try/catch to handle StartNewSelection errors safely
+        ; S1.1: Add try/catch for StartNewSelection
+        try {
+            StartNewSelection(key)
+        } catch as e {
+            LogToFile(Format("Timestamp: {} | ERROR in StartNewSelection: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+        }
+        return
     }
 
-    if (proceedToSubgrid) {
-        ; Get boundaries for the finalized cell
-        boundaries := Map()
-        if (IsObject(StateMap['currentOverlay'])) {
-            try {
-                boundaries := StateMap['currentOverlay'].GetCellBoundaries(finalCellKey)
-            } catch as err {
-                LogToFile(Format("Task: 5.10 | HandleSecondKey ERROR getting boundaries: {}", err.Message),
-                "antimouse_core.log")
-            }
-        }
-
-        if (IsObject(boundaries) && boundaries.HasProp("x")) {
-            ; Successfully got boundaries, move to subgrid state
-            StateMap['activeCellKey'] := finalCellKey
-
-            ; --- Task 6.13: Move mouse to the center of the final selected cell ---
-            MouseMove(boundaries.x + boundaries.w // 2, boundaries.y + boundaries.h // 2, 0)
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                LogToFile(Format(
-                    "Timestamp: {} | Task: 6.13 | HandleSecondKey: Moved mouse to center of final cell '{}' ({}, {})`n",
-                    A_TickCount, finalCellKey, boundaries.x + boundaries.w // 2, boundaries.y + boundaries.h // 2),
-                "antimouse_core.log")
-            }
-            ; --- End Task 6.13 ---
-
-            ; <<< Task 3.1: Store active row key for potential ultra-fast mode >>>
-            if (isRowKey) {
-                StateMap['activeRowKey'] := key ; The second key was the row key
-            } else { ; firstKeyIsRow
-                StateMap['activeRowKey'] := firstKey ; The first key was the row key
-            }
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                LogToFile(Format("Timestamp: {} | Task: 3.1 | HandleSecondKey: Stored activeRowKey='{}'", A_TickCount,
-                    StateMap['activeRowKey']), "antimouse_core.log")
-            }
-            ; <<< End Task 3.1 >>>
-
-            ; --- Task 5.8: Clear preserved row key after successful cell selection ---
-            if (StateMap.Has("preservedRowKey")) {
-                StateMap.Delete("preservedRowKey")
-                if (enableVerboseLogging) { ; <<< WRAPPED
-                    LogToFile(Format("Timestamp: {} | Task: 5.8 | HandleSecondKey: Cleared preservedRowKey",
-                        A_TickCount), "antimouse_core.log")
-                }
-            }
-            ; --- End Task 5.8 ---
-
-            ; Update highlight and subgrid positions (moved slightly earlier to ensure subgrid is updated *before* potential state transition)
-            if (IsObject(highlight)) {
-                try {
-                    highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                } catch as err {
-                    LogToFile(Format("Task: 5.10 | HandleSecondKey ERROR updating highlight: {}", err.Message),
-                    "antimouse_core.log")
-                }
-            }
-            if (IsObject(subGrid)) {
-                try {
-                    subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                } catch as err {
-                    LogToFile(Format("Task: 5.10 | HandleSecondKey ERROR updating subGrid: {}", err.Message),
-                    "antimouse_core.log")
-                }
-            }
-
-            ; Reset first key state *before* transitioning
-            StateMap["firstKey"] := ""
-
-            ; Transition to subgrid state
-            TransitionToState(State_SUBGRID_STANDARD)
-        } else {
-            ; Failed to get boundaries, something went wrong
-            ; Reset the first key press state and potentially show an error
-            StateMap['firstKey'] := ""
-            if (IsObject(highlight)) {
-                try {
-                    highlight.Hide()
-                } catch as err {
-                    LogToFile(Format("Task: 5.10 | HandleSecondKey ERROR hiding highlight: {}", err.Message),
-                    "antimouse_core.log")
-                }
-            }
-            if (showcaseDebug) {
-                ToolTip("Error: Could not find boundaries for cell '" . finalCellKey . "'")
-                SetTimer(() => ToolTip(), -1000)
-            }
-            if (enableVerboseLogging) { ; <<< WRAPPED
-                ; FIX: Use safe logging
-                LogToFile(Format(
-                    "Timestamp: {} | Task: 2.3 | HandleSecondKey: Failed to get boundaries for cell '{}'. Resetting firstKey.",
-                    A_TickCount, finalCellKey), "antimouse_core.log")
-            }
-        }
+    ; Determine cell key based on the order of keys pressed
+    cellKey := ""
+    if (firstIsColKey) {
+        ; First key was column, second is row
+        cellKey := firstKey . key
+    } else {
+        ; First key was row, second is column
+        cellKey := key . firstKey
     }
 
-    ; Restart cursor tracking AFTER processing the key
-    SetTimer(TrackCursor, 50) ; Adjust interval as needed
-
-    ; <<< TASK 2.3 CORE LOGGING START >>>
     if (enableVerboseLogging) { ; <<< WRAPPED
-        ; FIX: Use safe logging
-        LogToFile(Format("Timestamp: {} | Task: 2.3 | HandleSecondKey END | key={} | Final State='{}' | FirstKey='{}'",
-            A_TickCount, key, currentState, StateMap['firstKey']), "antimouse_core.log")
+        LogToFile(Format("Timestamp: {} | Task: 2.3 | Calculated cellKey = {}", A_TickCount, cellKey),
+        "antimouse_core.log")
     }
-    ; <<< TASK 2.3 CORE LOGGING END >>>
+
+    ; Get cell boundaries
+    ; S1.1: Add IsObject check and try/catch for GetCellBoundaries
+    if (IsObject(StateMap['currentOverlay'])) {
+        try {
+            cellBoundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+
+            if (IsObject(cellBoundaries)) {
+                ; Store active cell selection
+                StateMap['activeCellKey'] := cellKey
+
+                ; Update the highlight to show the selected cell
+                ; S1.1: Add IsObject check and try/catch for highlight.Update
+                if (IsObject(highlight)) {
+                    try {
+                        highlight.Update(cellBoundaries.x, cellBoundaries.y, cellBoundaries.w, cellBoundaries.h)
+                    } catch as e {
+                        LogToFile(Format("Timestamp: {} | ERROR updating highlight: {}", A_TickCount, e.Message) "`n",
+                        "antimouse_core.log")
+                    }
+                } else {
+                    LogToFile(Format("Timestamp: {} | WARNING: highlight is not an object in HandleSecondKey",
+                        A_TickCount) "`n",
+                    "antimouse_core.log")
+                }
+
+                ; --- Task 6.12: Move Cursor to Middle of Cell ---
+                ; Calculate the center point of the cell
+                centerX := cellBoundaries.x + cellBoundaries.w / 2
+                centerY := cellBoundaries.y + cellBoundaries.h / 2
+
+                ; Move cursor to the center of the cell
+                try {
+                    MouseMove(centerX, centerY, 0) ; 0 speed for instant movement
+                    if (enableVerboseLogging) {
+                        LogToFile(Format("Task 6.12 | HandleSecondKey: Moved cursor to cell center ({}, {})",
+                            Round(centerX), Round(centerY)), "antimouse_core.log")
+                    }
+                } catch as e {
+                    LogToFile(Format("Timestamp: {} | ERROR in MouseMove: {}", A_TickCount, e.Message) "`n",
+                    "antimouse_core.log")
+                }
+                ; --- End Task 6.12 ---
+
+                ; Update subgrid position
+                ; S1.1: Add IsObject check and try/catch for subGrid.Update
+                if (IsObject(subGrid)) {
+                    try {
+                        subGrid.Update(cellBoundaries.x, cellBoundaries.y, cellBoundaries.w, cellBoundaries.h)
+                    } catch as e {
+                        LogToFile(Format("Timestamp: {} | ERROR updating subGrid: {}", A_TickCount, e.Message) "`n",
+                        "antimouse_core.log")
+                    }
+                } else {
+                    LogToFile(Format("Timestamp: {} | WARNING: subGrid is not an object in HandleSecondKey",
+                        A_TickCount) "`n",
+                    "antimouse_core.log")
+                }
+
+                ; Show a tooltip with the selection info if debug is enabled
+                if (showcaseDebug) {
+                    tooltipText := "Selected cell: " . cellKey
+                    ToolTip(tooltipText)
+                    SetTimer(() => ToolTip(), -1000) ; Clear tooltip after 1 second
+                }
+
+                ; Track selection for most-used cells
+                UpdateCellMemory(cellKey, "")
+
+                ; Transition to the subgrid state
+                ; S1.1: Add try/catch for TransitionToState
+                try {
+                    TransitionToState(State_SUBGRID_STANDARD)
+                } catch as e {
+                    LogToFile(Format("Timestamp: {} | ERROR in TransitionToState: {}", A_TickCount, e.Message) "`n",
+                    "antimouse_core.log")
+                }
+
+                ; Reset first key to prepare for next selection
+                StateMap['firstKey'] := ""
+
+                if (enableVerboseLogging) { ; <<< WRAPPED
+                    LogToFile(Format(
+                        "Timestamp: {} | Task: 2.3 | HandleSecondKey: Successfully transitioned to SUBGRID_STANDARD for key {}",
+                        A_TickCount, key), "antimouse_core.log")
+                }
+            } else {
+                ; Handle case where cell boundaries are undefined
+                if (enableVerboseLogging) { ; <<< WRAPPED
+                    LogToFile(Format("Timestamp: {} | Task: 2.3 | ERROR: Failed to get boundaries for cell '{}'",
+                        A_TickCount, cellKey), "antimouse_core.log")
+                }
+
+                ; S1.4: Clear firstKey BEFORE calling StartNewSelection to prevent recursion
+                StateMap['firstKey'] := ""
+
+                ; Call StartNewSelection to reset state
+                ; S1.1: Add try/catch for StartNewSelection
+                try {
+                    StartNewSelection(key)
+                } catch as e {
+                    LogToFile(Format("Timestamp: {} | ERROR in StartNewSelection: {}", A_TickCount, e.Message) "`n",
+                    "antimouse_core.log")
+                }
+            }
+        } catch as e {
+            LogToFile(Format("Timestamp: {} | ERROR getting cell boundaries: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+
+            ; S1.4: Clear firstKey BEFORE calling StartNewSelection to prevent recursion
+            StateMap['firstKey'] := ""
+
+            ; Call StartNewSelection to reset state
+            try {
+                StartNewSelection(key)
+            } catch as e2 {
+                LogToFile(Format("Timestamp: {} | ERROR in StartNewSelection: {}", A_TickCount, e2.Message) "`n",
+                "antimouse_core.log")
+            }
+        }
+    } else {
+        LogToFile(Format("Timestamp: {} | WARNING: currentOverlay is not an object in HandleSecondKey", A_TickCount) "`n",
+        "antimouse_core.log")
+
+        ; S1.4: Clear firstKey BEFORE calling StartNewSelection to prevent recursion
+        StateMap['firstKey'] := ""
+
+        ; S1.1: Add try/catch for StartNewSelection
+        try {
+            StartNewSelection(key)
+        } catch as e {
+            LogToFile(Format("Timestamp: {} | ERROR in StartNewSelection: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+        }
+    }
+
+    ; Restart cursor tracking after key is handled
+    SetTimer(TrackCursor, 50)
+
+    if (enableVerboseLogging) { ; <<< WRAPPED
+        LogToFile(Format(
+            "Timestamp: {} | Task: 2.3 | HandleSecondKey END | key={}, cellKey={}, TimeElapsed={}ms",
+            A_TickCount, key, cellKey, A_TickCount - currentTime), "antimouse_core.log")
+    }
 }
 
 ; Helper function to check if a key is a column key

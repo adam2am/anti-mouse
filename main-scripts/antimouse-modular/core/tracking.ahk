@@ -155,7 +155,6 @@ TrackCursor() {
 
                 ; Check if the cell under the cursor has changed
                 if (currentCellKey != lastTrackedCellKey_GridVisible) {
-
                     if (currentCellKey != "") {
                         ; Cursor is over a new valid cell
                         try {
@@ -175,6 +174,8 @@ TrackCursor() {
                                             err.Message),
                                         "antimouse_core.log")
                                     }
+                                } else {
+                                    LogToFile("TrackCursor: WARNING - highlight object invalid", "antimouse_core.log")
                                 }
 
                                 ; --- REMOVED HOVER ACTIVATION - START ---
@@ -202,115 +203,54 @@ TrackCursor() {
                                 ;                                            }
                                 ;                                        }
                                 ;
-                                ;                                        try {
-                                ;                                            TransitionToState(State_SUBGRID_STANDARD)
-                                ;                                        } catch as err {
-                                ;                                            LogToFile(Format("Task: 5.10 | TrackCursor ERROR transitioning state: {}",
-                                ;                                                err.Message), "antimouse_core.log")
-                                ;                                        }
-                                ;
-                                ;                                        ; Update the last key BEFORE returning
-                                ;                                        lastTrackedCellKey_GridVisible := currentCellKey
-                                ;                                        ; Exit TrackCursor early after transition to avoid potential conflicts
-                                ;                                        trackingInProgress := false
-                                ;                                        return
+                                ;                                        ; Transition to subgrid state
+                                ;                                        TransitionToState(State_SUBGRID_STANDARD)
                                 ;                                    }
                                 ;                                } else {
-                                ;                                    ; Key is being processed, just update highlight but don't change state
                                 ;                                    if (enableVerboseLogging) {
                                 ;                                        LogToFile(Format(
-                                ;                                            "Task 5.10 | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' but key '{}' is being processed. Skipping subgrid activation.",
+                                ;                                            "Task 5.10 | TrackCursor (GRID_VISIBLE): Cursor moved to cell '{}' but firstKey='{}' is being processed. Not activating subgrid.",
                                 ;                                            currentCellKey, StateMap['firstKey']), "antimouse_core.log")
                                 ;                                    }
                                 ;                                }
                                 ; --- REMOVED HOVER ACTIVATION - END ---
-
                             } else {
-                                ; Failed to get boundaries, hide highlight as a fallback
-                                if (IsObject(highlight)) {
-                                    try {
-                                        highlight.Hide()
-                                    } catch as err {
-                                        LogToFile(Format("Task: 5.10 | TrackCursor ERROR hiding highlight: {}",
-                                            err.Message), "antimouse_core.log")
-                                    }
-                                }
-                                if (enableVerboseLogging) {
-                                    LogToFile(Format(
-                                        "Task 1.6 | TrackCursor (GRID_VISIBLE): Failed to get boundaries for cell '{}', hiding highlight.",
-                                        currentCellKey), "antimouse_core.log")
-                                }
+                                LogToFile(Format(
+                                    "TrackCursor: WARNING - Failed to get boundaries for cell '{}'",
+                                    currentCellKey), "antimouse_core.log")
                             }
                         } catch as err {
-                            LogToFile(Format("Task: 5.10 | TrackCursor ERROR getting cell boundaries: {}",
-                                err.Message), "antimouse_core.log")
+                            LogToFile(Format("Task: 5.10 | TrackCursor ERROR: {}", err.Message), "antimouse_core.log")
                         }
                     } else {
-                        ; Cursor moved outside any valid cell, hide the highlight
+                        ; Cursor is not over any cell, hide highlight
                         if (IsObject(highlight)) {
                             try {
                                 highlight.Hide()
+                                if (enableVerboseLogging) {
+                                    LogToFile(
+                                        "Task 1.6 | TrackCursor (GRID_VISIBLE): Cursor not over any cell, hiding highlight",
+                                        "antimouse_core.log")
+                                }
                             } catch as err {
-                                LogToFile(Format("Task: 5.10 | TrackCursor ERROR hiding highlight: {}",
-                                    err.Message), "antimouse_core.log")
+                                LogToFile(Format("Task: 5.10 | TrackCursor ERROR hiding highlight: {}", err.Message),
+                                "antimouse_core.log")
                             }
                         }
-                        if (enableVerboseLogging) {
-                            LogToFile(
-                                "Task 1.6 | TrackCursor (GRID_VISIBLE): Cursor left all cells, hiding highlight.",
-                                "antimouse_core.log")
-                        }
                     }
+
                     ; Update the last tracked cell key
                     lastTrackedCellKey_GridVisible := currentCellKey
                 }
             } else {
-                ; Safety check: Hide highlight if overlay/highlight becomes invalid
-                if (IsObject(highlight)) {
-                    try {
-                        highlight.Hide()
-                    } catch as err {
-                        LogToFile(Format("Task: 5.10 | TrackCursor ERROR hiding highlight: {}",
-                            err.Message), "antimouse_core.log")
-                    }
-                }
-                if (enableVerboseLogging) {
-                    LogToFile(
-                        "TrackCursor (GRID_VISIBLE): WARNING - Overlay or Highlight object invalid, hiding highlight.",
-                        "antimouse_core.log")
-                }
-                lastTrackedCellKey_GridVisible := "" ; Reset tracking
-            }
-
-            ; --- CORE LOGGING START ---
-            currentOverlayInfo := IsObject(StateMap) && StateMap.Has('currentOverlay') && IsObject(StateMap[
-                'currentOverlay']) ? "Overlay OK" : "Overlay NOT Object"
-            activeCellKeyInfo := IsObject(StateMap) && StateMap.Has('activeCellKey') ? StateMap['activeCellKey'] :
-                "<No Active Cell>"
-            LogToFile(Format("TrackCursor: In GRID_VISIBLE block. Overlay={}, ActiveCell={}",
-                currentOverlayInfo, activeCellKeyInfo), "antimouse_core.log")
-            ; --- CORE LOGGING END ---
-            ; Add safety check for overlay before potentially using it later in the loop
-            if (!IsObject(StateMap) || !StateMap.Has('currentOverlay') || !IsObject(StateMap['currentOverlay'])) {
-                LogToFile("TrackCursor: WARNING - Overlay became invalid in GRID_VISIBLE state.", "antimouse_core.log")
-                ; Consider calling Cleanup() here? Or just let the timer run?
+                LogToFile("TrackCursor: WARNING - currentOverlay or highlight object invalid", "antimouse_core.log")
             }
         }
-
-    } catch as e {
-        ; <<< TASK 5.2 START: Add verbose logging check >>>
-        if (enableVerboseLogging) {
-            LogToFile(Format("TrackCursor: **** ERROR **** {}", e.Message), "antimouse_core.log")
-        }
-        ; <<< TASK 5.2 END >>>
-        Cleanup()
+    } catch as err {
+        LogToFile(Format("TrackCursor: UNHANDLED ERROR: {}", err.Message), "antimouse_core.log")
     } finally {
+        ; Always reset the tracking flag when we're done
         trackingInProgress := false
-        ; <<< TASK 5.2 START: Add verbose logging check >>>
-        if (enableVerboseLogging) {
-            LogToFile("TrackCursor: END | trackingInProgress=false", "antimouse_core.log")
-        }
-        ; <<< TASK 5.2 END >>>
     }
 }
 
