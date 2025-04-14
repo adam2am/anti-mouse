@@ -249,6 +249,65 @@ CapsLock_Q() {
             StateMap['currentOverlay'] := StateMap['overlays'][1] ; Use StateMap
         }
 
+        ; S1.3: Check if all required GUI objects were created successfully
+        ; Comprehensive validation of all critical objects before proceeding
+        if (!IsObject(highlight)) {
+            LogToFile(Format("Timestamp: {} | ERROR: highlight object is invalid after creation",
+                A_TickCount) "`n", "antimouse_core.log")
+            if (showcaseDebug) {
+                ToolTip("Critical error: highlight object is invalid")
+                Sleep(2000)
+                ToolTip()
+            }
+            Cleanup()
+            gridActivationInProgress := false
+            return
+        }
+
+        if (!IsObject(subGrid)) {
+            LogToFile(Format("Timestamp: {} | ERROR: subGrid object is invalid after creation",
+                A_TickCount) "`n", "antimouse_core.log")
+            if (showcaseDebug) {
+                ToolTip("Critical error: subGrid object is invalid")
+                Sleep(2000)
+                ToolTip()
+            }
+            Cleanup()
+            gridActivationInProgress := false
+            return
+        }
+
+        if (StateMap['overlays'].Length == 0) {
+            LogToFile(Format("Timestamp: {} | ERROR: No overlay GUIs were created successfully",
+                A_TickCount) "`n", "antimouse_core.log")
+            if (showcaseDebug) {
+                ToolTip("Critical error: Failed to create any overlay GUIs")
+                Sleep(2000)
+                ToolTip()
+            }
+            Cleanup()
+            gridActivationInProgress := false
+            return
+        }
+
+        if (!IsObject(StateMap['currentOverlay'])) {
+            LogToFile(Format("Timestamp: {} | ERROR: currentOverlay object is invalid after creation",
+                A_TickCount) "`n", "antimouse_core.log")
+            if (showcaseDebug) {
+                ToolTip("Critical error: currentOverlay object is invalid")
+                Sleep(2000)
+                ToolTip()
+            }
+            Cleanup()
+            gridActivationInProgress := false
+            return
+        }
+
+        LogToFile(Format(
+            "Timestamp: {} | S1.3: All GUI objects validated successfully: highlight={}, subGrid={}, overlays.Length={}, currentOverlay={}",
+            A_TickCount, IsObject(highlight), IsObject(subGrid), StateMap['overlays'].Length, IsObject(StateMap[
+                'currentOverlay'])) "`n", "antimouse_core.log")
+
         ; Only continue if overlay creation was successful
         LogToFile(Format(
             "Timestamp: {} | CapsLock_Q: Checking condition: overlays.Length={}, IsObject(currentOverlay)={}",
@@ -363,47 +422,80 @@ CapsLock_Q() {
 
 ; Cleans up all GUI elements and resets the state to IDLE.
 Cleanup() {
-    global currentState, highlight, subGrid, StateMap, showcaseDebug, enableVerboseLogging
+    global currentState, highlight, subGrid, StateMap, showcaseDebug, enableVerboseLogging, gridActivationInProgress,
+        g_ModifierState
 
-    ; <<< LOGGING START >>>
+    ; <<< Enhanced Logging for Cleanup START >>>
+    LogToFile(Format("Timestamp: {} | CLEANUP BEGIN | currentState={} | firstKey={}",
+        A_TickCount, currentState, StateMap['firstKey']) "`n", "antimouse_core.log")
     if (showcaseDebug) {
         LogToFile(Format("Timestamp: {} | Cleanup CALLED | currentState={} | firstKey={}",
             A_TickCount, currentState, StateMap['firstKey']) "`n", A_ScriptDir "\debugRapidRefresh.log")
     }
-    ; <<< LOGGING END >>>
+    ; <<< Enhanced Logging for Cleanup END >>>
 
-    ; Stop tracking
-    SetTimer(TrackCursor, 0)
-
-    ; Transition to IDLE state (should handle hiding things)
-    if (currentState != State_IDLE) {
-        TransitionToState(State_IDLE)
+    ; 1. Stop tracking timer first - ensures no more cursor updates during cleanup
+    try {
+        SetTimer(TrackCursor, 0)
+        LogToFile(Format("Timestamp: {} | CLEANUP: TrackCursor timer stopped", A_TickCount) "`n", "antimouse_core.log")
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | WARNING: Failed to stop TrackCursor timer: {}",
+            A_TickCount, e.Message) "`n", "antimouse_core.log")
     }
 
-    ; Clean up overlay GUIs and other objects if they exist
-    try {
-        ; S1.2: Improve cleanup with proper ordering and checks
+    ; 2. Transition to IDLE state (handles hiding GUI elements)
+    if (currentState != State_IDLE) {
+        try {
+            LogToFile(Format("Timestamp: {} | CLEANUP: Transitioning to IDLE state", A_TickCount) "`n",
+            "antimouse_core.log")
+            TransitionToState(State_IDLE)
+        } catch as e {
+            LogToFile(Format("Timestamp: {} | ERROR: Failed to transition to IDLE state: {}",
+                A_TickCount, e.Message) "`n", "antimouse_core.log")
+        }
+    }
 
-        ; Reset state variables
+    ; 3. Reset flags and state variables
+    try {
+        LogToFile(Format("Timestamp: {} | CLEANUP: Resetting state variables and flags", A_TickCount) "`n",
+        "antimouse_core.log")
+
+        ; Reset activation flags
+        gridActivationInProgress := false
+
+        ; Reset CapsLock hold mode state
+        g_ModifierState.inHoldMode := false
+
+        ; Reset all StateMap variables
         StateMap['firstKey'] := ""
         StateMap['inUltraFastMode'] := false
         StateMap['activeRowKey'] := ""
         StateMap['rowKeyHeldTime'] := 0
         StateMap['activeCellKey'] := ""
         StateMap['activeSubCellKey'] := ""
+        StateMap['currentColIndex'] := 0
+        StateMap['currentRowIndex'] := 0
+        StateMap['lastSelectedRowIndex'] := 0
+        StateMap['lastKeypressTime'] := 0 ; Used for debouncing hover activation
 
-        ; Log before destruction
-        if (enableVerboseLogging) {
-            LogToFile(Format("Timestamp: {} | DIAGNOSTIC | Cleanup: About to destroy overlays, count={}",
-                A_TickCount, StateMap.Has('overlays') ? StateMap['overlays'].Length : 0) "`n", "antimouse_core.log")
-        }
+        LogToFile(Format("Timestamp: {} | CLEANUP: All flags and state variables reset", A_TickCount) "`n",
+        "antimouse_core.log")
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | ERROR: Failed to reset state variables: {}",
+            A_TickCount, e.Message) "`n", "antimouse_core.log")
+    }
 
-        ; Destroy overlays
+    ; 4. Destroy GUI objects in a specific order with proper checks
+    try {
+        ; 4.1 First destroy overlays one by one
         if (StateMap.Has('overlays') && IsObject(StateMap['overlays'])) {
+            LogToFile(Format("Timestamp: {} | CLEANUP: Destroying {} overlays",
+                A_TickCount, StateMap['overlays'].Length) "`n", "antimouse_core.log")
+
             for i, overlay in StateMap['overlays'] {
                 if (IsObject(overlay)) {
                     try {
-                        LogToFile(Format("Timestamp: {} | DIAGNOSTIC | Cleanup: Destroying overlay {}",
+                        LogToFile(Format("Timestamp: {} | CLEANUP: Hiding/Destroying overlay {}",
                             A_TickCount, i) "`n", "antimouse_core.log")
                         overlay.Hide()
                         overlay.Destroy()
@@ -413,13 +505,16 @@ Cleanup() {
                     }
                 }
             }
+            ; Clear overlay array after destroying all overlays
             StateMap['overlays'] := []
+            LogToFile(Format("Timestamp: {} | CLEANUP: Overlays array cleared", A_TickCount) "`n", "antimouse_core.log"
+            )
         }
 
-        ; Destroy highlight
+        ; 4.2 Next destroy highlight
         if (IsObject(highlight)) {
             try {
-                LogToFile(Format("Timestamp: {} | DIAGNOSTIC | Cleanup: Destroying highlight",
+                LogToFile(Format("Timestamp: {} | CLEANUP: Hiding/Destroying highlight",
                     A_TickCount) "`n", "antimouse_core.log")
                 highlight.Hide()
                 highlight.Destroy()
@@ -427,13 +522,16 @@ Cleanup() {
                 LogToFile(Format("Timestamp: {} | WARNING: Error destroying highlight: {}",
                     A_TickCount, e.Message) "`n", "antimouse_core.log")
             }
+            ; Clear highlight reference
             highlight := ""
+            LogToFile(Format("Timestamp: {} | CLEANUP: Highlight reference cleared", A_TickCount) "`n",
+            "antimouse_core.log")
         }
 
-        ; Destroy subgrid
+        ; 4.3 Finally destroy subgrid
         if (IsObject(subGrid)) {
             try {
-                LogToFile(Format("Timestamp: {} | DIAGNOSTIC | Cleanup: Destroying subGrid",
+                LogToFile(Format("Timestamp: {} | CLEANUP: Hiding/Destroying subGrid",
                     A_TickCount) "`n", "antimouse_core.log")
                 subGrid.Hide()
                 subGrid.Destroy()
@@ -441,122 +539,186 @@ Cleanup() {
                 LogToFile(Format("Timestamp: {} | WARNING: Error destroying subGrid: {}",
                     A_TickCount, e.Message) "`n", "antimouse_core.log")
             }
+            ; Clear subgrid reference
             subGrid := ""
+            LogToFile(Format("Timestamp: {} | CLEANUP: SubGrid reference cleared", A_TickCount) "`n",
+            "antimouse_core.log")
         }
 
-        ; Clear current overlay reference
+        ; 4.4 Clear current overlay reference
         StateMap['currentOverlay'] := ""
-
-        ; Only use ForceCloseAllGuis as a last resort cleanup
-        if (showcaseDebug) {
-            LogToFile(Format("Timestamp: {} | Cleanup: ForceCloseAllGuis() called as final safety",
-                A_TickCount) "`n", A_ScriptDir "\debugRapidRefresh.log")
-        }
-        ForceCloseAllGuis()
-
-    } catch as e {
-        LogToFile(Format("Timestamp: {} | ERROR: Exception in Cleanup: {}", A_TickCount, e.Message) "`n",
+        LogToFile(Format("Timestamp: {} | CLEANUP: currentOverlay reference cleared", A_TickCount) "`n",
         "antimouse_core.log")
-        ; Final fallback - force close all GUIs
-        ForceCloseAllGuis()
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | ERROR: Exception during GUI destruction: {}",
+            A_TickCount, e.Message) "`n", "antimouse_core.log")
+    }
+
+    ; 5. Use ForceCloseAllGuis as a last resort/safety mechanism only
+    try {
+        ; Only if ShowcaseDebug is enabled, perform the extra ForceCloseAllGuis step
+        if (showcaseDebug) {
+            LogToFile(Format("Timestamp: {} | CLEANUP: Running ForceCloseAllGuis as final safety check",
+                A_TickCount) "`n", "antimouse_core.log")
+            ForceCloseAllGuis()
+        }
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | WARNING: Error in ForceCloseAllGuis: {}",
+            A_TickCount, e.Message) "`n", "antimouse_core.log")
     }
 
     ; Final state confirmation
-    if (enableVerboseLogging) {
-        LogToFile(Format("Timestamp: {} | DIAGNOSTIC | Cleanup: Complete. highlight={}, subGrid={}, overlays.Length={}",
-            A_TickCount, IsObject(highlight), IsObject(subGrid),
-            StateMap.Has('overlays') ? StateMap['overlays'].Length : 0) "`n", "antimouse_core.log")
-    }
+    LogToFile(Format("Timestamp: {} | CLEANUP COMPLETE | highlight={}, subGrid={}, overlays.Length={}",
+        A_TickCount, IsObject(highlight), IsObject(subGrid),
+        StateMap.Has('overlays') ? StateMap['overlays'].Length : 0) "`n", "antimouse_core.log")
 }
 
 ; Deactivate the grid and clean up
 DeactivateGrid(forced := false) {
     global subGrid, highlight, currentState, StateMap, gridActivationTime, stateTransitionDelay,
-        g_ModifierState, saveMemoryOnExit, cellMemory, showcaseDebug, enableVerboseLogging ; Added enableVerboseLogging
+        g_ModifierState, saveMemoryOnExit, cellMemory, showcaseDebug, enableVerboseLogging, gridActivationInProgress
 
     currentTime := A_TickCount
+
+    ; Enhanced logging for DeactivateGrid
+    LogToFile(Format("Timestamp: {} | DEACTIVATEGRID BEGIN | forced={}, currentState={}",
+        currentTime, forced, currentState) "`n", "antimouse_core.log")
+
     if (showcaseDebug) {
         LogToFile(Format("DeactivateGrid START | forced={} | currentState={}", forced,
             currentState), A_ScriptDir "\debugRapidRefresh.log")
     }
 
-    ; Log the function call
-    if (enableVerboseLogging) {
-        LogToFile(Format("DeactivateGrid called | forced={}, currentState={}", forced,
-            currentState), "antimouse_core.log")
-    }
-
-    ; Check if deactivation is happening too quickly after activation
-    ; Use stateTransitionDelay to prevent accidental immediate closure
+    ; 1. Check debounce (prevent accidental immediate deactivation)
     if (!forced && (currentTime - gridActivationTime < stateTransitionDelay)) {
+        LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Debounced (Activation too recent)",
+            currentTime) "`n", "antimouse_core.log")
+
         if (showcaseDebug) {
             LogToFile(Format("DeactivateGrid: Debounced (Activation too recent)"),
             A_ScriptDir "\debugRapidRefresh.log")
         }
-        if (enableVerboseLogging) {
-            LogToFile("DeactivateGrid debounced.", "antimouse_core.log")
-        }
         return
     }
 
-    ; Stop cursor tracking
-    SetTimer(TrackCursor, 0)
+    ; 2. Stop cursor tracking first
+    try {
+        SetTimer(TrackCursor, 0)
+        LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: TrackCursor timer stopped",
+            currentTime) "`n", "antimouse_core.log")
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | WARNING: Failed to stop TrackCursor timer: {}",
+            currentTime, e.Message) "`n", "antimouse_core.log")
+    }
 
-    ; Destroy overlays - use StateMap consistently
-    if (IsObject(StateMap["overlays"])) {
-        for _, overlay in StateMap["overlays"] {
-            if (IsObject(overlay)) {
-                overlay.Destroy()
+    ; 3. Reset grid activation flag
+    gridActivationInProgress := false
+
+    ; 4. Destroy GUI objects in a specific order with proper checks
+    try {
+        ; 4.1 First destroy overlays one by one
+        if (StateMap.Has('overlays') && IsObject(StateMap['overlays'])) {
+            LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Destroying {} overlays",
+                currentTime, StateMap['overlays'].Length) "`n", "antimouse_core.log")
+
+            for i, overlay in StateMap['overlays'] {
+                if (IsObject(overlay)) {
+                    try {
+                        overlay.Destroy()
+                        LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Destroyed overlay {}",
+                            currentTime, i) "`n", "antimouse_core.log")
+                    } catch as e {
+                        LogToFile(Format("Timestamp: {} | WARNING: Error destroying overlay {}: {}",
+                            currentTime, i, e.Message) "`n", "antimouse_core.log")
+                    }
+                }
             }
+            StateMap['overlays'] := [] ; Clear the array
         }
-    }
-    StateMap["overlays"] := [] ; Clear the array
-    StateMap["currentOverlay"] := ""
+        StateMap['currentOverlay'] := "" ; Clear current overlay reference
 
-    ; Destroy subgrid and highlight if they exist
-    if (IsObject(subGrid)) {
-        subGrid.Destroy()
-        subGrid := ""
-    }
-    if (IsObject(highlight)) {
-        highlight.Destroy()
-        highlight := ""
+        ; 4.2 Next destroy subgrid
+        if (IsObject(subGrid)) {
+            try {
+                subGrid.Destroy()
+                LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Destroyed subGrid",
+                    currentTime) "`n", "antimouse_core.log")
+            } catch as e {
+                LogToFile(Format("Timestamp: {} | WARNING: Error destroying subGrid: {}",
+                    currentTime, e.Message) "`n", "antimouse_core.log")
+            }
+            subGrid := ""
+        }
+
+        ; 4.3 Finally destroy highlight
+        if (IsObject(highlight)) {
+            try {
+                highlight.Destroy()
+                LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Destroyed highlight",
+                    currentTime) "`n", "antimouse_core.log")
+            } catch as e {
+                LogToFile(Format("Timestamp: {} | WARNING: Error destroying highlight: {}",
+                    currentTime, e.Message) "`n", "antimouse_core.log")
+            }
+            highlight := ""
+        }
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | ERROR: Exception during GUI destruction: {}",
+            currentTime, e.Message) "`n", "antimouse_core.log")
     }
 
-    ; Reset StateMap values
-    StateMap["firstKey"] := ""
-    StateMap["activeCellKey"] := ""
-    StateMap["activeSubCellKey"] := ""
-    StateMap["currentColIndex"] := 0
-    StateMap["currentRowIndex"] := 0
-    StateMap["rowKeyHeldTime"] := 0
-    StateMap['inUltraFastMode'] := false
-    StateMap['activeRowKey'] := ""
+    ; 5. Reset StateMap values
+    try {
+        LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Resetting state variables",
+            currentTime) "`n", "antimouse_core.log")
 
-    ; Reset CapsLock hold mode state
+        StateMap["firstKey"] := ""
+        StateMap["activeCellKey"] := ""
+        StateMap["activeSubCellKey"] := ""
+        StateMap["currentColIndex"] := 0
+        StateMap["currentRowIndex"] := 0
+        StateMap["rowKeyHeldTime"] := 0
+        StateMap['inUltraFastMode'] := false
+        StateMap['activeRowKey'] := ""
+        StateMap['lastKeypressTime'] := 0 ; Used for debouncing hover activation
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | ERROR: Failed to reset state variables: {}",
+            currentTime, e.Message) "`n", "antimouse_core.log")
+    }
+
+    ; 6. Reset CapsLock hold mode state
     g_ModifierState.inHoldMode := false
 
-    ; Reset state
-    TransitionToState(State_IDLE)
+    ; 7. Transition to IDLE state
+    try {
+        TransitionToState(State_IDLE)
+        LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Transitioned to IDLE state",
+            currentTime) "`n", "antimouse_core.log")
+    } catch as e {
+        LogToFile(Format("Timestamp: {} | ERROR: Failed to transition to IDLE state: {}",
+            currentTime, e.Message) "`n", "antimouse_core.log")
+    }
 
-    ; Save cell memory if needed
+    ; 8. Save cell memory if needed
     if (saveMemoryOnExit) {
-        if (enableVerboseLogging) { ; <<< WRAPPED
-            LogToFile(Format("Timestamp: {} | DeactivateGrid: Saving cell memory.", A_TickCount) "`n",
-            "antimouse_core.log")
+        try {
+            LogToFile(Format("Timestamp: {} | DEACTIVATEGRID: Saving cell memory",
+                currentTime) "`n", "antimouse_core.log")
+            SaveCellMemory()
+        } catch as e {
+            LogToFile(Format("Timestamp: {} | ERROR: Failed to save cell memory: {}",
+                currentTime, e.Message) "`n", "antimouse_core.log")
         }
-        SaveCellMemory()
-    }
-    if (showcaseDebug) {
-        LogToFile(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
-        A_ScriptDir "\debugRapidRefresh.log")
-    }
-    if (enableVerboseLogging) { ; <<< WRAPPED
-        LogToFile(Format("Timestamp: {} | DeactivateGrid END | currentState={}", A_TickCount, currentState) "`n",
-        "antimouse_core.log")
     }
 
-    ; Restore CapsLock state if needed (TBD)
+    ; Final logging
+    LogToFile(Format("Timestamp: {} | DEACTIVATEGRID COMPLETE | currentState={}",
+        currentTime, currentState) "`n", "antimouse_core.log")
+
+    if (showcaseDebug) {
+        LogToFile(Format("Timestamp: {} | DeactivateGrid END | currentState={}",
+            currentTime, currentState) "`n", A_ScriptDir "\debugRapidRefresh.log")
+    }
 }
 
 ; Activates the grid overlay for the current monitor

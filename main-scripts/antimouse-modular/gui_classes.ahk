@@ -427,64 +427,86 @@ class SubGridOverlay {
             y: this.y + (row * cellHeight) + (cellHeight // 4)
         }
     }
+
+    ForceShow() {
+        try {
+            this.gui.Show("NA")
+            return true
+        } catch as err {
+            LogToFile(Format("ERROR: subGrid.ForceShow failed: {}", err.Message), "antimouse_fix.log")
+            return false
+        }
+    }
 }
 
 class HighlightOverlay {
-    __New() {
-        global highlightColor ; Explicitly import global
-
-        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow")
-        this.gui.BackColor := highlightColor
-        this.x := 0
-        this.y := 0
-        this.width := 0
-        this.height := 0
-        borderSize := 3
-        interiorColor := "000000"
-        this.progress := this.gui.Add("Progress", "x" borderSize " y" borderSize " w0 h0 Background" interiorColor)
-        WinSetTransColor(interiorColor " 255", this.gui)
+    __New(color := "0099FF", alpha := 40) {
+        this.gui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20")
+        this.gui.BackColor := color
+        WinSetTransColor(color " " alpha, this.gui)
+        this.color := color
+        this.enabled := true
     }
 
     Update(x, y, w, h) {
         this.x := x
         this.y := y
-        this.width := w
-        this.height := h
-        borderSize := 3
-        this.progress.Move(borderSize, borderSize, w - 2 * borderSize, h - 2 * borderSize)
-        this.gui.Show(Format("x{} y{} w{} h{} NoActivate", x, y, w, h))
+        this.w := w
+        this.h := h
+        if (w > 0 && h > 0) {
+            try {
+                this.gui.Show("x" x " y" y " w" w " h" h " NoActivate")
+                LogToFile(Format(
+                    "5.13.1 DEBUG | HighlightOverlay.Update: Successfully showed at x={}, y={}, w={}, h={}",
+                    x, y, w, h), "antimouse_fix.log")
+            } catch as e {
+                LogToFile(Format("5.13.1 DEBUG | HighlightOverlay.Update ERROR: {}", e.Message),
+                "antimouse_fix.log")
+            }
+        } else {
+            LogToFile(Format("5.13.1 DEBUG | HighlightOverlay.Update WARNING: Invalid dimensions w={}, h={}",
+                w, h), "antimouse_fix.log")
+        }
     }
 
     Hide() {
-        try {
-            if (IsObject(this.gui) && WinExist("ahk_id " this.gui.Hwnd)) {
+        if (IsObject(this.gui)) {
+            try {
                 this.gui.Hide()
+                LogToFile("5.13.1 DEBUG | HighlightOverlay.Hide: Successfully hidden", "antimouse_fix.log")
+            } catch as e {
+                LogToFile(Format("5.13.1 DEBUG | HighlightOverlay.Hide ERROR: {}", e.Message),
+                "antimouse_fix.log")
             }
-        } catch {
-            ; Silently ignore errors
+        } else {
+            LogToFile("5.13.1 DEBUG | HighlightOverlay.Hide WARNING: gui is not an object",
+                "antimouse_fix.log")
         }
     }
 
     Destroy() {
-        try {
-            ; Store the handle before destroying
-            hwnd := this.gui.Hwnd
-
-            ; First try to hide it
-            this.gui.Hide()
-
-            ; Then destroy it
-            this.gui.Destroy()
-
-            ; Force close if it still exists
-            if (WinExist("ahk_id " hwnd)) {
-                WinClose("ahk_id " hwnd)
-                if (WinExist("ahk_id " hwnd)) {
-                    WinKill("ahk_id " hwnd)
-                }
+        if (IsObject(this.gui)) {
+            try {
+                this.gui.Destroy()
+                this.enabled := false
+                LogToFile("5.13.1 DEBUG | HighlightOverlay.Destroy: Successfully destroyed", "antimouse_fix.log")
+            } catch as e {
+                LogToFile(Format("5.13.1 DEBUG | HighlightOverlay.Destroy ERROR: {}", e.Message),
+                "antimouse_fix.log")
             }
-        } catch {
-            ; Silently ignore errors
+        } else {
+            LogToFile("5.13.1 DEBUG | HighlightOverlay.Destroy WARNING: gui is not an object",
+                "antimouse_fix.log")
+        }
+    }
+
+    ForceShow() {
+        try {
+            this.gui.Show("NA")
+            return true
+        } catch as err {
+            LogToFile(Format("ERROR: highlight.ForceShow failed: {}", err.Message), "antimouse_fix.log")
+            return false
         }
     }
 }
