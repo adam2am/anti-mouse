@@ -2,11 +2,25 @@
 ; core/grid_keys.ahk - Grid Key Handling Logic
 ; ==============================================================================
 
-; Reference state constants and variables defined in state.ahk and config.ahk
+; state.ahk and config.ahk
 global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST, State_CELL_SELECTED
 global StateMap, currentState, showcaseDebug, highlight, subGrid, stateTransitionDelay, stateTransitionTime
-;global g_firstKeyPressed ; Explicitly track first key globally <<< Task 6.2: REMOVED
 global enableVerboseLogging ; Added
+global LogToFile ; Add explicit references to functions from other modules
+
+; S1.6.2 FIX - Delayed visibility check function for subgrid
+SubGridVisibilityCheck(subGrid) {
+    try {
+        if (IsObject(subGrid) && !WinExist("ahk_id " subGrid.gui.Hwnd)) {
+            LogToFile("S1.6.2 CRITICAL FIX | Delayed visibility check - subGrid still not visible. Forcing again!",
+                "antimouse_fix.log")
+            subGrid.ForceShow()
+            WinRedraw("ahk_id " subGrid.gui.Hwnd)
+        }
+    } catch {
+        ; Ignore errors in timer callback
+    }
+}
 
 ; S1.6.3 FIX - Add function to find the nearest cell matching a given row or column key
 FindNearestCell(currentCellKey, targetKey, isColKey) {
@@ -466,8 +480,7 @@ HandleFirstKey(key, isColKey, colIndex, isRowKey, rowIndex) {
 
 ; Handle the second key press, completing cell selection and transitioning to appropriate state
 HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
-    global StateMap, currentState, highlight, subGrid, showcaseDebug, enableUltraFast,
-        rowKeyHoldThreshold
+    global StateMap, currentState, highlight, subGrid, showcaseDebug, enableUltraFast
     global enableVerboseLogging ; Added
 
     ; --- 5.13.1: VISUAL DEBUGGING START ---
@@ -490,120 +503,121 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
     firstKeyColIndex := 0
     firstKeyRowIndex := 0
 
-    ; Determine if the first key was a column or row key
-    if (firstKey != "") {
-        loop StateMap['activeColKeys'].Length {
-            if (firstKey == StateMap['activeColKeys'][A_Index]) {
-                firstKeyIsCol := true
-                firstKeyColIndex := A_Index
-                break
-            }
-        }
-        if (!firstKeyIsCol) {
-            loop StateMap['activeRowKeys'].Length {
-                if (firstKey == StateMap['activeRowKeys'][A_Index]) {
-                    firstKeyIsRow := true
-                    firstKeyRowIndex := A_Index
+    try {
+        ; Determine if the first key was a column or row key
+        if (firstKey != "") {
+            loop StateMap['activeColKeys'].Length {
+                if (firstKey == StateMap['activeColKeys'][A_Index]) {
+                    firstKeyIsCol := true
+                    firstKeyColIndex := A_Index
                     break
                 }
             }
-        }
+            if (!firstKeyIsCol) {
+                loop StateMap['activeRowKeys'].Length {
+                    if (firstKey == StateMap['activeRowKeys'][A_Index]) {
+                        firstKeyIsRow := true
+                        firstKeyRowIndex := A_Index
+                        break
+                    }
+                }
+            }
 
-        ; S1.5.1 DIAGNOSTIC: First key type check
-        LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - firstKey '{}' is a {}", firstKey,
-            firstKeyIsCol ? "COLUMN key" : firstKeyIsRow ? "ROW key" : "UNKNOWN key"), "antimouse_diagnostic.log")
-        LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - firstKey '{}' type: isColKey={}, isRowKey={}",
-            firstKey, firstKeyIsCol, firstKeyIsRow), "antimouse_diagnostic.log")
-    } else {
-        if (enableVerboseLogging) {
-            LogToFile(Format("Timestamp: {} | HandleSecondKey: WARNING - firstKey is empty!", A_TickCount) "`n",
-            "antimouse_core.log")
-        }
-        ; S1.5.1 DIAGNOSTIC: Empty first key
-        LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - ERROR: firstKey is empty!"),
-        "antimouse_diagnostic.log")
-
-        ; --- 5.13.1: VISUAL DEBUGGING ---
-        LogToFile("5.13.1 DEBUG | HandleSecondKey - ERROR: firstKey is empty!", "antimouse_fix.log")
-        ToolTip("ERROR: firstKey is empty in HandleSecondKey!", 10, 40)
-
-        return ; Cannot proceed without a valid first key
-    }
-
-    ; --- Check for Valid Sequence ---
-    ; Only proceed if one key is a column and one key is a row
-    invalidSequence := false
-    targetCellKey := ""
-
-    if (firstKeyIsCol && isRowKey) {
-        ; Valid sequence: First Col, Second Row (e.g., Q->J = QJ)
-        colKey := firstKey
-        rowKey := key
-        colIdx := firstKeyColIndex
-        rowIdx := rowIndex
-    } else if (firstKeyIsRow && isColKey) {
-        ; Valid sequence: First Row, Second Col (e.g., J->Q = QJ)
-        colKey := key
-        rowKey := firstKey
-        colIdx := colIndex
-        rowIdx := firstKeyRowIndex
-    } else {
-        ; Invalid sequence: Both are column keys (e.g., Q->W) or both are row keys (e.g., J->K)
-        invalidSequence := true
-        ; S1.5.1 DIAGNOSTIC: Invalid sequence
-        LogToFile(Format(
-            "S1.5.1 DIAGNOSTIC | HandleSecondKey - INVALID SEQUENCE | firstKey='{}' ({}), secondKey='{}' ({})",
-            firstKey, firstKeyIsCol ? "Col" : "Row", key, isColKey ? "Col" : "Row"), "antimouse_diagnostic.log")
-
-        ; --- 5.13.1: VISUAL DEBUGGING ---
-        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - INVALID SEQUENCE | firstKey='{}' ({}), secondKey='{}' ({})",
-            firstKey, firstKeyIsCol ? "Col" : "Row", key, isColKey ? "Col" : "Row"), "antimouse_fix.log")
-        ToolTip("INVALID SEQUENCE: Both keys are " (isColKey ? "column" : "row") " keys", 10, 40)
-    }
-
-    if (invalidSequence) {
-        if (enableVerboseLogging) {
-            LogToFile(Format(
-                "Timestamp: {} | HandleSecondKey: Invalid sequence: Both keys are {} keys ('{}'->'{}'). Starting new selection.",
-                A_TickCount, isColKey ? "column" : "row", firstKey, key) "`n", "antimouse_core.log")
-        }
-
-        ; Reset first key and start a new selection with the current key
-        StateMap['firstKey'] := ""
-        try {
-            StartNewSelection(key)
-        } catch as e {
-            ; S1.5.1 DIAGNOSTIC: StartNewSelection error
-            LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - ERROR in StartNewSelection: {}", e.Message),
+            ; S1.5.1 DIAGNOSTIC: First key type check
+            LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - firstKey '{}' is a {}", firstKey,
+                firstKeyIsCol ? "COLUMN key" : firstKeyIsRow ? "ROW key" : "UNKNOWN key"), "antimouse_diagnostic.log")
+            LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - firstKey '{}' type: isColKey={}, isRowKey={}",
+                firstKey, firstKeyIsCol, firstKeyIsRow), "antimouse_diagnostic.log")
+        } else {
+            if (enableVerboseLogging) {
+                LogToFile(Format("Timestamp: {} | HandleSecondKey: WARNING - firstKey is empty!", A_TickCount) "`n",
+                "antimouse_core.log")
+            }
+            ; S1.5.1 DIAGNOSTIC: Empty first key
+            LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - ERROR: firstKey is empty!"),
             "antimouse_diagnostic.log")
 
             ; --- 5.13.1: VISUAL DEBUGGING ---
-            LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR in StartNewSelection: {}", e.Message),
-            "antimouse_fix.log")
-            ToolTip("ERROR in StartNewSelection: " e.Message, 10, 70)
+            LogToFile("5.13.1 DEBUG | HandleSecondKey - ERROR: firstKey is empty!", "antimouse_fix.log")
+            ToolTip("ERROR: firstKey is empty in HandleSecondKey!", 10, 40)
+
+            return ; Cannot proceed without a valid first key
         }
-        return
-    }
 
-    ; --- Valid Sequence: Construct Cell Key and Set State ---
-    targetCellKey := colKey . rowKey
+        ; --- Check for Valid Sequence ---
+        ; Only proceed if one key is a column and one key is a row
+        invalidSequence := false
+        targetCellKey := ""
 
-    ; --- 5.13.1: VISUAL DEBUGGING ---
-    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - VALID SEQUENCE | Target cell: '{}'", targetCellKey),
-    "antimouse_fix.log")
-    ToolTip("VALID SEQUENCE: Target cell is " targetCellKey, 10, 40)
+        if (firstKeyIsCol && isRowKey) {
+            ; Valid sequence: First Col, Second Row (e.g., Q->J = QJ)
+            colKey := firstKey
+            rowKey := key
+            colIdx := firstKeyColIndex
+            rowIdx := rowIndex
+        } else if (firstKeyIsRow && isColKey) {
+            ; Valid sequence: First Row, Second Col (e.g., J->Q = QJ)
+            colKey := key
+            rowKey := firstKey
+            colIdx := colIndex
+            rowIdx := firstKeyRowIndex
+        } else {
+            ; Invalid sequence: Both are column keys (e.g., Q->W) or both are row keys (e.g., J->K)
+            invalidSequence := true
+            ; S1.5.1 DIAGNOSTIC: Invalid sequence
+            LogToFile(Format(
+                "S1.5.1 DIAGNOSTIC | HandleSecondKey - INVALID SEQUENCE | firstKey='{}' ({}), secondKey='{}' ({})",
+                firstKey, firstKeyIsCol ? "Col" : "Row", key, isColKey ? "Col" : "Row"), "antimouse_diagnostic.log")
 
-    ; Determine if we should proceed to subgrid stage
-    proceedToSubgrid := true
+            ; --- 5.13.1: VISUAL DEBUGGING ---
+            LogToFile(Format(
+                "5.13.1 DEBUG | HandleSecondKey - INVALID SEQUENCE | firstKey='{}' ({}), secondKey='{}' ({})",
+                firstKey, firstKeyIsCol ? "Col" : "Row", key, isColKey ? "Col" : "Row"), "antimouse_fix.log")
+            ToolTip("INVALID SEQUENCE: Both keys are " (isColKey ? "column" : "row") " keys", 10, 40)
+        }
 
-    if (proceedToSubgrid) {
-        ; Store selected indices and keys for hover context use
-        StateMap['activeCellKey'] := targetCellKey
-        StateMap['lastSelectedColIndex'] := colIdx
-        StateMap['lastSelectedRowIndex'] := rowIdx
+        if (invalidSequence) {
+            if (enableVerboseLogging) {
+                LogToFile(Format(
+                    "Timestamp: {} | HandleSecondKey: Invalid sequence: Both keys are {} keys ('{}'->'{}'). Starting new selection.",
+                    A_TickCount, isColKey ? "column" : "row", firstKey, key) "`n", "antimouse_core.log")
+            }
 
-        ; Get the visual boundaries for the selected cell
-        try {
+            ; Reset first key and start a new selection with the current key
+            StateMap['firstKey'] := ""
+            try {
+                StartNewSelection(key)
+            } catch as e {
+                ; S1.5.1 DIAGNOSTIC: StartNewSelection error
+                LogToFile(Format("S1.5.1 DIAGNOSTIC | HandleSecondKey - ERROR in StartNewSelection: {}", e.Message),
+                "antimouse_diagnostic.log")
+
+                ; --- 5.13.1: VISUAL DEBUGGING ---
+                LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR in StartNewSelection: {}", e.Message),
+                "antimouse_fix.log")
+                ToolTip("ERROR in StartNewSelection: " e.Message, 10, 70)
+            }
+            return
+        }
+
+        ; --- Valid Sequence: Construct Cell Key and Set State ---
+        targetCellKey := colKey . rowKey
+
+        ; --- 5.13.1: VISUAL DEBUGGING ---
+        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - VALID SEQUENCE | Target cell: '{}'", targetCellKey),
+        "antimouse_fix.log")
+        ToolTip("VALID SEQUENCE: Target cell is " targetCellKey, 10, 40)
+
+        ; Determine if we should proceed to subgrid stage
+        proceedToSubgrid := true
+
+        if (proceedToSubgrid) {
+            ; Store selected indices and keys for hover context use
+            StateMap['activeCellKey'] := targetCellKey
+            StateMap['lastSelectedColIndex'] := colIdx
+            StateMap['lastSelectedRowIndex'] := rowIdx
+
+            ; Get the visual boundaries for the selected cell
             if (IsObject(StateMap['currentOverlay'])) {
                 boundaries := StateMap['currentOverlay'].GetCellBoundaries(targetCellKey)
 
@@ -643,8 +657,8 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
                                     highlight.gui.Show()
                                 } catch as innerE {
                                     LogToFile(Format(
-                                        "5.13.1 DEBUG | HandleSecondKey - ERROR forcing highlight show: {}", innerE.Message
-                                    ),
+                                        "5.13.1 DEBUG | HandleSecondKey - ERROR forcing highlight show: {}",
+                                        innerE.Message),
                                     "antimouse_fix.log")
                                 }
                             }
@@ -672,201 +686,172 @@ HandleSecondKey(key, isColKey, colIndex, isRowKey, rowIndex) {
                         ToolTip("ERROR: highlight is not a valid object", 10, 130)
                     }
 
-                    ; Update subgrid position
+                    ; S1.6.2 CRITICAL FIX - Update subgrid and ensure visibility
                     if (IsObject(subGrid)) {
-                        try {
-                            subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                            LogToFile(Format(
-                                "Timestamp: {} | HandleSecondKey: Updated subGrid to cell '{}'", A_TickCount,
-                                targetCellKey) "`n", "antimouse_core.log")
+                        ; Update the subgrid
+                        LogToFile("S1.6.2 CRITICAL FIX | Updating subgrid for cell: " targetCellKey,
+                            "antimouse_fix.log")
+                        subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
 
-                            ; --- 5.13.1: VISUAL DEBUGGING ---
-                            LogToFile("5.13.1 DEBUG | HandleSecondKey - Successfully called subGrid.Update()",
+                        ; Force visibility with multiple methods
+                        subGrid.ForceShow()
+                        Sleep(10) ; Short delay
+                        WinSetAlwaysOnTop(true, "ahk_id " subGrid.gui.Hwnd)
+
+                        ; Second attempt with explicit coordinates if needed
+                        if (!WinExist("ahk_id " subGrid.gui.Hwnd)) {
+                            LogToFile("S1.6.2 CRITICAL FIX | Using explicit coordinates for visibility",
                                 "antimouse_fix.log")
-
-                            ; Force visibility check
-                            try {
-                                subGrid.ForceShow() ; Assuming this method exists or add it to the class
-                            } catch as e {
-                                ; Try a fallback showing method if ForceShow doesn't exist
-                                try {
-                                    subGrid.gui.Show()
-                                } catch as innerE {
-                                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR forcing subGrid show: {}",
-                                        innerE.Message),
-                                    "antimouse_fix.log")
-                                }
-                            }
-                        } catch as e {
-                            if (enableVerboseLogging) {
-                                LogToFile(Format(
-                                    "Timestamp: {} | HandleSecondKey: ERROR updating subGrid: {}", A_TickCount,
-                                    e.Message) "`n", "antimouse_core.log")
-                            }
-
-                            ; --- 5.13.1: VISUAL DEBUGGING ---
-                            LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR updating subGrid: {}", e.Message),
-                            "antimouse_fix.log")
-                            ToolTip("ERROR: Failed to update subGrid: " e.Message, 10, 160)
-                        }
-                    } else {
-                        if (enableVerboseLogging) {
-                            LogToFile(Format("Timestamp: {} | HandleSecondKey: subGrid is not a valid object",
-                                A_TickCount) "`n", "antimouse_core.log")
+                            subGrid.gui.Show(Format("x{} y{} w{} h{} NA", boundaries.x, boundaries.y, boundaries.w,
+                                boundaries.h))
                         }
 
-                        ; --- 5.13.1: VISUAL DEBUGGING ---
-                        LogToFile("5.13.1 DEBUG | HandleSecondKey - ERROR: subGrid is not a valid object",
-                            "antimouse_fix.log")
-                        ToolTip("ERROR: subGrid is not a valid object", 10, 190)
-                    }
-
-                    ; --- 5.13.1: VISUAL DEBUGGING - Check mouse position before move ---
-                    MouseGetPos(&beforeX, &beforeY)
-                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - Before mouse move: x={}, y={}", beforeX, beforeY
-                    ),
-                    "antimouse_fix.log")
-
-                    ; Move the mouse to the center of the selected cell
-                    try {
-                        centerX := boundaries.x + (boundaries.w // 2)
-                        centerY := boundaries.y + (boundaries.h // 2)
-                        MouseMove(centerX, centerY, 0)
-
-                        ; --- 5.13.1: VISUAL DEBUGGING - Check mouse position after move ---
-                        MouseGetPos(&afterX, &afterY)
-                        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - MOUSEMOVE to: x={}, y={}", centerX, centerY),
-                        "antimouse_fix.log")
-                        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - After mouse move: x={}, y={}", afterX,
-                            afterY),
-                        "antimouse_fix.log")
-
-                        if (afterX != centerX || afterY != centerY) {
-                            LogToFile(Format(
-                                "5.13.1 DEBUG | HandleSecondKey - WARNING: Mouse position mismatch after move!"),
-                            "antimouse_fix.log")
-                            ToolTip("WARNING: Mouse move failed - position mismatch", 10, 220)
-                        }
-
-                        if (enableVerboseLogging) {
-                            LogToFile(Format(
-                                "Timestamp: {} | HandleSecondKey: Moved mouse to center of cell '{}': {}, {}",
-                                A_TickCount, targetCellKey, centerX, centerY) "`n", "antimouse_core.log")
-                        }
-                    } catch as e {
-                        if (enableVerboseLogging) {
-                            LogToFile(Format("Timestamp: {} | HandleSecondKey: ERROR moving mouse: {}",
-                                A_TickCount, e.Message) "`n", "antimouse_core.log")
-                        }
-
-                        ; --- 5.13.1: VISUAL DEBUGGING ---
-                        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR moving mouse: {}", e.Message),
-                        "antimouse_fix.log")
-                        ToolTip("ERROR: Failed to move mouse: " e.Message, 10, 250)
-                    }
-
-                    ; --- Task 6.13: Explicitly Add MouseMove to HandleSecondKey ---
-                    ; This ensures the mouse moves to the center of the cell (redundant but ensures it happens)
-                    try {
-                        centerX := boundaries.x + (boundaries.w // 2)
-                        centerY := boundaries.y + (boundaries.h // 2)
-                        MouseMove(centerX, centerY, 0)
-
-                        ; --- 5.13.1: VISUAL DEBUGGING - Check if second MouseMove worked ---
-                        MouseGetPos(&afterX2, &afterY2)
-                        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - SECOND MOUSEMOVE to: x={}, y={}", centerX,
-                            centerY),
-                        "antimouse_fix.log")
-                        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - After second mouse move: x={}, y={}",
-                            afterX2, afterY2),
-                        "antimouse_fix.log")
-
-                        if (enableVerboseLogging) {
-                            LogToFile(Format(
-                                "Timestamp: {} | Task 6.13 | HandleSecondKey: Explicitly moved mouse to center of cell: {}, {}",
-                                A_TickCount, centerX, centerY) "`n", "antimouse_core.log")
-                        }
-                    } catch as e {
-                        if (enableVerboseLogging) {
-                            LogToFile(Format(
-                                "Timestamp: {} | Task 6.13 | HandleSecondKey: ERROR in explicit mouse move: {}",
-                                A_TickCount, e.Message) "`n", "antimouse_core.log")
-                        }
-
-                        ; --- 5.13.1: VISUAL DEBUGGING ---
-                        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR in second mouse move: {}", e.Message),
-                        "antimouse_fix.log")
-                    }
-
-                    ; Transition to subgrid state
-                    try {
-                        LogToFile(Format(
-                            "Timestamp: {} | HandleSecondKey: Transitioning to SUBGRID_STANDARD after selecting cell '{}'",
-                            A_TickCount, targetCellKey) "`n", "antimouse_core.log")
+                        ; Call TransitionToState for maximum reliability
                         TransitionToState(State_SUBGRID_STANDARD)
 
-                        ; --- 5.13.1: VISUAL DEBUGGING ---
-                        LogToFile(
-                            "5.13.1 DEBUG | HandleSecondKey - Successfully called TransitionToState(SUBGRID_STANDARD)",
+                        LogToFile("S1.6.2 CRITICAL FIX | Subgrid update complete with TransitionToState",
                             "antimouse_fix.log")
-                    } catch as e {
-                        if (enableVerboseLogging) {
-                            LogToFile(Format(
-                                "Timestamp: {} | HandleSecondKey: ERROR in state transition: {}", A_TickCount,
-                                e.Message) "`n", "antimouse_core.log")
-                        }
-
-                        ; --- 5.13.1: VISUAL DEBUGGING ---
-                        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR in TransitionToState: {}", e.Message),
-                        "antimouse_fix.log")
-                        ToolTip("ERROR: Failed to transition state: " e.Message, 10, 280)
+                    } else {
+                        LogToFile("S1.6.2 CRITICAL FIX | subGrid object not valid", "antimouse_fix.log")
                     }
-                } else {
+                }
+
+                ; --- 5.13.1: VISUAL DEBUGGING - Check mouse position before move ---
+                MouseGetPos(&beforeX, &beforeY)
+                LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - Before mouse move: x={}, y={}", beforeX, beforeY),
+                "antimouse_fix.log")
+
+                ; Move the mouse to the center of the selected cell
+                try {
+                    centerX := boundaries.x + (boundaries.w // 2)
+                    centerY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(centerX, centerY, 0)
+
+                    ; --- 5.13.1: VISUAL DEBUGGING - Check mouse position after move ---
+                    MouseGetPos(&afterX, &afterY)
+                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - MOUSEMOVE to: x={}, y={}", centerX, centerY),
+                    "antimouse_fix.log")
+                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - After mouse move: x={}, y={}", afterX, afterY),
+                    "antimouse_fix.log")
+
+                    if (afterX != centerX || afterY != centerY) {
+                        LogToFile(Format(
+                            "5.13.1 DEBUG | HandleSecondKey - WARNING: Mouse position mismatch after move!"),
+                        "antimouse_fix.log")
+                        ToolTip("WARNING: Mouse move failed - position mismatch", 10, 220)
+                    }
+
                     if (enableVerboseLogging) {
                         LogToFile(Format(
-                            "Timestamp: {} | HandleSecondKey: Failed to get boundaries for cell '{}'",
-                            A_TickCount, targetCellKey) "`n", "antimouse_core.log")
+                            "Timestamp: {} | HandleSecondKey: Moved mouse to center of cell '{}': {}, {}",
+                            A_TickCount, targetCellKey, centerX, centerY) "`n", "antimouse_core.log")
+                    }
+                } catch as e {
+                    if (enableVerboseLogging) {
+                        LogToFile(Format("Timestamp: {} | HandleSecondKey: ERROR moving mouse: {}",
+                            A_TickCount, e.Message) "`n", "antimouse_core.log")
                     }
 
                     ; --- 5.13.1: VISUAL DEBUGGING ---
-                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - Failed to get boundaries for cell '{}'",
-                        targetCellKey),
+                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR moving mouse: {}", e.Message),
                     "antimouse_fix.log")
-                    ToolTip("ERROR: Failed to get boundaries for cell " targetCellKey, 10, 310)
+                    ToolTip("ERROR: Failed to move mouse: " e.Message, 10, 250)
+                }
+
+                ; --- Task 6.13: Explicitly Add MouseMove to HandleSecondKey ---
+                ; This ensures the mouse moves to the center of the cell (redundant but ensures it happens)
+                try {
+                    centerX := boundaries.x + (boundaries.w // 2)
+                    centerY := boundaries.y + (boundaries.h // 2)
+                    MouseMove(centerX, centerY, 0)
+
+                    ; --- 5.13.1: VISUAL DEBUGGING - Check if second MouseMove worked ---
+                    MouseGetPos(&afterX2, &afterY2)
+                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - SECOND MOUSEMOVE to: x={}, y={}",
+                        centerX,
+                        centerY),
+                    "antimouse_fix.log")
+                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - After second mouse move: x={}, y={}",
+                        afterX2, afterY2),
+                    "antimouse_fix.log")
+
+                    if (enableVerboseLogging) {
+                        LogToFile(Format(
+                            "Timestamp: {} | Task 6.13 | HandleSecondKey: Explicitly moved mouse to center of cell: {}, {}",
+                            A_TickCount, centerX, centerY) "`n", "antimouse_core.log")
+                    }
+                } catch as e {
+                    if (enableVerboseLogging) {
+                        LogToFile(Format(
+                            "Timestamp: {} | Task 6.13 | HandleSecondKey: ERROR in explicit mouse move: {}",
+                            A_TickCount, e.Message) "`n", "antimouse_core.log")
+                    }
+
+                    ; --- 5.13.1: VISUAL DEBUGGING ---
+                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR in second mouse move: {}", e.Message
+                    ),
+                    "antimouse_fix.log")
+                }
+
+                ; Transition to subgrid state
+                try {
+                    LogToFile(Format(
+                        "Timestamp: {} | HandleSecondKey: Transitioning to SUBGRID_STANDARD after selecting cell '{}'",
+                        A_TickCount, targetCellKey) "`n", "antimouse_core.log")
+                    TransitionToState(State_SUBGRID_STANDARD)
+
+                    ; --- 5.13.1: VISUAL DEBUGGING ---
+                    LogToFile(
+                        "5.13.1 DEBUG | HandleSecondKey - Successfully called TransitionToState(SUBGRID_STANDARD)",
+                        "antimouse_fix.log")
+                } catch as e {
+                    if (enableVerboseLogging) {
+                        LogToFile(Format(
+                            "Timestamp: {} | HandleSecondKey: ERROR in state transition: {}", A_TickCount,
+                            e.Message) "`n", "antimouse_core.log")
+                    }
+
+                    ; --- 5.13.1: VISUAL DEBUGGING ---
+                    LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - ERROR in TransitionToState: {}", e.Message
+                    ),
+                    "antimouse_fix.log")
+                    ToolTip("ERROR: Failed to transition state: " e.Message, 10, 280)
                 }
             } else {
                 if (enableVerboseLogging) {
-                    LogToFile(Format("Timestamp: {} | HandleSecondKey: currentOverlay is not a valid object",
-                        A_TickCount) "`n", "antimouse_core.log")
+                    LogToFile(Format(
+                        "Timestamp: {} | HandleSecondKey: Failed to get boundaries for cell '{}'",
+                        A_TickCount, targetCellKey) "`n", "antimouse_core.log")
                 }
 
                 ; --- 5.13.1: VISUAL DEBUGGING ---
-                LogToFile("5.13.1 DEBUG | HandleSecondKey - ERROR: currentOverlay is not a valid object",
-                    "antimouse_fix.log")
-                ToolTip("ERROR: currentOverlay is not a valid object", 10, 340)
+                LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - Failed to get boundaries for cell '{}'",
+                    targetCellKey),
+                "antimouse_fix.log")
+                ToolTip("ERROR: Failed to get boundaries for cell " targetCellKey, 10, 310)
             }
-        } catch as e {
-            if (enableVerboseLogging) {
-                LogToFile(Format("Timestamp: {} | HandleSecondKey: CRITICAL ERROR: {}", A_TickCount, e.Message) "`n",
-                "antimouse_core.log")
-            }
-
-            ; --- 5.13.1: VISUAL DEBUGGING ---
-            LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - CRITICAL ERROR: {}", e.Message),
-            "antimouse_fix.log")
-            ToolTip("CRITICAL ERROR: " e.Message, 10, 370)
         }
+    } catch as e {
+        if (enableVerboseLogging) {
+            LogToFile(Format("Timestamp: {} | HandleSecondKey: CRITICAL ERROR: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+        }
+
+        ; --- 5.13.1: VISUAL DEBUGGING ---
+        LogToFile(Format("5.13.1 DEBUG | HandleSecondKey - CRITICAL ERROR: {}", e.Message),
+        "antimouse_fix.log")
+        ToolTip("CRITICAL ERROR: " e.Message, 10, 370)
     }
 
-    ; Reset for next selection
-    StateMap['firstKey'] := ""
-
-    ; Set timer to clear tooltips after 5 seconds
-    SetTimer(() => ToolTip(), -5000)
-
-    ; --- 5.13.1: VISUAL DEBUGGING END ---
+    ; --- 5.13.1: VISUAL DEBUGGING ---
     LogToFile(Format("5.13.1 DEBUG | HandleSecondKey EXIT for key '{}'", key), "antimouse_fix.log")
 }
+
+; Reset for next selection
+StateMap['firstKey'] := ""
+
+; Set timer to clear tooltips after 5 seconds
+SetTimer(() => ToolTip(), -5000)
 
 ; Helper function to check if a key is a column key
 ColKeyCheck(keyToCheck) {

@@ -5,7 +5,11 @@
 ; Reference state constants and variables defined in state.ahk and config.ahk
 global State_IDLE, State_GRID_VISIBLE, State_SUBGRID_STANDARD, State_SUBGRID_ULTRAFAST
 global StateMap, currentState, showcaseDebug
-global TransitionToState ; Add reference to TransitionToState function
+global LogToFile, GetCellAtPosition, enableVerboseLogging, StartNewSelection ; Add references to other functions
+
+; Function-scoped variables (not file-level statics to avoid linter issues)
+; These will be initialized the first time TrackCursor() is called
+; This pattern avoids the linter error with file-level static declarations
 
 ; Function to get the current cell that the cursor is in
 ; Returns cell key (e.g., "qj") or empty string if cursor is not in any cell
@@ -64,12 +68,9 @@ GetCurrentCell() {
 
 ; Monitors the mouse cursor position and updates the active cell/highlight/subgrid accordingly.
 TrackCursor() {
-    ; Static variable to prevent re-entry
+    ; Static variables properly scoped inside the function
     static trackingInProgress := false
-    ; <<< TASK 1.6 START >>>
-    ; Static variable to track the last cell the cursor was over in GRID_VISIBLE state
     static lastTrackedCellKey_GridVisible := ""
-    ; <<< TASK 1.6 END >>>
 
     ; Check if tracking is already in progress
     if (trackingInProgress) {
@@ -400,7 +401,7 @@ TrackCursor() {
 ; Function to reset the lastTrackedCellKey_GridVisible variable
 ; Call this when transitioning back to GRID_VISIBLE state
 ResetLastTrackedKey() {
-    ; Explicitly use the proper scoping ref to the static variable
-    lastTrackedCellKey_GridVisible := ""
+    ; Explicitly define that we're using TrackCursor's static variable
+    TrackCursor.lastTrackedCellKey_GridVisible := ""
     LogToFile("Task: FIX | ResetLastTrackedKey: Reset lastTrackedCellKey_GridVisible to empty", "antimouse_core.log")
 }

@@ -430,11 +430,35 @@ class SubGridOverlay {
 
     ForceShow() {
         try {
-            this.gui.Show("NA")
+            ; Use explicit position parameters for more reliable showing
+            if (this.x && this.y && this.w && this.h) {
+                this.gui.Show(Format("x{} y{} w{} h{} NA", this.x, this.y, this.w, this.h))
+                WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+                LogToFile("SubGridOverlay.ForceShow: Successfully showed with explicit coordinates",
+                    "antimouse_fix.log")
+            } else {
+                ; Fallback to basic show if coordinates aren't set
+                this.gui.Show("NA")
+                WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+                LogToFile("SubGridOverlay.ForceShow: Used basic Show(NA) - no coordinates available",
+                    "antimouse_fix.log")
+            }
+            ; Force redraw for increased visibility
+            if (WinExist("ahk_id " this.gui.Hwnd)) {
+                WinRedraw("ahk_id " this.gui.Hwnd)
+                LogToFile("SubGridOverlay.ForceShow: Sent WinRedraw", "antimouse_fix.log")
+            }
             return true
         } catch as err {
-            LogToFile(Format("ERROR: subGrid.ForceShow failed: {}", err.Message), "antimouse_fix.log")
-            return false
+            LogToFile(Format("ERROR: SubGridOverlay.ForceShow failed: {}", err.Message), "antimouse_fix.log")
+            ; Last resort - try using WinShow directly
+            try {
+                WinShow("ahk_id " this.gui.Hwnd)
+                LogToFile("SubGridOverlay.ForceShow: Used WinShow as fallback", "antimouse_fix.log")
+                return true
+            } catch {
+                return false
+            }
         }
     }
 }
@@ -502,10 +526,30 @@ class HighlightOverlay {
 
     ForceShow() {
         try {
-            this.gui.Show("NA")
+            ; Clear any existing window styles that might be causing visibility issues
+            if (WinExist("ahk_id " this.gui.Hwnd)) {
+                WinShow("ahk_id " this.gui.Hwnd)
+                LogToFile("HighlightOverlay.ForceShow: Used WinShow on existing window", "antimouse_fix.log")
+            }
+
+            ; Show using the most reliable method available based on context
+            if (this.x && this.y && this.w && this.h) {
+                ; Show with explicit coordinates for better positioning
+                this.gui.Show(Format("x{} y{} w{} h{} NA", this.x, this.y, this.w, this.h))
+                LogToFile("HighlightOverlay.ForceShow: Used explicit coordinates", "antimouse_fix.log")
+            } else {
+                ; Basic show if no coordinates available
+                this.gui.Show("NA")
+                LogToFile("HighlightOverlay.ForceShow: Used basic Show", "antimouse_fix.log")
+            }
+
+            ; Ensure window is on top and refresh its appearance
+            WinSetAlwaysOnTop(true, "ahk_id " this.gui.Hwnd)
+            WinRedraw("ahk_id " this.gui.Hwnd)
+
             return true
         } catch as err {
-            LogToFile(Format("ERROR: highlight.ForceShow failed: {}", err.Message), "antimouse_fix.log")
+            LogToFile(Format("ERROR: HighlightOverlay.ForceShow failed: {}", err.Message), "antimouse_fix.log")
             return false
         }
     }
