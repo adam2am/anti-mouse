@@ -148,7 +148,7 @@ TransitionToState(newState) {
                 for _, overlay in StateMap["overlays"] {
                     if (IsObject(overlay)) {
                         try {
-                            overlay.Hide()
+                            overlay.Hide() ; Now moves off-screen instead of hiding
                         } catch as e {
                             LogToFile(Format("Timestamp: {} | ERROR hiding overlay: {}", A_TickCount, e.Message) "`n",
                             "antimouse_core.log")
@@ -165,7 +165,7 @@ TransitionToState(newState) {
                     for _, overlay in StateMap["overlays"] {
                         if (IsObject(overlay)) {
                             try {
-                                overlay.Hide()
+                                overlay.Hide() ; Now moves off-screen instead of hiding
                             } catch as e {
                                 LogToFile(Format("Timestamp: {} | ERROR hiding overlay: {}", A_TickCount, e.Message) "`n",
                                 "antimouse_core.log")
@@ -191,7 +191,7 @@ TransitionToState(newState) {
         ; Hide standard subgrid when exiting this state
         if (IsObject(subGrid)) {
             try {
-                subGrid.Hide()
+                subGrid.Hide() ; Now moves off-screen instead of hiding
             } catch as e {
                 LogToFile(Format("Timestamp: {} | ERROR hiding subGrid: {}", A_TickCount, e.Message) "`n",
                 "antimouse_core.log")
@@ -204,7 +204,7 @@ TransitionToState(newState) {
         if (IsObject(subGrid)) {
             ; TODO: Potentially reset subgrid layout back to standard if needed?
             try {
-                subGrid.Hide()
+                subGrid.Hide() ; Now moves off-screen instead of hiding
             } catch as e {
                 LogToFile(Format("Timestamp: {} | ERROR hiding subGrid: {}", A_TickCount, e.Message) "`n",
                 "antimouse_core.log")

@@ -18,6 +18,11 @@ global gridActivationTime := 0      ; Timestamp of last grid activation attempt
 ; --- CapsLock State ---
 global capsLockPressedTime := 0     ; Used for double CapsLock detection (though doubleCapsThreshold is in config)
 
+; --- Off-Screen Position Constants ---
+; Used to position GUI elements off-screen when hiding them instead of destroying
+global OFFSCREEN_X := -10000         ; X coordinate off-screen
+global OFFSCREEN_Y := -10000         ; Y coordinate off-screen
+
 ; --- Global State Map ---
 ; Centralized map to hold dynamic state information during grid operation.
 global StateMap := Map(

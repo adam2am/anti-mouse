@@ -356,14 +356,14 @@ Space:: {
         ; Log the action
         LogToFile("Space Hotkey: Stopping TrackCursor and performing click", "antimouse_core.log")
 
-        ; Explicitly remove tooltips
+        ; Explicitly remove tooltipsq
         ToolTip()
 
         ; --- TASK 5.6: Safe object handling ---
         ; Hide UI elements quickly, with robust type checking
         if (IsObject(highlight)) {
             LogToFile("Space Hotkey: Hiding highlight", "antimouse_core.log")
-            highlight.Hide()
+            highlight.Hide() ; Now moves highlight off-screen
         } else {
             LogToFile(Format("Space Hotkey: highlight is not an object (type: {})", Type(highlight)),
             "antimouse_core.log")
@@ -371,7 +371,7 @@ Space:: {
 
         if (IsObject(subGrid)) {
             LogToFile("Space Hotkey: Hiding subGrid", "antimouse_core.log")
-            subGrid.Hide()
+            subGrid.Hide() ; Now moves subGrid off-screen
         } else {
             LogToFile(Format("Space Hotkey: subGrid is not an object (type: {})", Type(subGrid)), "antimouse_core.log")
         }
@@ -381,7 +381,7 @@ Space:: {
             for index, overlay in StateMap['overlays'] {
                 if (IsObject(overlay)) {
                     LogToFile(Format("Space Hotkey: Hiding overlay {}", index), "antimouse_core.log")
-                    overlay.Hide()
+                    overlay.Hide() ; Now moves overlay off-screen
                 } else {
                     LogToFile(Format("Space Hotkey: overlay {} is not an object (type: {})",
                         index, Type(overlay)), "antimouse_core.log")
@@ -423,8 +423,8 @@ Tab:: {
     SetTimer(TrackCursor, 0)
 
     ; Hide subgrid and highlight before switching to prevent visual artifacts
-    if (IsObject(subGrid)) subGrid.Hide()
-        if (IsObject(highlight)) highlight.Hide()
+    if (IsObject(subGrid)) subGrid.Hide() ; Now moves subGrid off-screen
+        if (IsObject(highlight)) highlight.Hide() ; Now moves highlight off-screen
             Sleep(20) ; Small delay
 
     ; Cycle to the next monitor (function from core_logic.ahk)
@@ -534,14 +534,14 @@ CapsLock Up:: {
 
                 ; Hide UI elements quickly
                 if (IsObject(highlight)) {
-                    highlight.Hide()
+                    highlight.Hide() ; Now moves highlight off-screen
                 }
                 if (IsObject(subGrid)) {
-                    subGrid.Hide()
+                    subGrid.Hide() ; Now moves subGrid off-screen
                 }
                 for overlay in StateMap['overlays'] {
                     if (IsObject(overlay)) {
-                        overlay.Hide()
+                        overlay.Hide() ; Now moves overlay off-screen
                     }
                 }
                 Sleep(50) ; Slightly longer delay for UI hiding

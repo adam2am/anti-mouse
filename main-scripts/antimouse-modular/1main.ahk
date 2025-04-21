@@ -74,6 +74,9 @@ LoadCellMemory()
 ; Start the timer to periodically force CapsLock off
 SetTimer ForceCapsLockOff, 250
 
+; --- Initialize GUIs at Startup ---
+InitializeGUIs() ; Create GUI objects and hide them off-screen
+
 ; --- Optional: Initial Debug Message ---
 if (showcaseDebug) {
     ToolTip("AntiMouse Script Initialized (Debug Mode ON)")

@@ -76,33 +76,37 @@ class GridOverlay {
     }
 
     Hide() {
+        global OFFSCREEN_X, OFFSCREEN_Y
         try {
             if (IsObject(this.gui) && WinExist("ahk_id " this.gui.Hwnd)) {
-                this.gui.Hide()
+                ; Move off-screen instead of hiding
+                this.gui.Show(Format("x{} y{} NoActivate", OFFSCREEN_X, OFFSCREEN_Y))
+                ; LogToFile("GridOverlay.Hide: Successfully moved off-screen", "antimouse_core.log")
             }
         } catch {
             ; Silently ignore errors
         }
     }
 
-    Destroy() {
-        try {
-            if (IsObject(this.gui)) {
-                hwnd := this.gui.Hwnd
-                this.gui.Hide()
-                this.gui.Destroy()
-
-                if (WinExist("ahk_id " hwnd)) {
-                    WinClose("ahk_id " hwnd)
-                    if (WinExist("ahk_id " hwnd)) {
-                        WinKill("ahk_id " hwnd)
-                    }
-                }
-            }
-        } catch {
-            ; Silently ignore errors
-        }
-    }
+    ; Destroy method commented out as it will not be used in the off-screen approach
+    ; Destroy() {
+    ;     try {
+    ;         if (IsObject(this.gui)) {
+    ;             hwnd := this.gui.Hwnd
+    ;             this.gui.Hide()
+    ;             this.gui.Destroy()
+    ;
+    ;             if (WinExist("ahk_id " hwnd)) {
+    ;                 WinClose("ahk_id " hwnd)
+    ;                 if (WinExist("ahk_id " hwnd)) {
+    ;                     WinKill("ahk_id " hwnd)
+    ;                 }
+    ;             }
+    ;         }
+    ;     } catch {
+    ;         ; Silently ignore errors
+    ;     }
+    ; }
 
     GetCellBoundaries(cellKey) {
         if this.cells.Has(cellKey) {
@@ -156,12 +160,13 @@ class OverlayGUI {
         this.gridOverlay.Hide()
     }
 
-    Destroy() {
-        this.gridOverlay.Destroy()
-        ; Clear references
-        this.gridOverlay := ""
-        this.cells := ""
-    }
+    ; Destroy method commented out as it will not be used in the off-screen approach
+    ; Destroy() {
+    ;     this.gridOverlay.Destroy()
+    ;     ; Clear references
+    ;     this.gridOverlay := ""
+    ;     this.cells := ""
+    ; }
 
     GetCellBoundaries(cellKey) {
         ; Delegate to the underlying GridOverlay
@@ -350,30 +355,15 @@ class SubGridOverlay {
     }
 
     Hide() {
+        global OFFSCREEN_X, OFFSCREEN_Y
         try {
             if (IsObject(this.gui) && WinExist("ahk_id " this.gui.Hwnd)) {
-                this.gui.Hide()
+                ; Move off-screen instead of hiding
+                this.gui.Show(Format("x{} y{} NoActivate", OFFSCREEN_X, OFFSCREEN_Y))
+                LogToFile("SubGridOverlay.Hide: Successfully moved off-screen", "antimouse_core.log")
             }
-        } catch {
-            ; Silently ignore errors
-        }
-    }
-
-    Destroy() {
-        try {
-            if (IsObject(this.gui)) {
-                hwnd := this.gui.Hwnd
-                this.gui.Hide()
-                this.gui.Destroy()
-
-                if (WinExist("ahk_id " hwnd)) {
-                    WinClose("ahk_id " hwnd)
-                    if (WinExist("ahk_id " hwnd)) {
-                        WinKill("ahk_id " hwnd)
-                    }
-                }
-            }
-        } catch {
+        } catch as e {
+            LogToFile(Format("SubGridOverlay.Hide ERROR: {}", e.Message), "antimouse_core.log")
             ; Silently ignore errors
         }
     }
@@ -494,32 +484,18 @@ class HighlightOverlay {
     }
 
     Hide() {
+        global OFFSCREEN_X, OFFSCREEN_Y
         if (IsObject(this.gui)) {
             try {
-                this.gui.Hide()
-                LogToFile("5.13.1 DEBUG | HighlightOverlay.Hide: Successfully hidden", "antimouse_fix.log")
+                ; Move off-screen instead of hiding
+                this.gui.Show(Format("x{} y{} NoActivate", OFFSCREEN_X, OFFSCREEN_Y))
+                LogToFile("5.13.1 DEBUG | HighlightOverlay.Hide: Successfully moved off-screen", "antimouse_fix.log")
             } catch as e {
                 LogToFile(Format("5.13.1 DEBUG | HighlightOverlay.Hide ERROR: {}", e.Message),
                 "antimouse_fix.log")
             }
         } else {
             LogToFile("5.13.1 DEBUG | HighlightOverlay.Hide WARNING: gui is not an object",
-                "antimouse_fix.log")
-        }
-    }
-
-    Destroy() {
-        if (IsObject(this.gui)) {
-            try {
-                this.gui.Destroy()
-                this.enabled := false
-                LogToFile("5.13.1 DEBUG | HighlightOverlay.Destroy: Successfully destroyed", "antimouse_fix.log")
-            } catch as e {
-                LogToFile(Format("5.13.1 DEBUG | HighlightOverlay.Destroy ERROR: {}", e.Message),
-                "antimouse_fix.log")
-            }
-        } else {
-            LogToFile("5.13.1 DEBUG | HighlightOverlay.Destroy WARNING: gui is not an object",
                 "antimouse_fix.log")
         }
     }

@@ -370,7 +370,7 @@ TrackCursor() {
                         ; Cursor is not over any cell, hide highlight
                         if (IsObject(highlight)) {
                             try {
-                                highlight.Hide()
+                                highlight.Hide() ; Now moves highlight off-screen instead of just hiding
                                 if (enableVerboseLogging) {
                                     LogToFile(
                                         "Task 1.6 | TrackCursor (GRID_VISIBLE): Cursor not over any cell, hiding highlight",
