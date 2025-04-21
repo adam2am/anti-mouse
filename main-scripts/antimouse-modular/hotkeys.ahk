@@ -117,90 +117,6 @@ Escape:: {
 ; --- HOTKEYS FOR IDLE STATE (Activation with CapsLock + Key) ---
 ; These activate the grid *and* potentially perform an initial action.
 #HotIf GetKeyState('CapsLock', 'P') && (currentState == State_IDLE)
-q:: {
-    ; Access global state needed for this specific hotkey logic
-    global currentState, StateMap, highlight, showcaseDebug
-
-    ; Ensure CapsLock stays off (redundant but safe)
-    SetCapsLockState "AlwaysOff"
-
-    ; Get current mouse position *before* activating grid
-    MouseGetPos(&cursorX, &cursorY)
-
-    ; First, activate the grid using the function from activation.ahk
-    CapsLock_Q()
-
-    ; If grid activation was successful, immediately snap to the 'q' column
-    if (currentState == State_GRID_VISIBLE) {
-        ; Find 'q' column index in the currently active layout keys
-        qColIndex := 0
-        for i, colKey in StateMap['activeColKeys'] {
-            if (colKey == "q") {
-                qColIndex := i
-                break
-            }
-        }
-
-        ; If 'q' column exists in the layout
-        if (qColIndex > 0) {
-            ; Determine the target row based on cursor position or last selection
-            rowIndex := 0
-            if (IsObject(StateMap['currentOverlay']) && StateMap['currentOverlay'].ContainsPoint(cursorX, cursorY)) {
-                ; Find the row nearest to the current cursor Y position in the 'q' column
-                bestDistance := 99999
-                bestRowIndex := 0
-                for i, rowKey in StateMap['activeRowKeys'] {
-                    cellKey := "q" . rowKey
-                    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
-                    if (IsObject(boundaries)) {
-                        cellCenterY := boundaries.y + (boundaries.h // 2)
-                        distance := Abs(cellCenterY - cursorY)
-                        if (distance < bestDistance) {
-                            bestDistance := distance
-                            bestRowIndex := i
-                        }
-                    }
-                }
-                if (bestRowIndex > 0) {
-                    rowIndex := bestRowIndex
-                }
-            }
-
-            ; Fallback if no suitable row found based on cursor position
-            if (rowIndex == 0) {
-                rowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : Ceil(StateMap[
-                    'activeRowKeys'].Length / 2)
-            }
-
-            ; Validate the determined row index
-            rowIndex := ValidateIndex(rowIndex, StateMap['activeRowKeys'].Length) ; Function from utils.ahk
-
-            ; Set state variables for the selected cell
-            StateMap['firstKey'] := "q" ; Mark 'q' as the first key pressed
-            StateMap['currentColIndex'] := qColIndex
-            StateMap['currentRowIndex'] := rowIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex ; Remember this row
-
-            ; Construct the cell key and get its boundaries
-            rowKey := StateMap['activeRowKeys'][rowIndex]
-            cellKey := "q" . rowKey
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
-
-            if (IsObject(boundaries)) {
-                ; Move cursor to the center of the target cell
-                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-                ; Update the highlight overlay
-                if (IsObject(highlight)) {
-                    highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                }
-                if (showcaseDebug)
-                    ToolTip("Selected cell: " cellKey)
-            }
-        }
-    }
-    ; Set inHoldMode so releasing CapsLock triggers a click (handled in CapsLock Up)
-    g_ModifierState.inHoldMode := true
-}
 #HotIf
 
 ; --- HOTKEYS FOR CAPSLOCK HELD (Monitor Switch Activation/Switching) ---
@@ -446,7 +362,8 @@ Tab:: {
 ; $CapsLock::
 CapsLock:: {
     ; Access global state and config
-    global g_ModifierState, doubleCapsThreshold, instaClickMode, currentState, showcaseDebug
+    global g_ModifierState, doubleCapsThreshold, instaClickMode, currentState, showcaseDebug,
+        instaClickReleaseThreshold ; Added instaClickReleaseThreshold
 
     ; Ensure CapsLock's toggle state remains off
     SetCapsLockState "AlwaysOff"
@@ -510,7 +427,7 @@ CapsLock:: {
 CapsLock Up:: {
     ; Access global state and config
     global g_ModifierState, instaClickMode, currentState, highlight, subGrid, StateMap, showcaseDebug,
-        doubleCapsThreshold
+        doubleCapsThreshold, instaClickReleaseThreshold ; Added instaClickReleaseThreshold
 
     ; Ensure CapsLock toggle state remains off
     SetCapsLockState "AlwaysOff"
@@ -521,9 +438,15 @@ CapsLock Up:: {
     g_ModifierState.caps := false             ; Update physical state tracker
 
     ; --- InstaClick Handling ---
-    ; Perform click if we were in hold mode (set by double-tap or Caps+Key activation)
+    ; Perform click if we were in hold mode AND held long enough after the 2nd tap
     if (g_ModifierState.inHoldMode && currentState != State_IDLE) {
-        if (showcaseDebug) ToolTip("InstaClick: Clicking & Cleaning up")
+        ; Check if enough time elapsed since the second tap to qualify as an intended hold-release
+        if (g_ModifierState.capsPressedSecondTime > 0 && (currentTime - g_ModifierState.capsPressedSecondTime) >
+        instaClickReleaseThreshold) {
+            if (showcaseDebug) ToolTip("InstaClick Triggered (Hold > " instaClickReleaseThreshold "ms)")
+                LogToFile(Format("Timestamp: {} | InstaClick Triggered: Held for {}ms > threshold {}",
+                    currentTime, currentTime - g_ModifierState.capsPressedSecondTime, instaClickReleaseThreshold),
+                "antimouse_core.log")
             try {
                 ; Save mouse position before cleanup potentially moves it
                 MouseGetPos(&mouseX, &mouseY)
@@ -554,6 +477,8 @@ CapsLock Up:: {
                 Cleanup() ; Function from activation.ahk
 
             } catch as e {
+                LogToFile(Format("Timestamp: {} | ERROR during InstaClick: {}", currentTime, e.Message),
+                "antimouse_core.log")
                 if (showcaseDebug) {
                     ToolTip("Error during InstaClick: " e.Message)
                     Sleep(1000)
@@ -561,8 +486,18 @@ CapsLock Up:: {
                 ; Ensure cleanup happens even if click fails
                 try Cleanup()
             }
+        } else {
+            ; Release was too fast after the second tap - likely just activating the grid, not intending a click.
+            LogToFile(Format("Timestamp: {} | InstaClick Skipped: Release too fast ({}ms <= threshold {})",
+                currentTime, currentTime - g_ModifierState.capsPressedSecondTime, instaClickReleaseThreshold),
+            "antimouse_core.log")
+            if (showcaseDebug) {
+                ToolTip("Double-Tap Activation Release (No Click)")
+            }
+            ; Only reset state flags here, don't click or cleanup.
+        }
 
-        ; Reset hold mode and press times after click/cleanup
+        ; Reset hold mode and press times regardless of whether click happened
         g_ModifierState.inHoldMode := false
         g_ModifierState.capsPressedFirstTime := 0
         g_ModifierState.capsPressedSecondTime := 0
@@ -572,29 +507,39 @@ CapsLock Up:: {
         ; If not in hold mode, check if this release corresponds to a single tap
         if (!g_ModifierState.inHoldMode && currentState != State_IDLE) {
             ; Check if enough time has passed since the first press to rule out a double-tap starting
-            if (g_ModifierState.capsPressedFirstTime > 0 && (currentTime - g_ModifierState.capsPressedFirstTime
-            ) > doubleCapsThreshold) {
+            ; AND ensure capsPressedSecondTime wasn't set (meaning it wasn't a fast double-tap release handled above)
+            if (g_ModifierState.capsPressedFirstTime > 0 && (currentTime - g_ModifierState.capsPressedFirstTime) >
+            doubleCapsThreshold && g_ModifierState.capsPressedSecondTime == 0) {
                 if (showcaseDebug) ToolTip("Single CapsLock tap detected - Cleaning up")
-                    try {
-                        Cleanup() ; Clean up grid on single tap release
-                    } catch as e {
-                        if (showcaseDebug) {
-                            ToolTip("Error during cleanup: " e.Message)
-                            Sleep(1000)
-                        }
+                    LogToFile(Format("Timestamp: {} | Single Tap Release Detected: Cleaning up", currentTime),
+                    "antimouse_core.log")
+                try {
+                    Cleanup() ; Clean up grid on single tap release
+                } catch as e {
+                    LogToFile(Format("Timestamp: {} | ERROR during Single Tap Cleanup: {}", currentTime, e.Message),
+                    "antimouse_core.log")
+                    if (showcaseDebug) {
+                        ToolTip("Error during cleanup: " e.Message)
+                        Sleep(1000)
                     }
+                }
                 ; Reset press time after cleanup for single tap
                 g_ModifierState.capsPressedFirstTime := 0
-                g_ModifierState.capsPressedSecondTime := 0
+                g_ModifierState.capsPressedSecondTime := 0 ; Ensure this is also reset
             } else if (g_ModifierState.capsPressedFirstTime == 0) {
                 ; This case might occur if CapsLock Up is detected without a prior Down event
                 if (showcaseDebug) ToolTip("CapsLock Up detected without recorded press - Cleaning up")
-                    try Cleanup()
+                    LogToFile(Format("Timestamp: {} | Orphan CapsLock Up Detected: Cleaning up", currentTime),
+                    "antimouse_core.log")
+                try Cleanup()
             }
         }
 
-        ; Reset hold mode flag if it wasn't already reset by click handling
+        ; Reset hold mode flag if it wasn't already reset by click handling or quick release handling
+        ; This handles the case where user held CapsLock (not double tap) and grid was already IDLE
         if (g_ModifierState.inHoldMode && currentState == State_IDLE) {
+            LogToFile(Format("Timestamp: {} | Resetting residual holdMode flag in IDLE state", currentTime),
+            "antimouse_core.log")
             g_ModifierState.inHoldMode := false
             g_ModifierState.capsPressedFirstTime := 0
             g_ModifierState.capsPressedSecondTime := 0
@@ -682,3 +627,37 @@ SC035 up:: CheckRowKeyUpForUltraFast("/") ; Slash
     TransitionToState(State_IDLE) ; Force state
     DeactivateGrid(true) ; Force deactivation
 }
+
+; --- Activation via Tap + Key (e.g., Tap Caps, then press Q) ---
+#HotIf currentState == State_IDLE
+q:: {
+    global g_ModifierState, doubleCapsThreshold, showcaseDebug
+    currentTime := A_TickCount
+
+    ; Check if CapsLock was released very recently (indicates a tap sequence)
+    if (g_ModifierState.capsFirstReleased && (currentTime - g_ModifierState.lastCapsUpTime < doubleCapsThreshold)) {
+        LogToFile(Format("Timestamp: {} | Tap+Q Activation Detected (Time since CapsUp: {}ms)",
+            currentTime, currentTime - g_ModifierState.lastCapsUpTime), "antimouse_core.log")
+        if (showcaseDebug) {
+            ToolTip("Tap+Q Activation")
+        }
+
+        ; Activate the grid
+        CapsLock_Q()
+
+        ; Reset CapsLock state flags to prevent interference with subsequent actions
+        g_ModifierState.capsPressedFirstTime := 0
+        g_ModifierState.capsPressedSecondTime := 0
+        g_ModifierState.capsFirstReleased := false
+        g_ModifierState.inHoldMode := false ; Ensure hold mode is off for tap activation
+
+        ; We don't snap to Q column here, just activate the grid.
+        ; The original CapsLock+Q hotkey handled snapping.
+        ; We could add snap logic here if needed, but let's start simple.
+
+    } else {
+        ; Just a normal 'q' key press while IDLE and CapsLock wasn't recently tapped
+        Send "q" ; Send the original key press
+    }
+}
+#HotIf
