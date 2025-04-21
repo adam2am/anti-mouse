@@ -703,7 +703,9 @@ CapsLock & q:: {
                         }
                     }
                 }
-                if (bestRowIndex > 0) rowIndex := bestRowIndex
+                if (bestRowIndex > 0) {
+                    rowIndex := bestRowIndex
+                }
             }
             if (rowIndex == 0) rowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : Ceil(
                 StateMap['activeRowKeys'].Length / 2)
@@ -717,8 +719,12 @@ CapsLock & q:: {
             boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
             if (IsObject(boundaries)) {
                 MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-                if (IsObject(highlight)) highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                    if (showcaseDebug) ToolTip("Selected cell: " cellKey)
+                if (IsObject(highlight)) {
+                    highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                }
+                if (showcaseDebug) {
+                    ToolTip("Selected cell: " cellKey)
+                }
             }
         }
     }
