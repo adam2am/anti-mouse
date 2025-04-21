@@ -661,3 +661,71 @@ q:: {
     }
 }
 #HotIf
+
+; --- Activation via Hold Caps + Q (for InstaClick on Release) ---
+#HotIf currentState == State_IDLE
+CapsLock & q:: {
+    ; Access global state needed
+    global currentState, StateMap, highlight, showcaseDebug, g_ModifierState
+
+    LogToFile(Format("Timestamp: {} | Hold+Q Activation Detected", A_TickCount), "antimouse_core.log")
+
+    ; Ensure CapsLock stays off
+    SetCapsLockState "AlwaysOff"
+
+    ; Get current mouse position *before* activating grid (for potential snapping)
+    MouseGetPos(&cursorX, &cursorY)
+
+    ; Activate the grid
+    CapsLock_Q()
+
+    ; --- Optional: Snap to Q column logic (restored from previous version) ---
+    if (currentState == State_GRID_VISIBLE) {
+        qColIndex := 0
+        for i, colKey in StateMap['activeColKeys'] {
+            if (colKey == "q") {
+                qColIndex := i
+                break
+            }
+        }
+        if (qColIndex > 0) {
+            rowIndex := 0
+            if (IsObject(StateMap['currentOverlay']) && StateMap['currentOverlay'].ContainsPoint(cursorX, cursorY)) {
+                bestDistance := 99999, bestRowIndex := 0
+                for i, rowKey in StateMap['activeRowKeys'] {
+                    cellKey := "q" . rowKey
+                    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+                    if (IsObject(boundaries)) {
+                        cellCenterY := boundaries.y + (boundaries.h // 2)
+                        distance := Abs(cellCenterY - cursorY)
+                        if (distance < bestDistance) {
+                            bestDistance := distance, bestRowIndex := i
+                        }
+                    }
+                }
+                if (bestRowIndex > 0) rowIndex := bestRowIndex
+            }
+            if (rowIndex == 0) rowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : Ceil(
+                StateMap['activeRowKeys'].Length / 2)
+                rowIndex := ValidateIndex(rowIndex, StateMap['activeRowKeys'].Length)
+            StateMap['firstKey'] := "q"
+            StateMap['currentColIndex'] := qColIndex
+            StateMap['currentRowIndex'] := rowIndex
+            StateMap['lastSelectedRowIndex'] := rowIndex
+            rowKey := StateMap['activeRowKeys'][rowIndex]
+            cellKey := "q" . rowKey
+            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+            if (IsObject(boundaries)) {
+                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
+                if (IsObject(highlight)) highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                    if (showcaseDebug) ToolTip("Selected cell: " cellKey)
+            }
+        }
+    }
+    ; --- End Optional Snap Logic ---
+
+    ; CRITICAL: Set inHoldMode for this activation type to enable InstaClick on release
+    g_ModifierState.inHoldMode := true
+    LogToFile(Format("Timestamp: {} | Hold+Q: Set inHoldMode=true", A_TickCount), "antimouse_core.log")
+}
+#HotIf
