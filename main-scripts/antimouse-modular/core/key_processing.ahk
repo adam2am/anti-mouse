@@ -62,6 +62,22 @@ ProcessKeyPress(key) {
 
     ; Process based on current state
     if (currentState = State_GRID_VISIBLE) {
+        ; --- NEW: Check for subgrid keys FIRST --- START
+        LogToFile(Format(
+            "S1.7.1 DIAGNOSTIC | ProcessKeyPress (GRID_VISIBLE) | Checking if '{}' is a subgrid key FIRST",
+            key), "antimouse_diagnostic.log")
+        if (IsSubGridKey(key)) {
+            LogToFile(Format(
+                "S1.7.1 DIAGNOSTIC | ProcessKeyPress (GRID_VISIBLE) | Key '{}' IS a subgrid key. Calling ProcessStandardSubgridKey.",
+                key), "antimouse_diagnostic.log")
+            ProcessStandardSubgridKey(key)
+            return ; Subgrid key handled, exit
+        }
+        LogToFile(Format(
+            "S1.7.1 DIAGNOSTIC | ProcessKeyPress (GRID_VISIBLE) | Key '{}' is NOT a subgrid key. Proceeding to check if it is a grid key.",
+            key), "antimouse_diagnostic.log")
+        ; --- NEW: Check for subgrid keys FIRST --- END
+
         ; S1.5.1 DIAGNOSTIC: Grid key check path tracing
         LogToFile(Format(
             "S1.5.1 DIAGNOSTIC | ProcessKeyPress - GRID_VISIBLE state | About to check if '{}' is a grid key",
@@ -79,35 +95,49 @@ ProcessKeyPress(key) {
             LogToFile(Format("S1.5.1 DIAGNOSTIC | ProcessKeyPress - About to call HandleKey for key='{}'",
                 key), "antimouse_diagnostic.log")
 
+            ; --- MODIFIED: Call simplified HandleKey ---
             HandleKey(key)
 
             ; S1.5.1 DIAGNOSTIC: After HandleKey execution
             LogToFile(Format(
-                "S1.5.1 DIAGNOSTIC | ProcessKeyPress - After HandleKey | firstKey='{}' | currentState='{}'",
-                StateMap.Get('firstKey', ""), currentState), "antimouse_diagnostic.log")
+                "S1.5.1 DIAGNOSTIC | ProcessKeyPress - After HandleKey | currentState='{}'",
+                currentState), "antimouse_diagnostic.log")
+        } else {
+            ; S1.7.1 DIAGNOSTIC: Key is neither subgrid nor grid key
+            LogToFile(Format(
+                "S1.7.1 DIAGNOSTIC | ProcessKeyPress (GRID_VISIBLE) | Key '{}' is neither subgrid nor grid key. Ignoring.",
+                key), "antimouse_diagnostic.log")
         }
     }
     else if (currentState = State_SUBGRID_STANDARD) {
-        ; S1.5.1 DIAGNOSTIC: Subgrid standard state path
+        ; --- OPTIMIZED LOGIC - Process keys directly in SUBGRID_STANDARD without state transitions ---
         LogToFile(Format(
-            "S1.5.1 DIAGNOSTIC | ProcessKeyPress - SUBGRID_STANDARD state | Checking if '{}' is a subgrid key",
+            "S1.7.1 INFO | ProcessKeyPress in State_SUBGRID_STANDARD | key='{}' - Checking key type",
             key), "antimouse_diagnostic.log")
 
-        ; First check if it's a valid subgrid key
+        ; First check if it's a subgrid key
         if (IsSubGridKey(key)) {
             LogToFile(Format(
-                "S1.5.1 DIAGNOSTIC | ProcessKeyPress - '{}' is a valid subgrid key, calling ProcessStandardSubgridKey",
+                "S1.7.1 INFO | ProcessKeyPress | Key '{}' is a subgrid key - processing directly",
                 key), "antimouse_diagnostic.log")
             ProcessStandardSubgridKey(key)
             return
         }
-        else {
-            ; Task: 5.10/Previous Fix | If not a subgrid key, assume it's the start of a new selection.
+
+        ; If it's a grid key, handle it directly without transitioning state
+        isGridKey := CheckIfGridKey(key)
+        if (isGridKey) {
             LogToFile(Format(
-                "S1.5.1 DIAGNOSTIC | ProcessKeyPress - '{}' is NOT a subgrid key, starting new selection (will defer key processing)",
+                "S1.7.1 INFO | ProcessKeyPress | Key '{}' is a grid key - handling directly in SUBGRID_STANDARD",
                 key), "antimouse_diagnostic.log")
-            StartNewSelection(key) ; <<< Call with only key again
-            return ; Ensure we exit after starting new selection
+
+            ; Direct call to HandleKey - state will remain SUBGRID_STANDARD
+            ; Subgrid will remain visible, only position will update
+            HandleKey(key)
+        } else {
+            LogToFile(Format(
+                "S1.7.1 INFO | ProcessKeyPress | Key '{}' is neither a subgrid nor grid key - ignoring",
+                key), "antimouse_diagnostic.log")
         }
     }
     else if (currentState = State_SUBGRID_ULTRAFAST) {

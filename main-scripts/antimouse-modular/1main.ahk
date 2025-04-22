@@ -33,7 +33,7 @@ SetCapsLockState "AlwaysOff"    ; Ensure CapsLock starts (and stays) off
 
 ; Make functions globally available
 ; Declare layout-specific key arrays globally
-global LoadSettings, LoadCellMemory, CapsLock_Q, Cleanup, ForceCloseAllGuis
+global LoadSettings, LoadCellMemory, CapsLock_Q, ForceCloseAllGuis
 global activeColKeys, activeRowKeys
 ; Export grid key handling functions for global use
 global HandleKey, HandleFirstKey, HandleSecondKey, StartNewSelection, ProcessStandardSubgridKey, HandleUltraFastKey,

@@ -72,6 +72,15 @@ TrackCursor() {
     static trackingInProgress := false
     static lastTrackedCellKey_GridVisible := ""
 
+    ; --- ADDED: Check for reset request --- START
+    if (StateMap.Get('requestResetTracking', false)) {
+        LogToFile("Task: FIX | TrackCursor: Resetting lastTrackedCellKey_GridVisible due to flag.",
+            "antimouse_core.log")
+        lastTrackedCellKey_GridVisible := ""
+        StateMap.Delete('requestResetTracking') ; Clear the flag using Delete for safety
+    }
+    ; --- ADDED: Check for reset request --- END
+
     ; Check if tracking is already in progress
     if (trackingInProgress) {
         ; Log that we're exiting due to trackingInProgress flag
@@ -232,38 +241,32 @@ TrackCursor() {
                                 if (IsObject(highlight)) {
                                     try {
                                         highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                                        highlight.ForceShow() ; Ensure visible
+                                        LogToFile("S1.7.1 DIAG | TrackCursor | Highlight updated & shown for " currentCellKey,
+                                            "antimouse_diagnostic.log")
 
-                                        ; --- 5.13.1: VISUAL DEBUGGING ---
-                                        LogToFile("5.13.1 DEBUG | TrackCursor - Successfully called highlight.Update()",
-                                            "antimouse_fix.log")
-
-                                        ; S1.6.1 FIX - Ensure highlight is visible after update
-                                        try {
-                                            ; First try to use ForceShow if available
-                                            if (IsObject(highlight) && highlight.HasMethod("ForceShow")) {
-                                                highlight.ForceShow()
-                                                LogToFile("S1.6.1 FIX | TrackCursor | Used highlight.ForceShow()",
-                                                    "antimouse_fix.log")
-                                            } else {
-                                                ; Fallback to regular Show if ForceShow unavailable
-                                                highlight.gui.Show("NA")
-                                                LogToFile("S1.6.1 FIX | TrackCursor | Used highlight.gui.Show()",
-                                                    "antimouse_fix.log")
-                                            }
-                                        } catch as visErr {
-                                            LogToFile(Format(
-                                                "S1.6.1 FIX | TrackCursor | ERROR forcing highlight visibility: {}",
-                                                visErr.Message), "antimouse_fix.log")
-
-                                            ; Last-resort attempt to make highlight visible
+                                        ; --- ADDED: Update SubGrid position to match --- START
+                                        if (IsObject(subGrid)) {
                                             try {
-                                                WinShow("ahk_id " highlight.gui.Hwnd)
-                                                LogToFile("S1.6.1 FIX | TrackCursor | Used WinShow as last resort",
-                                                    "antimouse_fix.log")
-                                            } catch {
-                                                ; Nothing more we can try at this point
+                                                ; Make copy of boundaries to ensure we don't pass boundaries object directly
+                                                ; This avoids potential property name mismatches
+                                                x := boundaries.x
+                                                y := boundaries.y
+                                                w := boundaries.w
+                                                h := boundaries.h
+
+                                                ; Update with explicit property values rather than the object
+                                                subGrid.Update(x, y, w, h)
+                                                subGrid.ForceShow() ; Ensure visible
+                                                LogToFile("S1.7.1 DIAG | TrackCursor | SubGrid updated & shown for " currentCellKey,
+                                                    "antimouse_diagnostic.log")
+                                            } catch as e {
+                                                LogToFile(Format(
+                                                    "S1.7.1 ERROR | TrackCursor | Error updating/showing subGrid: {}",
+                                                    e.Message), "antimouse_diagnostic.log")
                                             }
                                         }
+                                        ; --- ADDED: Update SubGrid position to match --- END
 
                                         if (enableVerboseLogging) {
                                             LogToFile(Format(
@@ -274,83 +277,20 @@ TrackCursor() {
                                         LogToFile(Format("Task: 5.10 | TrackCursor ERROR updating highlight: {}",
                                             err.Message),
                                         "antimouse_core.log")
-
-                                        ; --- 5.13.1: VISUAL DEBUGGING ---
-                                        LogToFile(Format("5.13.1 DEBUG | TrackCursor - ERROR updating highlight: {}",
-                                            err.Message), "antimouse_fix.log")
+                                        LogToFile(Format("S1.7.1 ERROR | TrackCursor | Error updating highlight: {}",
+                                            err.Message), "antimouse_diagnostic.log")
                                     }
                                 } else {
                                     LogToFile("TrackCursor: WARNING - highlight object invalid", "antimouse_core.log")
-
-                                    ; --- 5.13.1: VISUAL DEBUGGING ---
-                                    LogToFile("5.13.1 DEBUG | TrackCursor - ERROR: highlight is not a valid object",
-                                        "antimouse_fix.log")
+                                    LogToFile("S1.7.1 ERROR | TrackCursor | Highlight object invalid",
+                                        "antimouse_diagnostic.log")
                                 }
 
-                                ; --- RE-ENABLE HOVER ACTIVATION - START ---
-                                ; S1.6.2 FIX - Re-enable hover activation with debounce protection
+                                ; --- REMOVED HOVER ACTIVATION LOGIC --- START
+                                ; The block that checked firstKey and transitioned to SUBGRID_STANDARD is removed.
+                                ; Subgrid is now updated directly after highlight update.
+                                ; --- REMOVED HOVER ACTIVATION LOGIC --- END
 
-                                ; Check if key processing is safe (no keys being processed or enough time has passed)
-                                if (StateMap.Has('firstKey') && StateMap['firstKey'] != "") {
-                                    ; A key HAS been pressed, safe to activate subgrid on hover
-                                    LogToFile(Format(
-                                        "S1.6.2 FIX (Modified) | TrackCursor | Hover activation for cell '{}' because firstKey='{}'",
-                                        currentCellKey, StateMap['firstKey']), "antimouse_fix.log")
-
-                                    ; Note: Removed the A_TickCount debounce check as it's implicit now
-
-                                    StateMap["activeCellKey"] := currentCellKey
-
-                                    ; Update subgrid position BEFORE transitioning
-                                    if (IsObject(subGrid)) {
-                                        try {
-                                            subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
-                                            LogToFile("S1.6.2 FIX | TrackCursor | Updated subGrid position",
-                                                "antimouse_fix.log")
-
-                                            ; Ensure subgrid is visible
-                                            try {
-                                                if (IsObject(subGrid) && subGrid.HasMethod("ForceShow")) {
-                                                    subGrid.ForceShow()
-                                                    LogToFile(
-                                                        "S1.6.2 FIX | TrackCursor | Used subGrid.ForceShow()",
-                                                        "antimouse_fix.log")
-                                                } else {
-                                                    subGrid.gui.Show("NA")
-                                                    LogToFile(
-                                                        "S1.6.2 FIX | TrackCursor | Used subGrid.gui.Show()",
-                                                        "antimouse_fix.log")
-                                                }
-                                            } catch as err {
-                                                LogToFile(Format(
-                                                    "S1.6.2 FIX | TrackCursor | Error showing subGrid: {}",
-                                                    err.Message), "antimouse_fix.log")
-                                            }
-                                        } catch as err {
-                                            LogToFile(Format(
-                                                "S1.6.2 FIX | TrackCursor | Error updating subGrid: {}",
-                                                err.Message), "antimouse_fix.log")
-                                        }
-                                    }
-
-                                    ; Transition to subgrid state
-                                    try {
-                                        TransitionToState(State_SUBGRID_STANDARD)
-                                        LogToFile(
-                                            "S1.6.2 FIX | TrackCursor | Transitioned to SUBGRID_STANDARD state",
-                                            "antimouse_fix.log")
-                                    } catch as err {
-                                        LogToFile(Format(
-                                            "S1.6.2 FIX | TrackCursor | Error in state transition: {}",
-                                            err.Message), "antimouse_fix.log")
-                                    }
-                                } else {
-                                    ; --- MODIFIED CHECK --- firstKey is empty, DO NOT activate subgrid on hover
-                                    LogToFile(Format(
-                                        "S1.6.2 FIX (Modified) | TrackCursor | Skipping hover activation for cell '{}' because firstKey is empty.",
-                                        currentCellKey), "antimouse_fix.log")
-                                }
-                                ; --- RE-ENABLE HOVER ACTIVATION - END ---
                             } else {
                                 LogToFile(Format(
                                     "TrackCursor: WARNING - Failed to get boundaries for cell '{}'",
@@ -389,12 +329,4 @@ TrackCursor() {
         ; Always reset the tracking flag when we're done
         trackingInProgress := false
     }
-}
-
-; Function to reset the lastTrackedCellKey_GridVisible variable
-; Call this when transitioning back to GRID_VISIBLE state
-ResetLastTrackedKey() {
-    ; Explicitly define that we're using TrackCursor's static variable
-    TrackCursor.lastTrackedCellKey_GridVisible := ""
-    LogToFile("Task: FIX | ResetLastTrackedKey: Reset lastTrackedCellKey_GridVisible to empty", "antimouse_core.log")
 }

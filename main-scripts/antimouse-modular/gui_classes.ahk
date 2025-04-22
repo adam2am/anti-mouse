@@ -230,28 +230,38 @@ class SubGridOverlay {
     }
 
     Update(x, y, w, h) {
-        this.x := x
-        this.y := y
-        this.width := w
-        this.height := h
-        this.subCellWidth := w // (this.currentLayout == "standard" ? 2 : 4)
-        this.subCellHeight := h // (this.currentLayout == "standard" ? 2 : 3)
+        ; Store the updated position for later reference
+        this.currentX := x
+        this.currentY := y
+        this.currentW := w
+        this.currentH := h
 
-        borderThickness := 1
-        fontSize := Max(16, Min(this.subCellWidth, this.subCellHeight) // 3)
-        this.gui.SetFont("s" fontSize " bold", "Arial")
+        try {
+            ; Position the subgrid based on the active cell boundaries
+            newW := w
+            newH := h
 
-        ; Update outer borders
-        this.borderControls[1].Move(0, 0, w, borderThickness)                   ; Top
-        this.borderControls[2].Move(0, h - borderThickness, w, borderThickness) ; Bottom
-        this.borderControls[3].Move(0, 0, borderThickness, h)                   ; Left
-        this.borderControls[4].Move(w - borderThickness, 0, borderThickness, h) ; Right
+            ; Ensure we have a gui to work with
+            if (!IsObject(this.gui)) {
+                LogToFile("ERROR: SubGridOverlay.Update - this.gui is not a valid object", "antimouse_fix.log")
+                return
+            }
 
-        if (this.currentLayout == "standard") {
-            this.UpdateStandardLayout()
-        } else {
-            this.UpdateUltraFastLayout()
+            this.gui.Move(x, y, newW, newH)
+            LogToFile(Format("SubGridOverlay.Update: Successfully moved to x={}, y={}, w={}, h={}",
+                x, y, newW, newH), "antimouse_fix.log")
+
+            ; Update the overlay's size variables
+            this.width := newW
+            this.height := newH
+
+            ; Force re-render the overlay
+            this.Draw()
+        } catch as e {
+            LogToFile(Format("ERROR: SubGridOverlay.Update failed: {}", e.Message), "antimouse_fix.log")
         }
+
+        return this
     }
 
     UpdateStandardLayout() {
@@ -449,6 +459,37 @@ class SubGridOverlay {
             } catch {
                 return false
             }
+        }
+    }
+
+    ; Redraws the subgrid based on current dimensions and layout
+    Draw() {
+        try {
+            ; Calculate dimensions
+            this.subCellWidth := this.width // (this.currentLayout == "standard" ? 2 : 4)
+            this.subCellHeight := this.height // (this.currentLayout == "standard" ? 2 : 3)
+
+            borderThickness := 1
+            fontSize := Max(16, Min(this.subCellWidth, this.subCellHeight) // 3)
+            this.gui.SetFont("s" fontSize " bold", "Arial")
+
+            ; Update outer borders
+            this.borderControls[1].Move(0, 0, this.width, borderThickness)                   ; Top
+            this.borderControls[2].Move(0, this.height - borderThickness, this.width, borderThickness) ; Bottom
+            this.borderControls[3].Move(0, 0, borderThickness, this.height)                   ; Left
+            this.borderControls[4].Move(this.width - borderThickness, 0, borderThickness, this.height) ; Right
+
+            ; Update layout based on current mode
+            if (this.currentLayout == "standard") {
+                this.UpdateStandardLayout()
+            } else {
+                this.UpdateUltraFastLayout()
+            }
+
+            LogToFile(Format("SubGridOverlay.Draw: Successfully redrawn layout '{}' with w={}, h={}",
+                this.currentLayout, this.width, this.height), "antimouse_fix.log")
+        } catch as e {
+            LogToFile(Format("ERROR: SubGridOverlay.Draw failed: {}", e.Message), "antimouse_fix.log")
         }
     }
 }

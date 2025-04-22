@@ -33,15 +33,17 @@ ProcessStandardSubgridKey(subKey) {
             subKey) "`n", "antimouse_core.log")
     }
 
-    if (currentState != State_SUBGRID_STANDARD || !IsObject(subGrid)) {
+    ; REMOVED state check: || currentState != State_SUBGRID_STANDARD
+    if (!IsObject(subGrid)) {
         if (enableVerboseLogging) { ; <<< WRAPPED
             LogToFile(Format(
-                "Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey: Invalid state ('{}') or subGrid object. Exiting.",
-                A_TickCount, currentState) "`n", "antimouse_core.log")
+                "Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey: Invalid subGrid object. Exiting.",
+                A_TickCount) "`n", "antimouse_core.log")
         }
         return
     }
 
+    ; Keep debounce check for now
     timeSinceTransition := A_TickCount - stateTransitionTime
     if (timeSinceTransition < stateTransitionDelay) {
         if (enableVerboseLogging) { ; <<< WRAPPED
@@ -74,11 +76,28 @@ ProcessStandardSubgridKey(subKey) {
 
     UpdateCellMemory(StateMap['activeCellKey'], subKey)
 
+    ; --- ADDED Click and Cleanup --- START
     if (enableVerboseLogging) { ; <<< WRAPPED
-        LogToFile(Format(
-            "Timestamp: {} | Task: 5.0 | ProcessStandardSubgridKey: Placeholder for mouse click at ({}, {}).",
+        LogToFile(Format("Timestamp: {} | Task: 5.0 | ProcessStandardSubgridKey: Performing CLICK at ({}, {}).",
             A_TickCount, targetCoords.x, targetCoords.y) "`n", "antimouse_core.log")
     }
+    Click()
+
+    if (enableVerboseLogging) { ; <<< WRAPPED
+        LogToFile(Format("Timestamp: {} | Task: 5.0 | ProcessStandardSubgridKey: Calling Cleanup() after click.",
+            A_TickCount) "`n", "antimouse_core.log")
+    }
+
+    ; Ensure Cleanup function exists before calling - FIXED SYNTAX
+    try {
+        Cleanup() ; Call the cleanup function directly in a try block
+    } catch as err {
+        LogToFile(Format(
+            "Timestamp: {} | Task: 5.0 | ProcessStandardSubgridKey: ERROR - Cleanup() call failed: {}",
+            A_TickCount, err.Message) "`n", "antimouse_core.log")
+        TransitionToState(State_IDLE) ; Fallback
+    }
+    ; --- ADDED Click and Cleanup --- END
 
     if (enableVerboseLogging) { ; <<< WRAPPED
         LogToFile(Format("Timestamp: {} | Task: 2.11 | ProcessStandardSubgridKey END | subKey={} | State after={}",
