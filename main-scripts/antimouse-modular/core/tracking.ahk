@@ -291,73 +291,66 @@ TrackCursor() {
                                 ; S1.6.2 FIX - Re-enable hover activation with debounce protection
 
                                 ; Check if key processing is safe (no keys being processed or enough time has passed)
-                                if (StateMap['firstKey'] == "") {
-                                    ; No key being processed, check debounce time
-                                    if (A_TickCount - StateMap.Get('lastKeypressTime', 0) > 150) {
-                                        ; Debounce period passed, safe to activate subgrid on hover
-                                        LogToFile(Format(
-                                            "S1.6.2 FIX | TrackCursor | Hover activation for cell '{}'",
-                                            currentCellKey), "antimouse_fix.log")
+                                if (StateMap.Has('firstKey') && StateMap['firstKey'] != "") {
+                                    ; A key HAS been pressed, safe to activate subgrid on hover
+                                    LogToFile(Format(
+                                        "S1.6.2 FIX (Modified) | TrackCursor | Hover activation for cell '{}' because firstKey='{}'",
+                                        currentCellKey, StateMap['firstKey']), "antimouse_fix.log")
 
-                                        if (IsObject(StateMap)) {
-                                            StateMap["activeCellKey"] := currentCellKey
+                                    ; Note: Removed the A_TickCount debounce check as it's implicit now
 
-                                            ; Update subgrid position BEFORE transitioning
-                                            if (IsObject(subGrid)) {
-                                                try {
-                                                    subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries
-                                                        .h)
-                                                    LogToFile("S1.6.2 FIX | TrackCursor | Updated subGrid position",
-                                                        "antimouse_fix.log")
+                                    StateMap["activeCellKey"] := currentCellKey
 
-                                                    ; Ensure subgrid is visible
-                                                    try {
-                                                        if (IsObject(subGrid) && subGrid.HasMethod("ForceShow")) {
-                                                            subGrid.ForceShow()
-                                                            LogToFile(
-                                                                "S1.6.2 FIX | TrackCursor | Used subGrid.ForceShow()",
-                                                                "antimouse_fix.log")
-                                                        } else {
-                                                            subGrid.gui.Show("NA")
-                                                            LogToFile(
-                                                                "S1.6.2 FIX | TrackCursor | Used subGrid.gui.Show()",
-                                                                "antimouse_fix.log")
-                                                        }
-                                                    } catch as err {
-                                                        LogToFile(Format(
-                                                            "S1.6.2 FIX | TrackCursor | Error showing subGrid: {}",
-                                                            err.Message), "antimouse_fix.log")
-                                                    }
-                                                } catch as err {
-                                                    LogToFile(Format(
-                                                        "S1.6.2 FIX | TrackCursor | Error updating subGrid: {}",
-                                                        err.Message), "antimouse_fix.log")
-                                                }
-                                            }
+                                    ; Update subgrid position BEFORE transitioning
+                                    if (IsObject(subGrid)) {
+                                        try {
+                                            subGrid.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                                            LogToFile("S1.6.2 FIX | TrackCursor | Updated subGrid position",
+                                                "antimouse_fix.log")
 
-                                            ; Transition to subgrid state
+                                            ; Ensure subgrid is visible
                                             try {
-                                                TransitionToState(State_SUBGRID_STANDARD)
-                                                LogToFile(
-                                                    "S1.6.2 FIX | TrackCursor | Transitioned to SUBGRID_STANDARD state",
-                                                    "antimouse_fix.log")
+                                                if (IsObject(subGrid) && subGrid.HasMethod("ForceShow")) {
+                                                    subGrid.ForceShow()
+                                                    LogToFile(
+                                                        "S1.6.2 FIX | TrackCursor | Used subGrid.ForceShow()",
+                                                        "antimouse_fix.log")
+                                                } else {
+                                                    subGrid.gui.Show("NA")
+                                                    LogToFile(
+                                                        "S1.6.2 FIX | TrackCursor | Used subGrid.gui.Show()",
+                                                        "antimouse_fix.log")
+                                                }
                                             } catch as err {
                                                 LogToFile(Format(
-                                                    "S1.6.2 FIX | TrackCursor | Error in state transition: {}",
+                                                    "S1.6.2 FIX | TrackCursor | Error showing subGrid: {}",
                                                     err.Message), "antimouse_fix.log")
                                             }
-                                        } else {
-                                            LogToFile(
-                                                "S1.6.2 FIX | TrackCursor | Skipping hover activation - within debounce period",
-                                                "antimouse_fix.log")
+                                        } catch as err {
+                                            LogToFile(Format(
+                                                "S1.6.2 FIX | TrackCursor | Error updating subGrid: {}",
+                                                err.Message), "antimouse_fix.log")
                                         }
-                                    } else {
-                                        LogToFile(Format(
-                                            "S1.6.2 FIX | TrackCursor | Skipping hover activation - firstKey '{}' is being processed",
-                                            StateMap['firstKey']), "antimouse_fix.log")
                                     }
-                                    ; --- RE-ENABLE HOVER ACTIVATION - END ---
+
+                                    ; Transition to subgrid state
+                                    try {
+                                        TransitionToState(State_SUBGRID_STANDARD)
+                                        LogToFile(
+                                            "S1.6.2 FIX | TrackCursor | Transitioned to SUBGRID_STANDARD state",
+                                            "antimouse_fix.log")
+                                    } catch as err {
+                                        LogToFile(Format(
+                                            "S1.6.2 FIX | TrackCursor | Error in state transition: {}",
+                                            err.Message), "antimouse_fix.log")
+                                    }
+                                } else {
+                                    ; --- MODIFIED CHECK --- firstKey is empty, DO NOT activate subgrid on hover
+                                    LogToFile(Format(
+                                        "S1.6.2 FIX (Modified) | TrackCursor | Skipping hover activation for cell '{}' because firstKey is empty.",
+                                        currentCellKey), "antimouse_fix.log")
                                 }
+                                ; --- RE-ENABLE HOVER ACTIVATION - END ---
                             } else {
                                 LogToFile(Format(
                                     "TrackCursor: WARNING - Failed to get boundaries for cell '{}'",

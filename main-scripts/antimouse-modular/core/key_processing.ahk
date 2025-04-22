@@ -101,27 +101,13 @@ ProcessKeyPress(key) {
             ProcessStandardSubgridKey(key)
             return
         }
-
-        ; If not a subgrid key, check if it's a grid key
-        isGridKey := CheckIfGridKey(key)
-        if (isGridKey) {
-            ; Task 5.10: ROBUST FIX - Always start a new selection with grid keys when in subgrid state
-            ; This simplifies the flow and prevents crashes during multiple key presses (A->S->P)
-
-            if (enableVerboseLogging) {
-                LogToFile(Format(
-                    "Timestamp: {} | Task: 5.10 | ROBUST FIX | ProcessKeyPress: Grid key '{}' in SUBGRID_STANDARD - Starting new selection",
-                    A_TickCount, key), "antimouse_core.log")
-            }
-
-            ; S1.5.1 DIAGNOSTIC: Starting new selection from subgrid state
+        else {
+            ; Task: 5.10/Previous Fix | If not a subgrid key, assume it's the start of a new selection.
             LogToFile(Format(
-                "S1.5.1 DIAGNOSTIC | ProcessKeyPress - Grid key '{}' in SUBGRID_STANDARD - Calling StartNewSelection",
+                "S1.5.1 DIAGNOSTIC | ProcessKeyPress - '{}' is NOT a subgrid key, starting new selection (will defer key processing)",
                 key), "antimouse_diagnostic.log")
-
-            ; Start new selection with this key - no checking if it's part of current cell
-            StartNewSelection(key)
-            return
+            StartNewSelection(key) ; <<< Call with only key again
+            return ; Ensure we exit after starting new selection
         }
     }
     else if (currentState = State_SUBGRID_ULTRAFAST) {
@@ -135,28 +121,6 @@ ProcessKeyPress(key) {
                 "S1.5.1 DIAGNOSTIC | ProcessKeyPress - '{}' is a valid ultrafast key, calling ProcessUltraFastKey",
                 key), "antimouse_diagnostic.log")
             ProcessUltraFastKey(key)
-            return
-        }
-
-        ; If not an ultrafast key, check if it's a grid key
-        isGridKey := CheckIfGridKey(key)
-        if (isGridKey) {
-            ; Task 5.10: ROBUST FIX - Always start a new selection with grid keys when in subgrid state
-            ; This simplifies the flow and prevents crashes during multiple key presses (A->S->P)
-
-            if (enableVerboseLogging) {
-                LogToFile(Format(
-                    "Timestamp: {} | Task: 5.10 | ROBUST FIX | ProcessKeyPress: Grid key '{}' in SUBGRID_ULTRAFAST - Starting new selection",
-                    A_TickCount, key), "antimouse_core.log")
-            }
-
-            ; S1.5.1 DIAGNOSTIC: Starting new selection from ultrafast state
-            LogToFile(Format(
-                "S1.5.1 DIAGNOSTIC | ProcessKeyPress - Grid key '{}' in SUBGRID_ULTRAFAST - Calling StartNewSelection",
-                key), "antimouse_diagnostic.log")
-
-            ; Start new selection with this key - no checking if it's part of current cell
-            StartNewSelection(key)
             return
         }
     }

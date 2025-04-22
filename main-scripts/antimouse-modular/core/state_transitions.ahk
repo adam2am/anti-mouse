@@ -426,16 +426,19 @@ TransitionToState(newState) {
 }
 
 ; Function to start a new selection cycle
+; MODIFIED: Removed reprocessKey parameter
 StartNewSelection(key) {
     global currentState, highlight, StateMap, timers, enableVerboseLogging
 
     ; S1.5.1 DIAGNOSTIC: StartNewSelection entry
-    LogToFile(Format("S1.5.1 DIAGNOSTIC | StartNewSelection ENTRY | key='{}' | currentState='{}' | firstKey='{}'",
+    LogToFile(Format(
+        "S1.5.1 DIAGNOSTIC | StartNewSelection ENTRY | key='{}' | currentState='{}' | firstKey='{}'",
         key, currentState, StateMap.Get('firstKey', "")), "antimouse_diagnostic.log")
 
     ; <<< TASK 2.4 CORE LOGGING START >>>
     if (enableVerboseLogging) { ; <<< WRAPPED
-        LogToFile(Format("Timestamp: {} | Task: 2.4 | StartNewSelection START | key={}, currentState={}", A_TickCount,
+        LogToFile(Format(
+            "Timestamp: {} | Task: 2.4 | StartNewSelection START | key={}, currentState={}", A_TickCount,
             key, currentState), "antimouse_core.log")
     }
     ; <<< TASK 2.4 CORE LOGGING END >>>
@@ -493,7 +496,6 @@ StartNewSelection(key) {
         oldFirstKey), "antimouse_diagnostic.log")
 
     ; Reset the state first - go back to grid visibility
-    ; S1.1: Add try/catch for TransitionToState
     try {
         LogToFile(Format(
             "S1.5.1 DIAGNOSTIC | StartNewSelection - Transitioning to GRID_VISIBLE | currentState before='{}'",
@@ -504,45 +506,29 @@ StartNewSelection(key) {
         ; S1.5.1 DIAGNOSTIC: State after transition
         LogToFile(Format("S1.5.1 DIAGNOSTIC | StartNewSelection - State after transition: '{}'",
             currentState), "antimouse_diagnostic.log")
+
+        ; MODIFIED: Schedule key processing instead of calling directly or checking reprocessKey
+        if (key != "") {
+            LogToFile(Format(
+                "S1.5.1 DIAGNOSTIC | StartNewSelection - Scheduling ProcessDeferredKey for key '{}' in 10ms",
+                key), "antimouse_diagnostic.log")
+            SetTimer(ProcessDeferredKey.Bind(key), -10) ; Run once after 10ms
+        } else {
+            LogToFile("S1.5.1 DIAGNOSTIC | StartNewSelection - No key provided, not scheduling deferred processing",
+                "antimouse_diagnostic.log")
+        }
+
     } catch as e {
         LogToFile(Format("Timestamp: {} | ERROR in TransitionToState: {}", A_TickCount, e.Message) "`n",
         "antimouse_core.log")
-
-        ; S1.5.1 DIAGNOSTIC: TransitionToState error
         LogToFile(Format("S1.5.1 DIAGNOSTIC | StartNewSelection - ERROR in TransitionToState: {}",
             e.Message), "antimouse_diagnostic.log")
     }
 
-    ; Process the new key if provided
-    if (key != "") {
-        ; S1.5.1 DIAGNOSTIC: Processing new key
-        LogToFile(Format("S1.5.1 DIAGNOSTIC | StartNewSelection - Processing new key: '{}'",
-            key), "antimouse_diagnostic.log")
-
-        ; S1.1: Add try/catch for HandleKey
-        try {
-            HandleKey(key, true) ; true to bypass state check
-
-            ; S1.5.1 DIAGNOSTIC: HandleKey success
-            LogToFile(Format("S1.5.1 DIAGNOSTIC | StartNewSelection - HandleKey('{}') success | firstKey='{}'",
-                key, StateMap.Get('firstKey', "")), "antimouse_diagnostic.log")
-        } catch as e {
-            LogToFile(Format("Timestamp: {} | ERROR in HandleKey: {}", A_TickCount, e.Message) "`n",
-            "antimouse_core.log")
-
-            ; S1.5.1 DIAGNOSTIC: HandleKey error
-            LogToFile(Format("S1.5.1 DIAGNOSTIC | StartNewSelection - ERROR in HandleKey: {}",
-                e.Message), "antimouse_diagnostic.log")
-        }
-    } else {
-        ; S1.5.1 DIAGNOSTIC: No key provided
-        LogToFile("S1.5.1 DIAGNOSTIC | StartNewSelection - No key provided, not calling HandleKey",
-            "antimouse_diagnostic.log")
-    }
+    ; REMOVED direct call to HandleKey and reprocessKey logic
 
     ; <<< TASK 2.4 CORE LOGGING END >>>
     if (enableVerboseLogging) { ; <<< WRAPPED
-        ; FIX: Use safe logging
         LogToFile(Format("Timestamp: {} | Task: 2.4 | StartNewSelection END | key={}, newState={}", A_TickCount, key,
             currentState), "antimouse_core.log")
     }
@@ -552,11 +538,45 @@ StartNewSelection(key) {
     recursionCount := 0
 
     ; S1.5.1 DIAGNOSTIC: StartNewSelection exit
-    LogToFile(Format("S1.5.1 DIAGNOSTIC | StartNewSelection EXIT | key='{}' | currentState='{}' | firstKey='{}'",
+    LogToFile(Format(
+        "S1.5.1 DIAGNOSTIC | StartNewSelection EXIT | key='{}' | currentState='{}' | firstKey='{}'",
         key, currentState, StateMap.Get('firstKey', "")), "antimouse_diagnostic.log")
 }
 
+; NEW Function: Handles key processing deferred by StartNewSelection
+ProcessDeferredKey(key) {
+    global currentState, enableVerboseLogging, StateMap
+    LogToFile(Format(
+        "S1.5.1 DIAGNOSTIC | ProcessDeferredKey ENTRY | key='{}' | currentState='{}' | firstKey='{}'",
+        key, currentState, StateMap.Get('firstKey', "")), "antimouse_diagnostic.log")
+
+    if (enableVerboseLogging) {
+        LogToFile(Format("Timestamp: {} | ProcessDeferredKey: Handling deferred key '{}' in state '{}'",
+            A_TickCount, key, currentState), "antimouse_core.log")
+    }
+
+    ; Only process if we are still in the expected state (GRID_VISIBLE)
+    if (currentState == State_GRID_VISIBLE) {
+        try {
+            HandleKey(key, true) ; true to bypass state check
+            LogToFile(Format(
+                "S1.5.1 DIAGNOSTIC | ProcessDeferredKey - HandleKey('{}') success | firstKey='{}'",
+                key, StateMap.Get('firstKey', "")), "antimouse_diagnostic.log")
+        } catch as e {
+            LogToFile(Format("Timestamp: {} | ERROR in ProcessDeferredKey -> HandleKey: {}", A_TickCount, e.Message) "`n",
+            "antimouse_core.log")
+            LogToFile(Format("S1.5.1 DIAGNOSTIC | ProcessDeferredKey - ERROR in HandleKey: {}",
+                e.Message), "antimouse_diagnostic.log")
+        }
+    } else {
+        LogToFile(Format(
+            "S1.5.1 DIAGNOSTIC | ProcessDeferredKey - SKIPPING HandleKey for key '{}' because currentState is '{}' (expected GRID_VISIBLE)",
+            key, currentState), "antimouse_diagnostic.log")
+    }
+}
+
 ; Deferred key handling function to avoid reentrancy when transitioning states
+; <<< THIS SEEMS REDUNDANT NOW - Consider removing later if ProcessDeferredKey works >>>
 DeferredHandleKey(key) {
     if (enableVerboseLogging) {
         LogToFile(Format("DEBUG | DeferredHandleKey STARTING | currentState={}",
