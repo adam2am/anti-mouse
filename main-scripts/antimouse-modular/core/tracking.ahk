@@ -232,11 +232,18 @@ TrackCursor() {
                                     currentCellKey, boundaries.x, boundaries.y, boundaries.w, boundaries.h),
                                 "antimouse_fix.log")
                             } else {
-                                LogToFile(Format("5.13.1 DEBUG | TrackCursor - FAILED to get boundaries for '{}'",
+                                LogToFile(Format("5.13.1 DEBUG | TrackCursor - FAILED to get boundaries for '{ }'",
                                     currentCellKey), "antimouse_fix.log")
                             }
 
                             if (IsObject(boundaries)) {
+                                ; --- Task 1.1 FIX: Update activeCellKey state --- START
+                                StateMap['activeCellKey'] := currentCellKey
+                                LogToFile(Format(
+                                    "S1.7.1 DIAG | TrackCursor (GRID_VISIBLE) | Updated StateMap['activeCellKey'] to: '{}'",
+                                    currentCellKey), "antimouse_diagnostic.log")
+                                ; --- Task 1.1 FIX: Update activeCellKey state --- END
+
                                 ; --- Task 1.6: Update and show the highlight for the new cell ---
                                 if (IsObject(highlight)) {
                                     try {
