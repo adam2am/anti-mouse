@@ -448,8 +448,27 @@ CapsLock Up:: {
                     currentTime, currentTime - g_ModifierState.capsPressedSecondTime, instaClickReleaseThreshold),
                 "antimouse_core.log")
             try {
+                mouseX := 0, mouseY := 0 ; Initialize target coordinates
+                usedStoredTarget := false
+
+                ; Check if we have a pre-calculated target from CapsLock & q
+                if (StateMap.Has('instantClickTargetX') && StateMap['instantClickTargetX'] != "") {
+                    mouseX := StateMap['instantClickTargetX']
+                    mouseY := StateMap['instantClickTargetY']
+                    StateMap['instantClickTargetX'] := "" ; Clear after use
+                    StateMap['instantClickTargetY'] := "" ; Clear after use
+                    usedStoredTarget := true
+                    LogToFile(Format("Timestamp: {} | InstaClick: Using stored target ({}, {}) from Hold+Key",
+                        currentTime, mouseX, mouseY), "antimouse_core.log")
+                } else {
+                    ; No stored target, get current mouse position (for double-tap clicks)
+                    MouseGetPos(&mouseX, &mouseY)
+                    LogToFile(Format("Timestamp: {} | InstaClick: Using current mouse position ({}, {})",
+                        currentTime, mouseX, mouseY), "antimouse_core.log")
+                }
+
                 ; Save mouse position before cleanup potentially moves it
-                MouseGetPos(&mouseX, &mouseY)
+                ; MouseGetPos(&mouseX, &mouseY) ; << REMOVED - Determined above
 
                 ; Stop tracking and set state to IDLE immediately
                 SetTimer(TrackCursor, 0)
@@ -469,7 +488,9 @@ CapsLock Up:: {
                 }
                 Sleep(50) ; Slightly longer delay for UI hiding
 
-                ; Perform the click
+                ; Perform the click AT THE DETERMINED LOCATION
+                LogToFile(Format("Timestamp: {} | InstaClick: Clicking at ({}, {}). Stored Target Used: {}",
+                    currentTime, mouseX, mouseY, usedStoredTarget), "antimouse_core.log")
                 Click("Left") ; Use reliable Click command
 
                 ; Perform full cleanup *after* the click
@@ -690,41 +711,107 @@ CapsLock & q:: {
         }
         if (qColIndex > 0) {
             rowIndex := 0
-            if (IsObject(StateMap['currentOverlay']) && StateMap['currentOverlay'].ContainsPoint(cursorX, cursorY)) {
-                bestDistance := 99999, bestRowIndex := 0
+            initialCellKey := GetCellAtPosition(cursorX, cursorY) ; Check initial cell
+            LogToFile(Format("Timestamp: {} | Hold+Q Snap: Initial cursor check -> cell '{}'", A_TickCount,
+                initialCellKey), "antimouse_core.log")
+
+            ; --- Same Row Priority Logic ---
+            if (initialCellKey != "" && StateMap.Has('activeRowKeys') && StateMap['activeRowKeys'].Length > 0) {
+                initialRowKey := SubStr(initialCellKey, StrLen(initialCellKey)) ; Get last char (row key)
+                foundRowIndex := false
                 for i, rowKey in StateMap['activeRowKeys'] {
-                    cellKey := "q" . rowKey
-                    boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
-                    if (IsObject(boundaries)) {
-                        cellCenterY := boundaries.y + (boundaries.h // 2)
-                        distance := Abs(cellCenterY - cursorY)
-                        if (distance < bestDistance) {
-                            bestDistance := distance, bestRowIndex := i
-                        }
+                    if (rowKey == initialRowKey) {
+                        rowIndex := i
+                        foundRowIndex := true
+                        LogToFile(Format(
+                            "Timestamp: {} | Hold+Q Snap: Prioritizing row '{}' (index {}) from initial cell '{}'",
+                            A_TickCount, initialRowKey, rowIndex, initialCellKey), "antimouse_core.log")
+                        break
                     }
                 }
-                if (bestRowIndex > 0) {
-                    rowIndex := bestRowIndex
+                if (!foundRowIndex) {
+                    LogToFile(Format(
+                        "Timestamp: {} | Hold+Q Snap Warning: Extracted row '{}' not found in activeRowKeys!",
+                        A_TickCount, initialRowKey), "antimouse_core.log")
                 }
             }
-            if (rowIndex == 0) rowIndex := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : Ceil(
-                StateMap['activeRowKeys'].Length / 2)
-                rowIndex := ValidateIndex(rowIndex, StateMap['activeRowKeys'].Length)
-            StateMap['firstKey'] := "q"
-            StateMap['currentColIndex'] := qColIndex
-            StateMap['currentRowIndex'] := rowIndex
-            StateMap['lastSelectedRowIndex'] := rowIndex
-            rowKey := StateMap['activeRowKeys'][rowIndex]
-            cellKey := "q" . rowKey
-            boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
-            if (IsObject(boundaries)) {
-                MouseMove(boundaries.x + (boundaries.w // 2), boundaries.y + (boundaries.h // 2), 0)
-                if (IsObject(highlight)) {
-                    highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+            ; --- End Same Row Priority ---
+
+            ; --- Fallback Logic (Nearest Y / Middle) ---
+            if (rowIndex == 0) { ; Only run fallback if same row priority didn't find a valid index
+                LogToFile(Format("Timestamp: {} | Hold+Q Snap: Using fallback logic (Nearest Y / Middle)", A_TickCount),
+                "antimouse_core.log")
+                if (IsObject(StateMap['currentOverlay']) && StateMap['currentOverlay'].ContainsPoint(cursorX, cursorY)) {
+                    bestDistance := 99999, bestRowIndex := 0
+                    LogToFile(Format("Timestamp: {} | Hold+Q Snap Fallback: Checking rows for nearest Y to {}",
+                        A_TickCount, cursorY), "antimouse_core.log")
+                    for i, rowKey in StateMap['activeRowKeys'] {
+                        cellKey := "q" . rowKey
+                        boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+                        if (IsObject(boundaries)) {
+                            cellCenterY := boundaries.y + (boundaries.h // 2)
+                            distance := Abs(cellCenterY - cursorY)
+                            LogToFile(Format(
+                                "Timestamp: {} | Hold+Q Snap Fallback: Row '{}' (idx {}), CenterY={}, Dist={}",
+                                A_TickCount, rowKey, i, cellCenterY, distance), "antimouse_core.log")
+                            if (distance < bestDistance) {
+                                bestDistance := distance, bestRowIndex := i
+                            }
+                        }
+                    }
+                    if (bestRowIndex > 0) {
+                        rowIndex := bestRowIndex
+                        LogToFile(Format("Timestamp: {} | Hold+Q Snap Fallback: Nearest row index is {}", A_TickCount,
+                            rowIndex), "antimouse_core.log")
+                    }
                 }
-                if (showcaseDebug) {
-                    ToolTip("Selected cell: " cellKey)
+                if (rowIndex == 0) {
+                    lastIdx := StateMap['lastSelectedRowIndex'] ? StateMap['lastSelectedRowIndex'] : 0
+                    middleIdx := Ceil(StateMap['activeRowKeys'].Length / 2)
+                    rowIndex := lastIdx ? lastIdx : middleIdx
+                    LogToFile(Format("Timestamp: {} | Hold+Q Snap Fallback: Using middle/last row index: {}",
+                        A_TickCount, rowIndex), "antimouse_core.log")
                 }
+            }
+            ; --- End Fallback Logic ---
+
+            rowIndex := ValidateIndex(rowIndex, StateMap['activeRowKeys'].Length)
+            LogToFile(Format("Timestamp: {} | Hold+Q Snap: Final validated rowIndex = {}", A_TickCount, rowIndex),
+            "antimouse_core.log")
+            if (rowIndex > 0) { ; Ensure we have a valid row index before proceeding
+                ; --- REMOVE StateMap updates that imply standard grid navigation ---
+                ; StateMap['firstKey'] := "q"
+                ; StateMap['currentColIndex'] := qColIndex
+                ; StateMap['currentRowIndex'] := rowIndex
+                StateMap['lastSelectedRowIndex'] := rowIndex ; Keep this one for potential future use
+
+                rowKey := StateMap['activeRowKeys'][rowIndex]
+                cellKey := "q" . rowKey
+                boundaries := StateMap['currentOverlay'].GetCellBoundaries(cellKey)
+                if (IsObject(boundaries)) {
+                    targetX := boundaries.x + (boundaries.w // 2)
+                    targetY := boundaries.y + (boundaries.h // 2)
+
+                    ; --- STORE Target Coords instead of moving mouse/setting firstKey ---
+                    StateMap['instantClickTargetX'] := targetX
+                    StateMap['instantClickTargetY'] := targetY
+                    LogToFile(Format("Timestamp: {} | Hold+Q Snap: Stored instant click target ({}, {}) for cell '{}'",
+                        A_TickCount, targetX, targetY, cellKey), "antimouse_core.log")
+
+                    ; Update highlight visually, but don't change state logic
+                    if (IsObject(highlight)) {
+                        highlight.Update(boundaries.x, boundaries.y, boundaries.w, boundaries.h)
+                    }
+                    if (showcaseDebug) {
+                        ToolTip("Target: " cellKey)
+                    }
+                } else {
+                    LogToFile(Format("Timestamp: {} | Hold+Q Snap Error: Failed to get boundaries for target cell '{}'",
+                        A_TickCount, cellKey), "antimouse_core.log")
+                }
+            } else {
+                LogToFile(Format("Timestamp: {} | Hold+Q Snap Error: Failed to determine valid row index", A_TickCount),
+                "antimouse_core.log")
             }
         }
     }

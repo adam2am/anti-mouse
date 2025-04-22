@@ -312,6 +312,8 @@ Cleanup() {
         StateMap['currentRowIndex'] := 0
         StateMap['lastSelectedRowIndex'] := 0
         StateMap['lastKeypressTime'] := 0 ; Used for debouncing hover activation
+        StateMap['instantClickTargetX'] := "" ; Reset direct click target
+        StateMap['instantClickTargetY'] := "" ; Reset direct click target
 
         LogToFile(Format("Timestamp: {} | CLEANUP: All flags and state variables reset", A_TickCount) "`n",
         "antimouse_core.log")
@@ -511,6 +513,8 @@ DeactivateGrid(forced := false) {
         StateMap['inUltraFastMode'] := false
         StateMap['activeRowKey'] := ""
         StateMap['lastKeypressTime'] := 0 ; Used for debouncing hover activation
+        StateMap['instantClickTargetX'] := "" ; Reset direct click target
+        StateMap['instantClickTargetY'] := "" ; Reset direct click target
     } catch as e {
         LogToFile(Format("Timestamp: {} | ERROR: Failed to reset state variables: {}",
             currentTime, e.Message) "`n", "antimouse_core.log")

@@ -38,7 +38,9 @@ global StateMap := Map(
     "lastSelectedRowIndex", 0,  ; Remembers the last row selected to improve flow
     "rowKeyHeldTime", 0,        ; Timestamp when row key was pressed (for Ultra-Fast mode)
     "activeRowKey", "",         ; Currently held row key (for Ultra-Fast mode)
-    "inUltraFastMode", false    ; Whether Ultra-Fast Subgrid mode is active
+    "inUltraFastMode", false,   ; Whether Ultra-Fast Subgrid mode is active
+    "instantClickTargetX", "",  ; Stores X coord for direct CapsLock+Key click
+    "instantClickTargetY", ""   ; Stores Y coord for direct CapsLock+Key click
 )
 
 ; --- GUI Instances ---

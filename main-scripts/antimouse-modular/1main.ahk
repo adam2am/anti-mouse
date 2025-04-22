@@ -76,6 +76,7 @@ SetTimer ForceCapsLockOff, 250
 
 ; --- Initialize GUIs at Startup ---
 InitializeGUIs() ; Create GUI objects and hide them off-screen
+LogToFile(Format("Timestamp: {} | 1main.ahk: InitializeGUIs() call completed.", A_TickCount), "antimouse_core.log")
 
 ; --- Optional: Initial Debug Message ---
 if (showcaseDebug) {
