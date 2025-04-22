@@ -516,6 +516,10 @@ CapsLock Up:: {
                 ToolTip("Double-Tap Activation Release (No Click)")
             }
             ; Only reset state flags here, don't click or cleanup.
+            ; Start tracking ONLY if this was a quick release (non-instaclick activation)
+            SetTimer(TrackCursor, 50)
+            LogToFile(Format("Timestamp: {} | CapsLock Up: Started TrackCursor after quick release.", currentTime),
+            "antimouse_core.log")
         }
 
         ; Reset hold mode and press times regardless of whether click happened
